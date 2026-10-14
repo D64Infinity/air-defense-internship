@@ -3,11 +3,11 @@ import { GameScene } from './GameScene';
 
 export function createGame(parent: string): Phaser.Game {
   const config: Phaser.Types.Core.GameConfig = {
-    type: Phaser.AUTO,
+    type: Phaser.CANVAS,
     parent,
     width: 960,
     height: 640,
-    backgroundColor: '#0f172a',
+    backgroundColor: '#051209',
     scene: [GameScene],
     scale: {
       mode: Phaser.Scale.FIT,
