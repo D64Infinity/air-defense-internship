@@ -130,6 +130,7 @@ export interface GameTarget {
   isScanned?: boolean; // Раскрыт ли точный тип цели
   decoyPassesThroughBase?: boolean; // Пролетает ли ловушка сквозь базу
   hasPassedBase?: boolean; // Флаг фиксации пролёта через базу
+  hasBombedBase?: boolean; // Флаг: бомбардировщик уже сбросил бомбы на базу
 }
 
 // Псевдонимы для обратной совместимости

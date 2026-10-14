@@ -642,12 +642,29 @@ export class GameScene extends Phaser.Scene {
           );
           this.baseFlashTimer = 0.6;
         } else if (target.type === 'bomber') {
+          if (target.hasBombedBase) {
+            continue;
+          }
+          target.hasBombedBase = true;
           this.baseHealth = Math.max(0, this.baseHealth - GAME_CONFIG.damageBomber);
           this.showFeedback(
             `[УДАР!] БОМБАРДИРОВКА БАЗЫ! (-${GAME_CONFIG.damageBomber} HP)`,
             '#ef4444',
           );
           this.baseFlashTimer = 0.6;
+          this.drawHealthBar();
+
+          // Бомбардировщик сбросил бомбы и уходит по прямой за пределы зоны
+          target.targetHeadingRad = target.headingRad;
+          target.turnRate = 0;
+          target.vx = Math.cos(target.headingRad) * target.speed;
+          target.vy = Math.sin(target.headingRad) * target.speed;
+
+          if (this.baseHealth <= 0 && !this.isGameOver) {
+            this.triggerGameOver();
+            return;
+          }
+          continue;
         } else if (target.type === 'friend') {
           this.showFeedback(`[БАЗА] СОЮЗНИК БЕЗОПАСНО ВОШЁЛ В ЗОНУ`, '#86efac');
         } else if (target.type === 'decoy') {
