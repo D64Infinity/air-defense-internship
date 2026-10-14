@@ -26,7 +26,7 @@ export const RADAR_CONFIG = {
   maxActiveTargetsBase: 7,
 
   // Длительность фазы
-  phaseDuration: 60, // секунд на одну фазу
+  phaseDuration: 15, // секунд на одну фазу
 
   // Здоровье базы и урон
   maxBaseHealth: 100,
