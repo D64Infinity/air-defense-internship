@@ -1157,6 +1157,30 @@ export class GameScene extends Phaser.Scene {
     for (let i = this.targets.length - 1; i >= 0; i--) {
       const target = this.targets[i];
 
+      // ИИ маневрирования: проверка наступления запланированного манёвра у кораблей
+      if (target.maneuverTimer !== undefined && !target.hasManeuvered) {
+        target.maneuverTimer -= dt;
+        if (target.maneuverTimer <= 0) {
+          target.hasManeuvered = true;
+          this.executeShipManeuver(target);
+        }
+      }
+
+      // Плавный доворот судна к целевому курсу
+      if (target.turnRate > 0 && target.headingRad !== target.targetHeadingRad) {
+        target.headingRad = Phaser.Math.Angle.RotateTo(
+          target.headingRad,
+          target.targetHeadingRad,
+          target.turnRate * dt,
+        );
+        target.vx = Math.cos(target.headingRad) * target.speed;
+        target.vy = Math.sin(target.headingRad) * target.speed;
+
+        let deg = Math.round(Phaser.Math.RadToDeg(target.headingRad));
+        if (deg < 0) deg += 360;
+        target.headingDeg = deg;
+      }
+
       target.x += target.vx * dt;
       target.y += target.vy * dt;
 
@@ -1231,6 +1255,34 @@ export class GameScene extends Phaser.Scene {
 
         this.targets.splice(i, 1);
         this.checkWaveProgress();
+      }
+    }
+  }
+
+  /**
+   * ИИ манёвра кораблей (бомбардировщиков и союзников)
+   */
+  private executeShipManeuver(target: GameTarget): void {
+    if (target.type === 'bomber') {
+      // 70% шанс: бомбардировщик доворачивает прямо на базу для атаки
+      if (Math.random() < 0.7) {
+        target.targetHeadingRad = Math.atan2(
+          GAME_CONFIG.radarY - target.y,
+          GAME_CONFIG.radarX - target.x,
+        );
+      } else {
+        // 30% шанс: транзитный уход в сторону от базы
+        target.targetHeadingRad = target.headingRad + Phaser.Math.FloatBetween(-0.6, 0.6);
+      }
+    } else if (target.type === 'friend') {
+      // Союзник: 50% заход на базу (посадка/дозаправка), 50% транзитный пролёт
+      if (Math.random() < 0.5) {
+        target.targetHeadingRad = Math.atan2(
+          GAME_CONFIG.radarY - target.y,
+          GAME_CONFIG.radarX - target.x,
+        );
+      } else {
+        target.targetHeadingRad = target.headingRad + Phaser.Math.FloatBetween(-0.5, 0.5);
       }
     }
   }
@@ -1321,6 +1373,8 @@ export class GameScene extends Phaser.Scene {
 
     let heading: number;
     let decoyPassesThroughBase: boolean | undefined = undefined;
+    let turnRate = 0;
+    let maneuverTimer: number | undefined = undefined;
 
     if (type === 'decoy') {
       // Ловушка движется по хордам (включая диаметральные диагонали через базу)
@@ -1331,11 +1385,18 @@ export class GameScene extends Phaser.Scene {
       const exitY = GAME_CONFIG.radarY + Math.sin(exitAngle) * GAME_CONFIG.radarRadius;
       heading = Math.atan2(exitY - y, exitX - x);
       decoyPassesThroughBase = Math.random() < 0.5;
+    } else if (type === 'missile') {
+      // Ракета летит строго по прямой в центр базы без манёвров
+      heading = Math.atan2(GAME_CONFIG.radarY - y, GAME_CONFIG.radarX - x);
     } else {
+      // Корабли (бомбардировщик и союзник): начинают под углом и могут довернуть
       const angleToCenter = Math.atan2(GAME_CONFIG.radarY - y, GAME_CONFIG.radarX - x);
       heading =
         angleToCenter +
         Phaser.Math.FloatBetween(-typeCfg.headingJitter, typeCfg.headingJitter);
+      // Способность плавно маневрировать
+      turnRate = Phaser.Math.FloatBetween(0.3, 0.55); // ~17..31 град/сек
+      maneuverTimer = Phaser.Math.FloatBetween(2.2, 4.2); // секунды до принятия решения о довороте
     }
 
     const waveSpeedFactor = 1 + Math.min(0.35, (this.wave - 1) * 0.04);
@@ -1362,6 +1423,10 @@ export class GameScene extends Phaser.Scene {
       vy,
       speed: Math.round(speed),
       headingDeg,
+      headingRad: heading,
+      targetHeadingRad: heading,
+      turnRate,
+      maneuverTimer,
       signal,
       alpha: 0,
       decoyPassesThroughBase,

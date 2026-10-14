@@ -120,6 +120,11 @@ export interface GameTarget {
   vy: number;
   speed: number;
   headingDeg: number;
+  headingRad: number; // текущий угол курса в радианах
+  targetHeadingRad: number; // целевой угол курса в радианах (куда доворачивает борт)
+  turnRate: number; // скорость доворота (рад/сек, 0 = без манёвра)
+  maneuverTimer?: number; // таймер до смены курса пилотом
+  hasManeuvered?: boolean; // флаг выполнения манёвра
   signal: number;
   alpha: number; // 0..1 (яркость люминофора)
   isScanned?: boolean; // Раскрыт ли точный тип цели
