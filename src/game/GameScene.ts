@@ -11,6 +11,12 @@ import {
   renderExplosions,
   type ExplosionEffect,
 } from './effects';
+import {
+  createGameOverOverlay,
+  createPauseOverlay,
+  type GameOverOverlay,
+  type PauseOverlay,
+} from './ui';
 
 // Реэкспорт для сохранения полной обратной совместимости
 export { GAME_CONFIG, GAME_CONFIG as RADAR_CONFIG };
@@ -27,8 +33,8 @@ export class GameScene extends Phaser.Scene {
   private staticGraphics!: Phaser.GameObjects.Graphics;
   private dynamicGraphics!: Phaser.GameObjects.Graphics;
   private hudGraphics!: Phaser.GameObjects.Graphics;
-  private gameOverContainer!: Phaser.GameObjects.Container;
-  private pauseContainer!: Phaser.GameObjects.Container;
+  private gameOverOverlay!: GameOverOverlay;
+  private pauseOverlay!: PauseOverlay;
   private isPaused = false;
 
   // Динамические параметры луча и волн
@@ -74,11 +80,6 @@ export class GameScene extends Phaser.Scene {
   private targetTelemetryText!: Phaser.GameObjects.Text;
   private feedbackText!: Phaser.GameObjects.Text;
   private waveBannerText!: Phaser.GameObjects.Text;
-
-  // Элементы экрана Game Over
-  private goScoreText!: Phaser.GameObjects.Text;
-  private goRecordText!: Phaser.GameObjects.Text;
-  private goWavesText!: Phaser.GameObjects.Text;
 
   // Кнопки решений и скана
   private buttons: Record<
@@ -129,8 +130,8 @@ export class GameScene extends Phaser.Scene {
     this.createHudElements();
     this.createDecisionButtons();
     this.createWaveBanner();
-    this.createPauseOverlay();
-    this.createGameOverOverlay();
+    this.pauseOverlay = createPauseOverlay(this, () => this.togglePause());
+    this.gameOverOverlay = createGameOverOverlay(this, () => this.restartGame());
     this.setupInputs();
 
     // Стартовые цели спавнятся ДАЛЕКО от базы для комфортного старта
@@ -544,175 +545,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Окно Game Over (поражение)
-   */
-  private createGameOverOverlay(): void {
-    const { width, height } = this.scale;
-    this.gameOverContainer = this.add.container(0, 0);
-    this.gameOverContainer.setDepth(100);
-    this.gameOverContainer.setVisible(false);
-
-    // Затемнение
-    const darkBg = this.add.rectangle(width / 2, height / 2, width, height, 0x020a05, 0.88);
-    darkBg.setInteractive();
-
-    // Рамка модального окна
-    const modal = this.add.rectangle(width / 2, height / 2, 480, 320, 0x071b0f, 0.96);
-    modal.setStrokeStyle(2, 0xef4444, 0.9);
-
-    const title = this.add.text(
-      width / 2,
-      height / 2 - 110,
-      'СИСТЕМА ОБОРОНЫ ПРОРВАНА\n[ БАЗА УНИЧТОЖЕНА ]',
-      {
-        fontFamily: 'Consolas, monospace',
-        fontSize: '20px',
-        color: '#ef4444',
-        fontStyle: 'bold',
-        align: 'center',
-        lineSpacing: 6,
-      },
-    );
-    title.setOrigin(0.5);
-
-    this.goScoreText = this.add.text(width / 2, height / 2 - 35, 'ИТОГОВЫЙ СЧЁТ: 0', {
-      fontFamily: 'Consolas, monospace',
-      fontSize: '17px',
-      color: '#facc15',
-      fontStyle: 'bold',
-    });
-    this.goScoreText.setOrigin(0.5);
-
-    this.goRecordText = this.add.text(width / 2, height / 2, 'ЛУЧШИЙ РЕКОРД: 0', {
-      fontFamily: 'Consolas, monospace',
-      fontSize: '14px',
-      color: '#86efac',
-    });
-    this.goRecordText.setOrigin(0.5);
-
-    this.goWavesText = this.add.text(width / 2, height / 2 + 30, 'ОТРАЖЕНО ВОЛН: 1', {
-      fontFamily: 'Consolas, monospace',
-      fontSize: '13px',
-      color: '#94a3b8',
-    });
-    this.goWavesText.setOrigin(0.5);
-
-    // Кнопка рестарта
-    const restartBtn = this.add.rectangle(width / 2, height / 2 + 85, 260, 42, 0x16a34a, 0.9);
-    restartBtn.setStrokeStyle(1.5, 0x4ade80, 1);
-    restartBtn.setInteractive({ useHandCursor: true });
-
-    const restartText = this.add.text(
-      width / 2,
-      height / 2 + 85,
-      'ЕЩЁ РАЗ (ПРОБЕЛ)',
-      {
-        fontFamily: 'Consolas, monospace',
-        fontSize: '14px',
-        color: '#ffffff',
-        fontStyle: 'bold',
-      },
-    );
-    restartText.setOrigin(0.5);
-
-    restartBtn.on('pointerover', () => restartBtn.setFillStyle(0x22c55e, 1));
-    restartBtn.on('pointerout', () => restartBtn.setFillStyle(0x16a34a, 0.9));
-    restartBtn.on('pointerdown', () => this.restartGame());
-
-    this.gameOverContainer.add([
-      darkBg,
-      modal,
-      title,
-      this.goScoreText,
-      this.goRecordText,
-      this.goWavesText,
-      restartBtn,
-      restartText,
-    ]);
-  }
-
-  /**
-   * Окно тактической паузы
-   */
-  private createPauseOverlay(): void {
-    const { width, height } = this.scale;
-    this.pauseContainer = this.add.container(0, 0);
-    this.pauseContainer.setDepth(90);
-    this.pauseContainer.setVisible(false);
-
-    // Полупрозрачное затемнение
-    const darkBg = this.add.rectangle(
-      width / 2,
-      height / 2,
-      width,
-      height,
-      0x020a05,
-      0.82,
-    );
-    darkBg.setInteractive(); // Блокирует клики сквозь паузу
-
-    // Рамка окна паузы
-    const modal = this.add.rectangle(width / 2, height / 2, 400, 180, 0x071b0f, 0.96);
-    modal.setStrokeStyle(2, 0x38bdf8, 0.9);
-
-    const title = this.add.text(
-      width / 2,
-      height / 2 - 35,
-      '// ТАКТИЧЕСКАЯ ПАУЗА //',
-      {
-        fontFamily: 'Consolas, monospace',
-        fontSize: '20px',
-        color: '#38bdf8',
-        fontStyle: 'bold',
-      },
-    );
-    title.setOrigin(0.5);
-
-    // Кнопка продолжения
-    const resumeBtn = this.add.rectangle(
-      width / 2,
-      height / 2 + 35,
-      240,
-      40,
-      0x0284c7,
-      0.9,
-    );
-    resumeBtn.setStrokeStyle(1.5, 0x38bdf8, 1);
-    resumeBtn.setInteractive({ useHandCursor: true });
-
-    const resumeText = this.add.text(
-      width / 2,
-      height / 2 + 35,
-      'ПРОДОЛЖИТЬ (P)',
-      {
-        fontFamily: 'Consolas, monospace',
-        fontSize: '14px',
-        color: '#ffffff',
-        fontStyle: 'bold',
-      },
-    );
-    resumeText.setOrigin(0.5);
-
-    resumeBtn.on('pointerover', () => resumeBtn.setFillStyle(0x0369a1, 1));
-    resumeBtn.on('pointerout', () => resumeBtn.setFillStyle(0x0284c7, 0.9));
-    resumeBtn.on('pointerdown', () => this.togglePause());
-
-    this.pauseContainer.add([
-      darkBg,
-      modal,
-      title,
-      resumeBtn,
-      resumeText,
-    ]);
-  }
-
-  /**
    * Переключение паузы (безопасный тогл без накопления состояния)
    */
   private togglePause(): void {
     if (this.isGameOver) return;
     this.isPaused = !this.isPaused;
-    this.pauseContainer.setVisible(this.isPaused);
+    this.pauseOverlay.setVisible(this.isPaused);
   }
 
   /**
@@ -721,7 +559,7 @@ export class GameScene extends Phaser.Scene {
   private triggerGameOver(): void {
     this.isGameOver = true;
     this.isPaused = false;
-    this.pauseContainer.setVisible(false);
+    this.pauseOverlay.hide();
     this.selectedTarget = null;
     this.isScanning = false;
     this.scanningTarget = null;
@@ -734,15 +572,13 @@ export class GameScene extends Phaser.Scene {
       isNewRecord = true;
     }
 
-    this.goScoreText.setText(
-      `ИТОГОВЫЙ СЧЁТ: ${this.score}` + (isNewRecord ? ' (НОВЫЙ РЕКОРД!)' : ''),
+    this.gameOverOverlay.show(
+      this.score,
+      this.highScore,
+      this.wave,
+      this.bestStreak,
+      isNewRecord,
     );
-    this.goRecordText.setText(`ЛУЧШИЙ РЕКОРД: ${this.highScore}`);
-    this.goWavesText.setText(
-      `ВОЛНА: ${this.wave} | МАКС. СЕРИЯ: ${this.bestStreak}`,
-    );
-
-    this.gameOverContainer.setVisible(true);
   }
 
   /**
@@ -751,8 +587,8 @@ export class GameScene extends Phaser.Scene {
   private restartGame(): void {
     this.isPaused = false;
     this.explosions = [];
-    this.pauseContainer.setVisible(false);
-    this.gameOverContainer.setVisible(false);
+    this.pauseOverlay.hide();
+    this.gameOverOverlay.hide();
     this.scene.restart();
   }
 
