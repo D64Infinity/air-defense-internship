@@ -14,8 +14,10 @@ import {
 import {
   createGameOverOverlay,
   createPauseOverlay,
+  createHud,
   type GameOverOverlay,
   type PauseOverlay,
+  type HudManager,
 } from './ui';
 
 // Реэкспорт для сохранения полной обратной совместимости
@@ -23,16 +25,10 @@ export { GAME_CONFIG, GAME_CONFIG as RADAR_CONFIG };
 export type { TargetType, DecisionChoice, GameTarget, GameTarget as RadarTarget };
 
 
-interface ButtonItem {
-  bg: Phaser.GameObjects.Rectangle;
-  text: Phaser.GameObjects.Text;
-  setEnabled: (enabled: boolean) => void;
-}
-
 export class GameScene extends Phaser.Scene {
   private staticGraphics!: Phaser.GameObjects.Graphics;
   private dynamicGraphics!: Phaser.GameObjects.Graphics;
-  private hudGraphics!: Phaser.GameObjects.Graphics;
+  private hud!: HudManager;
   private gameOverOverlay!: GameOverOverlay;
   private pauseOverlay!: PauseOverlay;
   private isPaused = false;
@@ -65,30 +61,6 @@ export class GameScene extends Phaser.Scene {
 
   // Таймеры эффектов
   private baseFlashTimer = 0;
-  private feedbackTimer = 0;
-  private waveBannerTimer = 0;
-
-  // Текстовые индикаторы HUD
-  private scoreText!: Phaser.GameObjects.Text;
-  private highScoreText!: Phaser.GameObjects.Text;
-  private streakText!: Phaser.GameObjects.Text;
-  private waveText!: Phaser.GameObjects.Text;
-  private healthText!: Phaser.GameObjects.Text;
-  private interceptorsText!: Phaser.GameObjects.Text;
-  private scansText!: Phaser.GameObjects.Text;
-  private targetTelemetryTitle!: Phaser.GameObjects.Text;
-  private targetTelemetryText!: Phaser.GameObjects.Text;
-  private feedbackText!: Phaser.GameObjects.Text;
-  private waveBannerText!: Phaser.GameObjects.Text;
-
-  // Кнопки решений и скана
-  private buttons: Record<
-    DecisionChoice | 'scan' | 'buyMissile' | 'buyScan',
-    ButtonItem
-  > = {} as Record<
-    DecisionChoice | 'scan' | 'buyMissile' | 'buyScan',
-    ButtonItem
-  >;
 
   constructor() {
     super('GameScene');
@@ -125,11 +97,12 @@ export class GameScene extends Phaser.Scene {
     this.dynamicGraphics = this.add.graphics();
 
     // 3. Панель консоли оператора
-    this.hudGraphics = this.add.graphics();
-    this.drawHudPanel();
-    this.createHudElements();
-    this.createDecisionButtons();
-    this.createWaveBanner();
+    this.hud = createHud(this, {
+      onDecision: (choice) => this.resolveDecision(choice),
+      onScan: () => this.startScanning(),
+      onBuyMissile: () => this.buyInterceptor(),
+      onBuyScan: () => this.buyScan(),
+    });
     this.pauseOverlay = createPauseOverlay(this, () => this.togglePause());
     this.gameOverOverlay = createGameOverOverlay(this, () => this.restartGame());
     this.setupInputs();
@@ -214,335 +187,29 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  /**
-   * Отрисовка правой панели консоли
-   */
-  private drawHudPanel(): void {
-    const { colors } = GAME_CONFIG;
-    const panelX = 640;
-    const panelY = 32;
-    const panelW = 295;
-    const panelH = 576;
 
-    this.hudGraphics.fillStyle(colors.hudBg, 0.94);
-    this.hudGraphics.fillRoundedRect(panelX, panelY, panelW, panelH, 6);
-
-    this.hudGraphics.lineStyle(1.5, colors.hudBorder, 0.85);
-    this.hudGraphics.strokeRoundedRect(panelX, panelY, panelW, panelH, 6);
-
-    // Разделительные линии
-    this.hudGraphics.lineStyle(1, colors.hudBorder, 0.5);
-    this.hudGraphics.beginPath();
-    this.hudGraphics.moveTo(panelX + 16, panelY + 125);
-    this.hudGraphics.lineTo(panelX + panelW - 16, panelY + 125);
-    this.hudGraphics.moveTo(panelX + 16, panelY + 284);
-    this.hudGraphics.lineTo(panelX + panelW - 16, panelY + 284);
-    this.hudGraphics.moveTo(panelX + 16, panelY + 452);
-    this.hudGraphics.lineTo(panelX + panelW - 16, panelY + 452);
-    this.hudGraphics.strokePath();
-  }
 
   /**
-   * Создание текстовых элементов консоли
-   */
-  private createHudElements(): void {
-    const monoStyle: Phaser.Types.GameObjects.Text.TextStyle = {
-      fontFamily: 'Consolas, monospace',
-      fontSize: '13px',
-      color: '#4ade80',
-    };
-
-    this.add.text(660, 44, '[ КОНСОЛЬ ОПЕРАТОРА ПВО ]', {
-      ...monoStyle,
-      fontSize: '13px',
-      color: '#86efac',
-      fontStyle: 'bold',
-    });
-
-    // Здоровье базы
-    this.healthText = this.add.text(660, 68, 'ЦЕЛОСТНОСТЬ БАЗЫ: 100%', {
-      ...monoStyle,
-      fontSize: '12px',
-      color: '#22c55e',
-      fontStyle: 'bold',
-    });
-
-    // Счёт и рекорд
-    this.scoreText = this.add.text(660, 104, 'СЧЁТ: 0000', {
-      ...monoStyle,
-      fontSize: '15px',
-      color: '#facc15',
-      fontStyle: 'bold',
-    });
-
-    this.highScoreText = this.add.text(785, 104, `РЕКОРД: ${this.highScore}`, {
-      ...monoStyle,
-      fontSize: '12px',
-      color: '#cbd5e1',
-    });
-
-    this.streakText = this.add.text(660, 132, 'СЕРИЯ: 0 (x1.0)', {
-      ...monoStyle,
-      fontSize: '12px',
-      color: '#86efac',
-    });
-
-    this.waveText = this.add.text(785, 132, 'ВОЛНА: 1', {
-      ...monoStyle,
-      fontSize: '12px',
-      color: '#38bdf8',
-      fontStyle: 'bold',
-    });
-
-    // Ресурсы: перехватчики и сканы
-    this.interceptorsText = this.add.text(660, 154, 'РАКЕТЫ: [|||||] 5/6', {
-      ...monoStyle,
-      fontSize: '11px',
-      color: '#facc15',
-      fontStyle: 'bold',
-    });
-
-    this.scansText = this.add.text(785, 154, 'СКАН: [***] 3/3', {
-      ...monoStyle,
-      fontSize: '11px',
-      color: '#38bdf8',
-      fontStyle: 'bold',
-    });
-
-    // Телеметрия
-    this.targetTelemetryTitle = this.add.text(660, 178, 'ОБЪЕКТ СЛЕЖЕНИЯ: НЕТ', {
-      ...monoStyle,
-      fontSize: '12px',
-      color: '#facc15',
-      fontStyle: 'bold',
-    });
-
-    this.targetTelemetryText = this.add.text(660, 198, '', {
-      ...monoStyle,
-      fontSize: '12px',
-      color: '#cbd5e1',
-      lineSpacing: 3,
-    });
-
-    // Фидбек принятого решения
-    this.feedbackText = this.add.text(660, 448, '', {
-      ...monoStyle,
-      fontSize: '11px',
-      fontStyle: 'bold',
-    });
-
-    // Шпаргалка
-    this.add.text(
-      660,
-      472,
-      '--- ПРИЗНАКИ И СНАБЖЕНИЕ ---\n' +
-        '• [4] Скан: сигнатура за 1.5с (время идёт!)\n' +
-        '• Снабжение: [5] Ракета (150) | [6] Скан (100)\n' +
-        '• Ракета (-30HP) | Бомбардировщик (-20HP)\n' +
-        'Горячие клавиши: [1] [2] [3] [4] [5] [6]',
-      {
-        ...monoStyle,
-        fontSize: '11px',
-        color: '#64748b',
-        lineSpacing: 4,
-      },
-    );
-  }
-
-  /**
-   * Отрисовка полосы здоровья базы
+   * Отрисовка полосы здоровья базы (делегирование в HUD)
    */
   private drawHealthBar(): void {
-    const { colors } = GAME_CONFIG;
-    const barX = 660;
-    const barY = 90;
-    const barW = 255;
-    const barH = 10;
-
-    this.hudGraphics.lineStyle(1, colors.hudBorder, 0.9);
-    this.hudGraphics.strokeRect(barX, barY, barW, barH);
-
-    this.hudGraphics.fillStyle(0x1e293b, 1);
-    this.hudGraphics.fillRect(barX + 1, barY + 1, barW - 2, barH - 2);
-
-    const healthFraction = Phaser.Math.Clamp(
-      this.baseHealth / GAME_CONFIG.maxBaseHealth,
-      0,
-      1,
-    );
-    const fillW = (barW - 2) * healthFraction;
-
-    let barColor = colors.healthGreen;
-    if (this.baseHealth <= 30) {
-      barColor = colors.healthRed;
-    } else if (this.baseHealth <= 60) {
-      barColor = colors.healthYellow;
-    }
-
-    this.hudGraphics.fillStyle(barColor, 0.95);
-    this.hudGraphics.fillRect(barX + 1, barY + 1, fillW, barH - 2);
-
-    this.healthText.setText(`ЦЕЛОСТНОСТЬ БАЗЫ: ${this.baseHealth}%`);
-    this.healthText.setColor(
-      this.baseHealth <= 30 ? '#ef4444' : this.baseHealth <= 60 ? '#facc15' : '#22c55e',
-    );
+    this.hud.drawHealthBar(this.baseHealth);
   }
 
   /**
-   * Баннер оповещения о смене волны
+   * Отображение баннера волны (делегирование в HUD)
    */
-  private createWaveBanner(): void {
-    this.waveBannerText = this.add.text(
-      GAME_CONFIG.radarX,
-      GAME_CONFIG.radarY - 30,
-      '',
-      {
-        fontFamily: 'Consolas, monospace',
-        fontSize: '20px',
-        color: '#38bdf8',
-        backgroundColor: '#021827e6',
-        padding: { x: 16, y: 8 },
-        fontStyle: 'bold',
-      },
-    );
-    this.waveBannerText.setOrigin(0.5);
-    this.waveBannerText.setAlpha(0);
-  }
-
   private showWaveBanner(text: string): void {
-    this.waveBannerText.setText(text);
-    this.waveBannerText.setAlpha(1);
-    this.waveBannerTimer = 2.4;
-  }
-
-  private updateWaveBanner(dt: number): void {
-    if (this.waveBannerTimer > 0) {
-      this.waveBannerTimer -= dt;
-      if (this.waveBannerTimer <= 0.5) {
-        this.waveBannerText.setAlpha(Math.max(0, this.waveBannerTimer / 0.5));
-      }
-    }
+    this.hud.showWaveBanner(text);
   }
 
   /**
-   * Создание кнопок классификации и сканирования
+   * Обновление таймера баннера волны (делегирование в HUD)
    */
-  private createDecisionButtons(): void {
-    const startY = 295;
-    const btnW = 255;
-    const btnH = 26;
-    const gap = 4;
-
-    this.buttons.friend = this.createButton(
-      660,
-      startY,
-      btnW,
-      btnH,
-      '[1] СВОЙ БОРТ',
-      GAME_CONFIG.colors.btnFriend,
-      () => this.resolveDecision('friend'),
-    );
-
-    this.buttons.threat = this.createButton(
-      660,
-      startY + (btnH + gap),
-      btnW,
-      btnH,
-      '[2] УГРОЗА (ПЕРЕХВАТ)',
-      GAME_CONFIG.colors.btnThreat,
-      () => this.resolveDecision('threat'),
-    );
-
-    this.buttons.ignore = this.createButton(
-      660,
-      startY + (btnH + gap) * 2,
-      btnW,
-      btnH,
-      '[3] ИГНОРИРОВАТЬ',
-      GAME_CONFIG.colors.btnIgnore,
-      () => this.resolveDecision('ignore'),
-    );
-
-    this.buttons.scan = this.createButton(
-      660,
-      startY + (btnH + gap) * 3,
-      btnW,
-      btnH,
-      '[4] СКАН СИГНАТУРЫ (1.5с)',
-      GAME_CONFIG.colors.btnScan,
-      () => this.startScanning(),
-    );
-
-    // Кнопки снабжения (дозакупки ракет и сканов за накопленные очки)
-    const supplyY = startY + (btnH + gap) * 4;
-    const halfW = 124;
-    this.buttons.buyMissile = this.createButton(
-      660,
-      supplyY,
-      halfW,
-      btnH,
-      `[5] +РАКЕТА (${GAME_CONFIG.interceptorCost})`,
-      GAME_CONFIG.colors.btnSupply,
-      () => this.buyInterceptor(),
-      '11px',
-    );
-
-    this.buttons.buyScan = this.createButton(
-      660 + halfW + 7,
-      supplyY,
-      halfW,
-      btnH,
-      `[6] +СКАН (${GAME_CONFIG.scanCost})`,
-      GAME_CONFIG.colors.btnSupply,
-      () => this.buyScan(),
-      '11px',
-    );
+  private updateWaveBanner(dt: number): void {
+    this.hud.updateWaveBanner(dt);
   }
 
-  private createButton(
-    x: number,
-    y: number,
-    w: number,
-    h: number,
-    label: string,
-    color: number,
-    onClick: () => void,
-    fontSize = '12px',
-  ): ButtonItem {
-    const bg = this.add.rectangle(x + w / 2, y + h / 2, w, h, color, 0.45);
-    bg.setStrokeStyle(1, color, 0.9);
-    bg.setInteractive({ useHandCursor: true });
-
-    const text = this.add.text(x + w / 2, y + h / 2, label, {
-      fontFamily: 'Consolas, monospace',
-      fontSize,
-      color: '#f8fafc',
-      fontStyle: 'bold',
-    });
-    text.setOrigin(0.5);
-
-    let isEnabled = false;
-
-    bg.on('pointerover', () => {
-      if (isEnabled) bg.setFillStyle(color, 0.85);
-    });
-
-    bg.on('pointerout', () => {
-      if (isEnabled) bg.setFillStyle(color, 0.45);
-    });
-
-    bg.on('pointerdown', () => {
-      if (isEnabled) onClick();
-    });
-
-    const setEnabled = (enabled: boolean) => {
-      isEnabled = enabled;
-      bg.setAlpha(enabled ? 1.0 : 0.3);
-      text.setAlpha(enabled ? 1.0 : 0.3);
-    };
-
-    return { bg, text, setEnabled };
-  }
 
   /**
    * Переключение паузы (безопасный тогл без накопления состояния)
@@ -860,117 +527,40 @@ export class GameScene extends Phaser.Scene {
   }
 
   private showFeedback(text: string, color: string): void {
-    this.feedbackText.setText(text);
-    this.feedbackText.setColor(color);
-    this.feedbackTimer = 2.8;
+    this.hud.showFeedback(text, color);
   }
 
   private updateFeedback(dt: number): void {
-    if (this.feedbackTimer > 0) {
-      this.feedbackTimer -= dt;
-      if (this.feedbackTimer <= 0) {
-        this.feedbackText.setText('');
-      }
-    }
+    this.hud.updateFeedback(dt);
   }
 
   private updateScoreBoard(): void {
-    const mult = (
-      1 +
-      Math.floor(this.streak / GAME_CONFIG.streakStepForMultiplier) * 0.5
-    ).toFixed(1);
-    this.scoreText.setText(`СЧЁТ: ${this.score.toString().padStart(4, '0')}`);
-    this.streakText.setText(`СЕРИЯ: ${this.streak} (x${mult})`);
-    this.waveText.setText(`ВОЛНА: ${this.wave}`);
-    this.highScoreText.setText(`РЕКОРД: ${this.highScore}`);
-
-    // Отображение перехватчиков и зарядов сканирования
-    const ammoBars = '|'.repeat(this.interceptors).padEnd(GAME_CONFIG.maxInterceptors, ' ');
-    this.interceptorsText.setText(`РАКЕТЫ: [${ammoBars}] ${this.interceptors}/${GAME_CONFIG.maxInterceptors}`);
-    this.interceptorsText.setColor(this.interceptors > 1 ? '#facc15' : '#ef4444');
-
-    const scanStars = '*'.repeat(this.scansAvailable).padEnd(GAME_CONFIG.maxScansPerWave, ' ');
-    this.scansText.setText(`СКАН:   [${scanStars}] ${this.scansAvailable}/${GAME_CONFIG.maxScansPerWave}`);
-    this.scansText.setColor(this.scansAvailable > 0 ? '#38bdf8' : '#64748b');
-
-    // Обновление доступности кнопок снабжения
-    const canBuyMissile =
-      this.interceptors < GAME_CONFIG.maxInterceptors &&
-      this.score >= GAME_CONFIG.interceptorCost;
-    if (this.buttons.buyMissile) {
-      this.buttons.buyMissile.setEnabled(canBuyMissile);
-    }
-
-    const canBuyScan =
-      this.scansAvailable < GAME_CONFIG.maxScansPerWave &&
-      this.score >= GAME_CONFIG.scanCost;
-    if (this.buttons.buyScan) {
-      this.buttons.buyScan.setEnabled(canBuyScan);
-    }
+    this.hud.updateScoreBoard({
+      score: this.score,
+      streak: this.streak,
+      wave: this.wave,
+      highScore: this.highScore,
+      interceptors: this.interceptors,
+      scansAvailable: this.scansAvailable,
+    });
   }
 
   private updateTargetSelectionUI(): void {
-    const isSelected = this.selectedTarget !== null;
-
-    this.buttons.friend.setEnabled(isSelected);
-    this.buttons.threat.setEnabled(isSelected && this.interceptors > 0);
-    this.buttons.ignore.setEnabled(isSelected);
-
-    const canScan =
-      isSelected &&
-      !this.selectedTarget?.isScanned &&
-      this.scansAvailable > 0 &&
-      !this.isScanning;
-    this.buttons.scan.setEnabled(canScan);
-
-    if (!isSelected) {
-      this.targetTelemetryTitle.setText('ОБЪЕКТ СЛЕЖЕНИЯ: НЕТ');
-      this.targetTelemetryTitle.setColor('#94a3b8');
-      this.targetTelemetryText.setText(
-        'Кликните по вспыхнувшей\n' +
-          'зелёной точке на радаре,\n' +
-          'чтобы захватить объект\n' +
-          'для классификации.',
-      );
-    }
+    this.hud.updateTargetSelectionUI({
+      selectedTarget: this.selectedTarget,
+      interceptors: this.interceptors,
+      scansAvailable: this.scansAvailable,
+      isScanning: this.isScanning,
+    });
   }
 
   private updateTelemetry(): void {
-    if (!this.selectedTarget) return;
-
-    const t = this.selectedTarget;
-    const dist = Math.round(
-      Math.hypot(t.x - GAME_CONFIG.radarX, t.y - GAME_CONFIG.radarY),
-    );
-
-    this.targetTelemetryTitle.setText(`ОБЪЕКТ СЛЕЖЕНИЯ: #TRK-${t.id}`);
-    this.targetTelemetryTitle.setColor('#facc15');
-
-    let typeStr = 'ТИП:        [ НЕОПОЗНАН ]';
-    if (t.isScanned) {
-      const cfg = GAME_CONFIG.targetTypes[t.type];
-      const catTag =
-        cfg.category === 'threat'
-          ? 'УГРОЗА!'
-          : cfg.category === 'friend'
-            ? 'СОЮЗНИК'
-            : 'ЛОВУШКА';
-      typeStr = `ТИП:        ${cfg.label.toUpperCase()} (${catTag})`;
-    } else if (this.isScanning && this.scanningTarget === t) {
-      const pct = Math.min(
-        100,
-        Math.round((this.scanProgress / GAME_CONFIG.scanDuration) * 100),
-      );
-      typeStr = `АНАЛИЗ:     [${'#'.repeat(Math.floor(pct / 10))}${'.'.repeat(10 - Math.floor(pct / 10))}] ${pct}%`;
-    }
-
-    this.targetTelemetryText.setText(
-      `${typeStr}\n` +
-        `СКОРОСТЬ:   ${t.speed} км/ч\n` +
-        `КУРС:       ${t.headingDeg}°\n` +
-        `СИГНАЛ ЭПР: ${t.signal}%\n` +
-        `ДИСТАНЦИЯ:  ${dist} км`,
-    );
+    this.hud.updateTelemetry({
+      selectedTarget: this.selectedTarget,
+      isScanning: this.isScanning,
+      scanningTarget: this.scanningTarget,
+      scanProgress: this.scanProgress,
+    });
   }
 
   private updateBeam(dt: number): void {
