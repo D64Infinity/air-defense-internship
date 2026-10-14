@@ -25,9 +25,6 @@ export const RADAR_CONFIG = {
   spawnIntervalMaxBase: 4.8,
   maxActiveTargetsBase: 7,
 
-  // Длительность фазы
-  phaseDuration: 15, // секунд на одну фазу
-
   // Здоровье базы и урон
   maxBaseHealth: 100,
   damageMissile: 30,
@@ -161,7 +158,7 @@ export class GameScene extends Phaser.Scene {
   private streak = 0;
   private bestStreak = 0;
   private wave = 1;
-  private phaseTimer = RADAR_CONFIG.phaseDuration;
+  private waveTargetsToSpawn = 7;
   private isGameOver = false;
   private highScore = 0;
 
@@ -206,7 +203,7 @@ export class GameScene extends Phaser.Scene {
     this.streak = 0;
     this.bestStreak = 0;
     this.wave = 1;
-    this.phaseTimer = RADAR_CONFIG.phaseDuration;
+    this.waveTargetsToSpawn = 7;
     this.currentBeamSpeed = RADAR_CONFIG.beamSpeedBase;
     this.interceptors = RADAR_CONFIG.startInterceptors;
     this.scansAvailable = RADAR_CONFIG.maxScansPerWave;
@@ -253,7 +250,6 @@ export class GameScene extends Phaser.Scene {
     this.updateTargets(dt);
     this.handleSpawning(dt);
     this.updateScanning(dt);
-    this.updatePhaseTimer(dt);
     this.renderDynamicElements();
     this.updateFeedback(dt);
     this.updateTelemetry();
@@ -390,7 +386,7 @@ export class GameScene extends Phaser.Scene {
       color: '#86efac',
     });
 
-    this.waveText = this.add.text(785, 132, 'ФАЗА: 1 (60с)', {
+    this.waveText = this.add.text(785, 132, 'ВОЛНА: 1', {
       ...monoStyle,
       fontSize: '12px',
       color: '#38bdf8',
@@ -1009,6 +1005,8 @@ export class GameScene extends Phaser.Scene {
     }
     this.selectedTarget = null;
     this.updateTargetSelectionUI();
+
+    this.checkWaveProgress();
   }
 
   private showFeedback(text: string, color: string): void {
@@ -1033,8 +1031,7 @@ export class GameScene extends Phaser.Scene {
     ).toFixed(1);
     this.scoreText.setText(`СЧЁТ: ${this.score.toString().padStart(4, '0')}`);
     this.streakText.setText(`СЕРИЯ: ${this.streak} (x${mult})`);
-    const secLeft = Math.max(0, Math.ceil(this.phaseTimer));
-    this.waveText.setText(`ФАЗА: ${this.wave} (${secLeft}с)`);
+    this.waveText.setText(`ВОЛНА: ${this.wave}`);
     this.highScoreText.setText(`РЕКОРД: ${this.highScore}`);
 
     // Отображение перехватчиков и зарядов сканирования
@@ -1189,6 +1186,7 @@ export class GameScene extends Phaser.Scene {
         }
 
         this.targets.splice(i, 1);
+        this.checkWaveProgress();
 
         if (this.baseHealth <= 0 && !this.isGameOver) {
           this.triggerGameOver();
@@ -1206,20 +1204,24 @@ export class GameScene extends Phaser.Scene {
         }
 
         this.targets.splice(i, 1);
+        this.checkWaveProgress();
       }
     }
   }
 
   /**
-   * Непрерывный спавн целей (регулируется интервалом и лимитом активных целей)
+   * Спавн целей текущей волны
    */
   private handleSpawning(dt: number): void {
+    if (this.waveTargetsToSpawn <= 0) return;
+
     this.spawnTimer -= dt;
     const maxActive = RADAR_CONFIG.maxActiveTargetsBase + Math.floor(this.wave / 2);
 
     if (this.spawnTimer <= 0) {
       if (this.targets.length < maxActive) {
         this.spawnTargetAtEdge();
+        this.waveTargetsToSpawn--;
       }
 
       const speedUp = Math.min(1.2, (this.wave - 1) * 0.12);
@@ -1231,44 +1233,33 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Обновление таймера фазы (строго 60 секунд на фазу, останавливается на паузе)
+   * Проверка перехода к следующей волне
    */
-  private updatePhaseTimer(dt: number): void {
-    this.phaseTimer -= dt;
-    const secLeft = Math.max(0, Math.ceil(this.phaseTimer));
-    this.waveText.setText(`ФАЗА: ${this.wave} (${secLeft}с)`);
+  private checkWaveProgress(): void {
+    if (this.waveTargetsToSpawn <= 0 && this.targets.length === 0 && !this.isGameOver) {
+      this.wave++;
+      this.waveTargetsToSpawn = 7 + this.wave * 2;
 
-    if (this.phaseTimer <= 0) {
-      this.advancePhase();
+      // Луч ускоряется с каждой волной
+      this.currentBeamSpeed =
+        RADAR_CONFIG.beamSpeedBase * Math.min(1.85, 1 + (this.wave - 1) * 0.09);
+
+      // Пополнение боекомплекта перехватчиков и зарядов сканирования
+      const addedAmmo = Math.min(
+        RADAR_CONFIG.maxInterceptors - this.interceptors,
+        RADAR_CONFIG.interceptorRefillPerWave,
+      );
+      this.interceptors = Math.min(
+        RADAR_CONFIG.maxInterceptors,
+        this.interceptors + RADAR_CONFIG.interceptorRefillPerWave,
+      );
+      this.scansAvailable = RADAR_CONFIG.maxScansPerWave;
+
+      this.updateScoreBoard();
+      this.showWaveBanner(
+        `ВОЛНА ${this.wave}\nСНАБЖЕНИЕ: +${addedAmmo} РАКЕТЫ, СКАНЫ 3/3`,
+      );
     }
-  }
-
-  /**
-   * Переход на следующую фазу
-   */
-  private advancePhase(): void {
-    this.wave++;
-    this.phaseTimer = RADAR_CONFIG.phaseDuration;
-
-    // Луч ускоряется с каждой фазой
-    this.currentBeamSpeed =
-      RADAR_CONFIG.beamSpeedBase * Math.min(1.85, 1 + (this.wave - 1) * 0.09);
-
-    // Пополнение боекомплекта перехватчиков и зарядов сканирования
-    const addedAmmo = Math.min(
-      RADAR_CONFIG.maxInterceptors - this.interceptors,
-      RADAR_CONFIG.interceptorRefillPerWave,
-    );
-    this.interceptors = Math.min(
-      RADAR_CONFIG.maxInterceptors,
-      this.interceptors + RADAR_CONFIG.interceptorRefillPerWave,
-    );
-    this.scansAvailable = RADAR_CONFIG.maxScansPerWave;
-
-    this.updateScoreBoard();
-    this.showWaveBanner(
-      `ФАЗА ${this.wave}\nСНАБЖЕНИЕ: +${addedAmmo} РАКЕТЫ, СКАНЫ 3/3`,
-    );
   }
 
   /**
