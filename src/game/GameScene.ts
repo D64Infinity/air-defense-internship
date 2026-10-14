@@ -36,6 +36,15 @@ export const RADAR_CONFIG = {
   streakStepForMultiplier: 2, // каждые 2 правильных ответа множитель растёт на +0.5x
   maxMultiplier: 4.0,
 
+  // Ресурс перехватчиков (боезапас ПВО)
+  maxInterceptors: 6,
+  startInterceptors: 5,
+  interceptorRefillPerWave: 3,
+
+  // Параметры сканирования
+  maxScansPerWave: 3,
+  scanDuration: 1.5, // секунд на дешифровку сигнатуры
+
   // Характеристики типов целей (скорости сбалансированы для честного времени реакции)
   targetTypes: {
     missile: {
@@ -84,11 +93,13 @@ export const RADAR_CONFIG = {
     blipCore: 0xd4ffea,
     blipHalo: 0x00ff66,
     selectedBox: 0xfacc15,
+    scanCyan: 0x38bdf8,
     hudBorder: 0x005522,
     hudBg: 0x04130a,
     btnFriend: 0x16a34a,
     btnThreat: 0xd97706,
     btnIgnore: 0x475569,
+    btnScan: 0x0284c7,
     healthGreen: 0x22c55e,
     healthYellow: 0xeab308,
     healthRed: 0xef4444,
@@ -109,6 +120,7 @@ export interface RadarTarget {
   headingDeg: number;
   signal: number;
   alpha: number; // 0..1 (яркость люминофора)
+  isScanned?: boolean; // Раскрыт ли точный тип цели
 }
 
 interface ButtonItem {
@@ -131,6 +143,13 @@ export class GameScene extends Phaser.Scene {
   private nextTargetId = 1;
   private spawnTimer = 1.2;
 
+  // Ресурсы и механика сканирования
+  private interceptors = RADAR_CONFIG.startInterceptors;
+  private scansAvailable = RADAR_CONFIG.maxScansPerWave;
+  private isScanning = false;
+  private scanningTarget: RadarTarget | null = null;
+  private scanProgress = 0;
+
   // Состояние игры
   private baseHealth = RADAR_CONFIG.maxBaseHealth;
   private score = 0;
@@ -152,6 +171,8 @@ export class GameScene extends Phaser.Scene {
   private streakText!: Phaser.GameObjects.Text;
   private waveText!: Phaser.GameObjects.Text;
   private healthText!: Phaser.GameObjects.Text;
+  private interceptorsText!: Phaser.GameObjects.Text;
+  private scansText!: Phaser.GameObjects.Text;
   private targetTelemetryTitle!: Phaser.GameObjects.Text;
   private targetTelemetryText!: Phaser.GameObjects.Text;
   private feedbackText!: Phaser.GameObjects.Text;
@@ -162,8 +183,11 @@ export class GameScene extends Phaser.Scene {
   private goRecordText!: Phaser.GameObjects.Text;
   private goWavesText!: Phaser.GameObjects.Text;
 
-  // Кнопки решений
-  private buttons: Record<DecisionChoice, ButtonItem> = {} as Record<DecisionChoice, ButtonItem>;
+  // Кнопки решений и скана
+  private buttons: Record<DecisionChoice | 'scan', ButtonItem> = {} as Record<
+    DecisionChoice | 'scan',
+    ButtonItem
+  >;
 
   constructor() {
     super('GameScene');
@@ -178,6 +202,11 @@ export class GameScene extends Phaser.Scene {
     this.wave = 1;
     this.waveTargetsToSpawn = 7;
     this.currentBeamSpeed = RADAR_CONFIG.beamSpeedBase;
+    this.interceptors = RADAR_CONFIG.startInterceptors;
+    this.scansAvailable = RADAR_CONFIG.maxScansPerWave;
+    this.isScanning = false;
+    this.scanningTarget = null;
+    this.scanProgress = 0;
     this.targets = [];
     this.selectedTarget = null;
 
@@ -216,6 +245,7 @@ export class GameScene extends Phaser.Scene {
     this.updateBeam(dt);
     this.updateTargets(dt);
     this.handleSpawning(dt);
+    this.updateScanning(dt);
     this.renderDynamicElements();
     this.updateFeedback(dt);
     this.updateTelemetry();
@@ -298,12 +328,12 @@ export class GameScene extends Phaser.Scene {
     // Разделительные линии
     this.hudGraphics.lineStyle(1, colors.hudBorder, 0.5);
     this.hudGraphics.beginPath();
-    this.hudGraphics.moveTo(panelX + 16, panelY + 130);
-    this.hudGraphics.lineTo(panelX + panelW - 16, panelY + 130);
-    this.hudGraphics.moveTo(panelX + 16, panelY + 288);
-    this.hudGraphics.lineTo(panelX + panelW - 16, panelY + 288);
-    this.hudGraphics.moveTo(panelX + 16, panelY + 448);
-    this.hudGraphics.lineTo(panelX + panelW - 16, panelY + 448);
+    this.hudGraphics.moveTo(panelX + 16, panelY + 125);
+    this.hudGraphics.lineTo(panelX + panelW - 16, panelY + 125);
+    this.hudGraphics.moveTo(panelX + 16, panelY + 284);
+    this.hudGraphics.lineTo(panelX + panelW - 16, panelY + 284);
+    this.hudGraphics.moveTo(panelX + 16, panelY + 452);
+    this.hudGraphics.lineTo(panelX + panelW - 16, panelY + 452);
     this.hudGraphics.strokePath();
   }
 
@@ -317,7 +347,7 @@ export class GameScene extends Phaser.Scene {
       color: '#4ade80',
     };
 
-    this.add.text(660, 46, '[ КОНСОЛЬ ОПЕРАТОРА ПВО ]', {
+    this.add.text(660, 44, '[ КОНСОЛЬ ОПЕРАТОРА ПВО ]', {
       ...monoStyle,
       fontSize: '13px',
       color: '#86efac',
@@ -325,7 +355,7 @@ export class GameScene extends Phaser.Scene {
     });
 
     // Здоровье базы
-    this.healthText = this.add.text(660, 70, 'ЦЕЛОСТНОСТЬ БАЗЫ: 100%', {
+    this.healthText = this.add.text(660, 68, 'ЦЕЛОСТНОСТЬ БАЗЫ: 100%', {
       ...monoStyle,
       fontSize: '12px',
       color: '#22c55e',
@@ -333,51 +363,66 @@ export class GameScene extends Phaser.Scene {
     });
 
     // Счёт и рекорд
-    this.scoreText = this.add.text(660, 108, 'СЧЁТ: 0000', {
+    this.scoreText = this.add.text(660, 104, 'СЧЁТ: 0000', {
       ...monoStyle,
       fontSize: '15px',
       color: '#facc15',
       fontStyle: 'bold',
     });
 
-    this.highScoreText = this.add.text(785, 108, `РЕКОРД: ${this.highScore}`, {
+    this.highScoreText = this.add.text(785, 104, `РЕКОРД: ${this.highScore}`, {
       ...monoStyle,
       fontSize: '12px',
       color: '#cbd5e1',
     });
 
-    this.streakText = this.add.text(660, 138, 'СЕРИЯ: 0 (x1.0)', {
+    this.streakText = this.add.text(660, 132, 'СЕРИЯ: 0 (x1.0)', {
       ...monoStyle,
       fontSize: '12px',
       color: '#86efac',
     });
 
-    this.waveText = this.add.text(785, 138, 'ВОЛНА: 1', {
+    this.waveText = this.add.text(785, 132, 'ВОЛНА: 1', {
       ...monoStyle,
       fontSize: '12px',
       color: '#38bdf8',
       fontStyle: 'bold',
     });
 
+    // Ресурсы: перехватчики и сканы
+    this.interceptorsText = this.add.text(660, 154, 'РАКЕТЫ: [|||||] 5/6', {
+      ...monoStyle,
+      fontSize: '11px',
+      color: '#facc15',
+      fontStyle: 'bold',
+    });
+
+    this.scansText = this.add.text(785, 154, 'СКАН: [***] 3/3', {
+      ...monoStyle,
+      fontSize: '11px',
+      color: '#38bdf8',
+      fontStyle: 'bold',
+    });
+
     // Телеметрия
-    this.targetTelemetryTitle = this.add.text(660, 166, 'ОБЪЕКТ СЛЕЖЕНИЯ: НЕТ', {
+    this.targetTelemetryTitle = this.add.text(660, 178, 'ОБЪЕКТ СЛЕЖЕНИЯ: НЕТ', {
       ...monoStyle,
       fontSize: '12px',
       color: '#facc15',
       fontStyle: 'bold',
     });
 
-    this.targetTelemetryText = this.add.text(660, 188, '', {
+    this.targetTelemetryText = this.add.text(660, 198, '', {
       ...monoStyle,
       fontSize: '12px',
       color: '#cbd5e1',
-      lineSpacing: 4,
+      lineSpacing: 3,
     });
 
     // Фидбек принятого решения
-    this.feedbackText = this.add.text(660, 424, '', {
+    this.feedbackText = this.add.text(660, 430, '', {
       ...monoStyle,
-      fontSize: '12px',
+      fontSize: '11px',
       fontStyle: 'bold',
     });
 
@@ -385,12 +430,11 @@ export class GameScene extends Phaser.Scene {
     this.add.text(
       660,
       458,
-      '--- ПРИЗНАКИ ЦЕЛЕЙ ---\n' +
-        '• Ракета: быстрая (40+), на базу (-30HP)\n' +
-        '• Бомбардировщик: медленный (-20HP)\n' +
-        '• Свой: сигнал 75-98% (штраф за сбитие)\n' +
-        '• Ловушка: сигнал <50% (не трать ракеты)\n' +
-        'Горячие клавиши: [1] [2] [3]',
+      '--- ПРИЗНАКИ И РЕСУРСЫ ---\n' +
+        '• [4] Скан: точный тип за 1.5с (время идёт!)\n' +
+        '• Ракета (-30HP) | Бомбардировщик (-20HP)\n' +
+        '• Ловушка: не трать ракеты (лимит ammo!)\n' +
+        'Горячие клавиши: [1] [2] [3] [4]',
       {
         ...monoStyle,
         fontSize: '11px',
@@ -476,12 +520,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Создание трёх интерактивных кнопок
+   * Создание кнопок классификации и сканирования
    */
   private createDecisionButtons(): void {
-    const startY = 305;
+    const startY = 295;
     const btnW = 255;
-    const btnH = 32;
+    const btnH = 28;
 
     this.buttons.friend = this.createButton(
       660,
@@ -495,22 +539,32 @@ export class GameScene extends Phaser.Scene {
 
     this.buttons.threat = this.createButton(
       660,
-      startY + 38,
+      startY + 34,
       btnW,
       btnH,
-      '[2] УГРОЗА (СБИТЬ)',
+      '[2] УГРОЗА (ПЕРЕХВАТ)',
       RADAR_CONFIG.colors.btnThreat,
       () => this.resolveDecision('threat'),
     );
 
     this.buttons.ignore = this.createButton(
       660,
-      startY + 76,
+      startY + 68,
       btnW,
       btnH,
       '[3] ИГНОРИРОВАТЬ',
       RADAR_CONFIG.colors.btnIgnore,
       () => this.resolveDecision('ignore'),
+    );
+
+    this.buttons.scan = this.createButton(
+      660,
+      startY + 102,
+      btnW,
+      btnH,
+      '[4] СКАН СИГНАТУРЫ (1.5с)',
+      RADAR_CONFIG.colors.btnScan,
+      () => this.startScanning(),
     );
   }
 
@@ -551,8 +605,8 @@ export class GameScene extends Phaser.Scene {
 
     const setEnabled = (enabled: boolean) => {
       isEnabled = enabled;
-      bg.setAlpha(enabled ? 1.0 : 0.35);
-      text.setAlpha(enabled ? 1.0 : 0.35);
+      bg.setAlpha(enabled ? 1.0 : 0.3);
+      text.setAlpha(enabled ? 1.0 : 0.3);
     };
 
     return { bg, text, setEnabled };
@@ -569,7 +623,7 @@ export class GameScene extends Phaser.Scene {
 
     // Затемнение
     const darkBg = this.add.rectangle(width / 2, height / 2, width, height, 0x020a05, 0.88);
-    darkBg.setInteractive(); // перехватывает клики
+    darkBg.setInteractive();
 
     // Рамка модального окна
     const modal = this.add.rectangle(width / 2, height / 2, 480, 320, 0x071b0f, 0.96);
@@ -652,9 +706,10 @@ export class GameScene extends Phaser.Scene {
   private triggerGameOver(): void {
     this.isGameOver = true;
     this.selectedTarget = null;
+    this.isScanning = false;
+    this.scanningTarget = null;
     this.updateTargetSelectionUI();
 
-    // Проверка и сохранение рекорда в localStorage
     let isNewRecord = false;
     if (this.score > this.highScore) {
       this.highScore = this.score;
@@ -703,6 +758,9 @@ export class GameScene extends Phaser.Scene {
       this.input.keyboard.on('keydown-THREE', () => {
         if (!this.isGameOver) this.resolveDecision('ignore');
       });
+      this.input.keyboard.on('keydown-FOUR', () => {
+        if (!this.isGameOver) this.startScanning();
+      });
       this.input.keyboard.on('keydown-SPACE', () => {
         if (this.isGameOver) this.restartGame();
       });
@@ -726,10 +784,72 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
+   * Запуск глубокого сканирования сигнатуры цели (1.5 сек)
+   */
+  private startScanning(): void {
+    if (!this.selectedTarget || this.isGameOver || this.isScanning) return;
+
+    if (this.selectedTarget.isScanned) {
+      this.showFeedback('[СКАН] ЦЕЛЬ УЖЕ ОПОЗНАНА', '#38bdf8');
+      return;
+    }
+
+    if (this.scansAvailable <= 0) {
+      this.showFeedback('[ОТКАЗ] НЕТ ЗАРЯДОВ СКАНИРОВАНИЯ (0 шт.)!', '#ef4444');
+      return;
+    }
+
+    this.scansAvailable--;
+    this.isScanning = true;
+    this.scanningTarget = this.selectedTarget;
+    this.scanProgress = 0;
+    this.showFeedback('[СИСТЕМА] АНАЛИЗ СИГНАТУРЫ... (1.5 СЕК)', '#38bdf8');
+    this.updateScoreBoard();
+    this.updateTargetSelectionUI();
+  }
+
+  /**
+   * Обновление таймера сканирования (время в игре идёт непрерывно)
+   */
+  private updateScanning(dt: number): void {
+    if (!this.isScanning || !this.scanningTarget) return;
+
+    if (!this.targets.includes(this.scanningTarget)) {
+      this.isScanning = false;
+      this.scanningTarget = null;
+      this.scanProgress = 0;
+      this.updateTargetSelectionUI();
+      return;
+    }
+
+    this.scanProgress += dt;
+    if (this.scanProgress >= RADAR_CONFIG.scanDuration) {
+      this.isScanning = false;
+      this.scanningTarget.isScanned = true;
+      const typeCfg = RADAR_CONFIG.targetTypes[this.scanningTarget.type];
+      this.showFeedback(
+        `[ОПОЗНАНО!] СИГНАТУРА: ${typeCfg.label.toUpperCase()}`,
+        '#38bdf8',
+      );
+      this.scanningTarget = null;
+      this.updateTargetSelectionUI();
+    }
+  }
+
+  /**
    * Обработка решения игрока
    */
   private resolveDecision(choice: DecisionChoice): void {
     if (!this.selectedTarget || this.isGameOver) return;
+
+    // Проверка наличия ракет-перехватчиков для «Угрозы»
+    if (choice === 'threat') {
+      if (this.interceptors <= 0) {
+        this.showFeedback('[ОТКАЗ!] БОЕКОМПЛЕКТ ПУСТ! ОЖИДАЙТЕ СНАБЖЕНИЯ', '#ef4444');
+        return;
+      }
+      this.interceptors--;
+    }
 
     const target = this.selectedTarget;
     const typeCfg = RADAR_CONFIG.targetTypes[target.type];
@@ -750,9 +870,9 @@ export class GameScene extends Phaser.Scene {
       if (this.streak > this.bestStreak) this.bestStreak = this.streak;
 
       if (target.type === 'missile') {
-        feedback = `[ВЕРНО!] РАКЕТА УНИЧТОЖЕНА (+${points})`;
+        feedback = `[ВЕРНО!] РАКЕТА СБИТА (+${points}) [РАКЕТ: ${this.interceptors}]`;
       } else if (target.type === 'bomber') {
-        feedback = `[ВЕРНО!] БОМБАРДИРОВЩИК СБИТ (+${points})`;
+        feedback = `[ВЕРНО!] БОМБАРДИРОВЩИК СБИТ (+${points}) [РАКЕТ: ${this.interceptors}]`;
       } else if (target.type === 'friend') {
         feedback = `[ВЕРНО!] СОЮЗНИК ПРОПУЩЕН (+${points})`;
       } else {
@@ -766,7 +886,7 @@ export class GameScene extends Phaser.Scene {
         this.score = Math.max(0, this.score - RADAR_CONFIG.friendlyFirePenalty);
         feedback = `[ОШИБКА!] СБИТ СВОЙ БОРТ! (-${RADAR_CONFIG.friendlyFirePenalty})`;
       } else if (target.type === 'decoy' && choice === 'threat') {
-        feedback = `[ПРОМАХ!] ПЕРЕХВАТЧИК ПОТРАЧЕН НА ЛОВУШКУ`;
+        feedback = `[ПРОМАХ!] ПЕРЕХВАТЧИК ВПУСТУЮ НА ЛОВУШКУ! (Ост: ${this.interceptors})`;
         feedbackColor = '#fbbf24';
       } else if (target.type === 'missile' || target.type === 'bomber') {
         feedback = `[ОШИБКА!] ПРОПУЩЕНА УГРОЗА (${typeCfg.label})`;
@@ -777,6 +897,12 @@ export class GameScene extends Phaser.Scene {
 
     this.showFeedback(feedback, feedbackColor);
     this.updateScoreBoard();
+
+    // Сброс скана, если сканировалась эта цель
+    if (this.scanningTarget === target) {
+      this.isScanning = false;
+      this.scanningTarget = null;
+    }
 
     const idx = this.targets.indexOf(target);
     if (idx !== -1) {
@@ -812,14 +938,30 @@ export class GameScene extends Phaser.Scene {
     this.streakText.setText(`СЕРИЯ: ${this.streak} (x${mult})`);
     this.waveText.setText(`ВОЛНА: ${this.wave}`);
     this.highScoreText.setText(`РЕКОРД: ${this.highScore}`);
+
+    // Отображение перехватчиков и зарядов сканирования
+    const ammoBars = '|'.repeat(this.interceptors).padEnd(RADAR_CONFIG.maxInterceptors, ' ');
+    this.interceptorsText.setText(`РАКЕТЫ: [${ammoBars}] ${this.interceptors}/${RADAR_CONFIG.maxInterceptors}`);
+    this.interceptorsText.setColor(this.interceptors > 1 ? '#facc15' : '#ef4444');
+
+    const scanStars = '*'.repeat(this.scansAvailable).padEnd(RADAR_CONFIG.maxScansPerWave, ' ');
+    this.scansText.setText(`СКАН:   [${scanStars}] ${this.scansAvailable}/${RADAR_CONFIG.maxScansPerWave}`);
+    this.scansText.setColor(this.scansAvailable > 0 ? '#38bdf8' : '#64748b');
   }
 
   private updateTargetSelectionUI(): void {
     const isSelected = this.selectedTarget !== null;
 
     this.buttons.friend.setEnabled(isSelected);
-    this.buttons.threat.setEnabled(isSelected);
+    this.buttons.threat.setEnabled(isSelected && this.interceptors > 0);
     this.buttons.ignore.setEnabled(isSelected);
+
+    const canScan =
+      isSelected &&
+      !this.selectedTarget?.isScanned &&
+      this.scansAvailable > 0 &&
+      !this.isScanning;
+    this.buttons.scan.setEnabled(canScan);
 
     if (!isSelected) {
       this.targetTelemetryTitle.setText('ОБЪЕКТ СЛЕЖЕНИЯ: НЕТ');
@@ -844,12 +986,30 @@ export class GameScene extends Phaser.Scene {
     this.targetTelemetryTitle.setText(`ОБЪЕКТ СЛЕЖЕНИЯ: #TRK-${t.id}`);
     this.targetTelemetryTitle.setColor('#facc15');
 
+    let typeStr = 'ТИП:        [ НЕОПОЗНАН ]';
+    if (t.isScanned) {
+      const cfg = RADAR_CONFIG.targetTypes[t.type];
+      const catTag =
+        cfg.category === 'threat'
+          ? 'УГРОЗА!'
+          : cfg.category === 'friend'
+            ? 'СОЮЗНИК'
+            : 'ЛОВУШКА';
+      typeStr = `ТИП:        ${cfg.label.toUpperCase()} (${catTag})`;
+    } else if (this.isScanning && this.scanningTarget === t) {
+      const pct = Math.min(
+        100,
+        Math.round((this.scanProgress / RADAR_CONFIG.scanDuration) * 100),
+      );
+      typeStr = `АНАЛИЗ:     [${'#'.repeat(Math.floor(pct / 10))}${'.'.repeat(10 - Math.floor(pct / 10))}] ${pct}%`;
+    }
+
     this.targetTelemetryText.setText(
-      `СКОРОСТЬ:   ${t.speed} км/ч\n` +
+      `${typeStr}\n` +
+        `СКОРОСТЬ:   ${t.speed} км/ч\n` +
         `КУРС:       ${t.headingDeg}°\n` +
         `СИГНАЛ ЭПР: ${t.signal}%\n` +
-        `ДИСТАНЦИЯ:  ${dist} км\n` +
-        `СТАТУС:     СОПРОВОЖДЕНИЕ`,
+        `ДИСТАНЦИЯ:  ${dist} км`,
     );
   }
 
@@ -925,6 +1085,11 @@ export class GameScene extends Phaser.Scene {
           this.updateTargetSelectionUI();
         }
 
+        if (this.scanningTarget === target) {
+          this.isScanning = false;
+          this.scanningTarget = null;
+        }
+
         this.targets.splice(i, 1);
         this.checkWaveProgress();
 
@@ -933,11 +1098,16 @@ export class GameScene extends Phaser.Scene {
           return;
         }
       } else if (distToBase > RADAR_CONFIG.radarRadius * 1.15) {
-        // Улетела за пределы зоны
         if (this.selectedTarget === target) {
           this.selectedTarget = null;
           this.updateTargetSelectionUI();
         }
+
+        if (this.scanningTarget === target) {
+          this.isScanning = false;
+          this.scanningTarget = null;
+        }
+
         this.targets.splice(i, 1);
         this.checkWaveProgress();
       }
@@ -959,7 +1129,6 @@ export class GameScene extends Phaser.Scene {
         this.waveTargetsToSpawn--;
       }
 
-      // С каждой волной спавн становится немного быстрее
       const speedUp = Math.min(1.2, (this.wave - 1) * 0.12);
       this.spawnTimer = Phaser.Math.FloatBetween(
         Math.max(1.6, RADAR_CONFIG.spawnIntervalMinBase - speedUp),
@@ -980,8 +1149,21 @@ export class GameScene extends Phaser.Scene {
       this.currentBeamSpeed =
         RADAR_CONFIG.beamSpeedBase * Math.min(1.85, 1 + (this.wave - 1) * 0.09);
 
+      // Пополнение боекомплекта перехватчиков и зарядов сканирования
+      const addedAmmo = Math.min(
+        RADAR_CONFIG.maxInterceptors - this.interceptors,
+        RADAR_CONFIG.interceptorRefillPerWave,
+      );
+      this.interceptors = Math.min(
+        RADAR_CONFIG.maxInterceptors,
+        this.interceptors + RADAR_CONFIG.interceptorRefillPerWave,
+      );
+      this.scansAvailable = RADAR_CONFIG.maxScansPerWave;
+
       this.updateScoreBoard();
-      this.showWaveBanner(`ВОЛНА ${this.wave}\nСКОРОСТЬ СКАНИРОВАНИЯ +`);
+      this.showWaveBanner(
+        `ВОЛНА ${this.wave}\nСНАБЖЕНИЕ: +${addedAmmo} РАКЕТЫ, СКАНЫ 3/3`,
+      );
     }
   }
 
@@ -1021,7 +1203,6 @@ export class GameScene extends Phaser.Scene {
       angleToCenter +
       Phaser.Math.FloatBetween(-typeCfg.headingJitter, typeCfg.headingJitter);
 
-    // Небольшой прирост скорости с ростом волн
     const waveSpeedFactor = 1 + Math.min(0.35, (this.wave - 1) * 0.04);
     const speed =
       Phaser.Math.FloatBetween(typeCfg.speedRange[0], typeCfg.speedRange[1]) *
@@ -1115,9 +1296,45 @@ export class GameScene extends Phaser.Scene {
         this.dynamicGraphics.fillStyle(colors.blipCore, target.alpha);
         this.dynamicGraphics.fillCircle(target.x, target.y, blipRadius);
       }
+
+      // Индикатор опознанной цели
+      if (target.isScanned) {
+        const typeCfg = RADAR_CONFIG.targetTypes[target.type];
+        const tagColor =
+          typeCfg.category === 'threat'
+            ? 0xef4444
+            : typeCfg.category === 'friend'
+              ? 0x22c55e
+              : 0x94a3b8;
+        this.dynamicGraphics.lineStyle(1.2, tagColor, 0.85);
+        this.dynamicGraphics.strokeCircle(target.x, target.y, blipRadius * 2.8);
+      }
     }
 
-    // 5. Маркер захвата выбранной цели [ · ]
+    // 5. Анимация сканирования сигнатуры
+    if (this.isScanning && this.scanningTarget) {
+      const { x, y } = this.scanningTarget;
+      const pulse = 16 + Math.sin(this.time.now * 0.015) * 3;
+      this.dynamicGraphics.lineStyle(1.5, colors.scanCyan, 0.9);
+      this.dynamicGraphics.strokeCircle(x, y, pulse);
+
+      const rot = (this.time.now * 0.005) % (Math.PI * 2);
+      for (let i = 0; i < 4; i++) {
+        const a = rot + (i * Math.PI) / 2;
+        this.dynamicGraphics.beginPath();
+        this.dynamicGraphics.moveTo(
+          x + Math.cos(a) * (pulse - 4),
+          y + Math.sin(a) * (pulse - 4),
+        );
+        this.dynamicGraphics.lineTo(
+          x + Math.cos(a) * (pulse + 4),
+          y + Math.sin(a) * (pulse + 4),
+        );
+        this.dynamicGraphics.strokePath();
+      }
+    }
+
+    // 6. Маркер захвата выбранной цели [ · ]
     if (this.selectedTarget) {
       const { x, y } = this.selectedTarget;
       const s = 11;
