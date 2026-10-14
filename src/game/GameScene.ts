@@ -74,8 +74,11 @@ export class GameScene extends Phaser.Scene {
   private goWavesText!: Phaser.GameObjects.Text;
 
   // Кнопки решений и скана
-  private buttons: Record<DecisionChoice | 'scan', ButtonItem> = {} as Record<
-    DecisionChoice | 'scan',
+  private buttons: Record<
+    DecisionChoice | 'scan' | 'buyMissile' | 'buyScan',
+    ButtonItem
+  > = {} as Record<
+    DecisionChoice | 'scan' | 'buyMissile' | 'buyScan',
     ButtonItem
   >;
 
@@ -312,7 +315,7 @@ export class GameScene extends Phaser.Scene {
     });
 
     // Фидбек принятого решения
-    this.feedbackText = this.add.text(660, 430, '', {
+    this.feedbackText = this.add.text(660, 448, '', {
       ...monoStyle,
       fontSize: '11px',
       fontStyle: 'bold',
@@ -321,12 +324,12 @@ export class GameScene extends Phaser.Scene {
     // Шпаргалка
     this.add.text(
       660,
-      458,
-      '--- ПРИЗНАКИ И РЕСУРСЫ ---\n' +
-        '• [4] Скан: точный тип за 1.5с (время идёт!)\n' +
+      472,
+      '--- ПРИЗНАКИ И СНАБЖЕНИЕ ---\n' +
+        '• [4] Скан: сигнатура за 1.5с (время идёт!)\n' +
+        '• Снабжение: [5] Ракета (150) | [6] Скан (100)\n' +
         '• Ракета (-30HP) | Бомбардировщик (-20HP)\n' +
-        '• Ловушка: не трать ракеты (лимит ammo!)\n' +
-        'Горячие клавиши: [1] [2] [3] [4]',
+        'Горячие клавиши: [1] [2] [3] [4] [5] [6]',
       {
         ...monoStyle,
         fontSize: '11px',
@@ -417,7 +420,8 @@ export class GameScene extends Phaser.Scene {
   private createDecisionButtons(): void {
     const startY = 295;
     const btnW = 255;
-    const btnH = 28;
+    const btnH = 26;
+    const gap = 4;
 
     this.buttons.friend = this.createButton(
       660,
@@ -431,7 +435,7 @@ export class GameScene extends Phaser.Scene {
 
     this.buttons.threat = this.createButton(
       660,
-      startY + 34,
+      startY + (btnH + gap),
       btnW,
       btnH,
       '[2] УГРОЗА (ПЕРЕХВАТ)',
@@ -441,7 +445,7 @@ export class GameScene extends Phaser.Scene {
 
     this.buttons.ignore = this.createButton(
       660,
-      startY + 68,
+      startY + (btnH + gap) * 2,
       btnW,
       btnH,
       '[3] ИГНОРИРОВАТЬ',
@@ -451,12 +455,37 @@ export class GameScene extends Phaser.Scene {
 
     this.buttons.scan = this.createButton(
       660,
-      startY + 102,
+      startY + (btnH + gap) * 3,
       btnW,
       btnH,
       '[4] СКАН СИГНАТУРЫ (1.5с)',
       GAME_CONFIG.colors.btnScan,
       () => this.startScanning(),
+    );
+
+    // Кнопки снабжения (дозакупки ракет и сканов за накопленные очки)
+    const supplyY = startY + (btnH + gap) * 4;
+    const halfW = 124;
+    this.buttons.buyMissile = this.createButton(
+      660,
+      supplyY,
+      halfW,
+      btnH,
+      `[5] +РАКЕТА (${GAME_CONFIG.interceptorCost})`,
+      GAME_CONFIG.colors.btnSupply,
+      () => this.buyInterceptor(),
+      '11px',
+    );
+
+    this.buttons.buyScan = this.createButton(
+      660 + halfW + 7,
+      supplyY,
+      halfW,
+      btnH,
+      `[6] +СКАН (${GAME_CONFIG.scanCost})`,
+      GAME_CONFIG.colors.btnSupply,
+      () => this.buyScan(),
+      '11px',
     );
   }
 
@@ -468,6 +497,7 @@ export class GameScene extends Phaser.Scene {
     label: string,
     color: number,
     onClick: () => void,
+    fontSize = '12px',
   ): ButtonItem {
     const bg = this.add.rectangle(x + w / 2, y + h / 2, w, h, color, 0.45);
     bg.setStrokeStyle(1, color, 0.9);
@@ -475,7 +505,7 @@ export class GameScene extends Phaser.Scene {
 
     const text = this.add.text(x + w / 2, y + h / 2, label, {
       fontFamily: 'Consolas, monospace',
-      fontSize: '12px',
+      fontSize,
       color: '#f8fafc',
       fontStyle: 'bold',
     });
@@ -744,6 +774,18 @@ export class GameScene extends Phaser.Scene {
       this.input.keyboard.on('keydown-FOUR', () => {
         if (!this.isGameOver && !this.isPaused) this.startScanning();
       });
+      this.input.keyboard.on('keydown-FIVE', () => {
+        if (!this.isGameOver && !this.isPaused) this.buyInterceptor();
+      });
+      this.input.keyboard.on('keydown-NUMPAD_FIVE', () => {
+        if (!this.isGameOver && !this.isPaused) this.buyInterceptor();
+      });
+      this.input.keyboard.on('keydown-SIX', () => {
+        if (!this.isGameOver && !this.isPaused) this.buyScan();
+      });
+      this.input.keyboard.on('keydown-NUMPAD_SIX', () => {
+        if (!this.isGameOver && !this.isPaused) this.buyScan();
+      });
       this.input.keyboard.on('keydown-SPACE', () => {
         if (this.isGameOver) this.restartGame();
       });
@@ -787,6 +829,70 @@ export class GameScene extends Phaser.Scene {
     this.scanningTarget = this.selectedTarget;
     this.scanProgress = 0;
     this.showFeedback('[СИСТЕМА] АНАЛИЗ СИГНАТУРЫ... (1.5 СЕК)', '#38bdf8');
+    this.updateScoreBoard();
+    this.updateTargetSelectionUI();
+  }
+
+  /**
+   * Дозакупка ракеты-перехватчика за накопленные очки (бюджет)
+   */
+  private buyInterceptor(): void {
+    if (this.isGameOver || this.isPaused) return;
+
+    if (this.interceptors >= GAME_CONFIG.maxInterceptors) {
+      this.showFeedback(
+        `[СКЛАД] МАКСИМУМ РАКЕТ (${GAME_CONFIG.maxInterceptors}/${GAME_CONFIG.maxInterceptors})!`,
+        '#facc15',
+      );
+      return;
+    }
+
+    if (this.score < GAME_CONFIG.interceptorCost) {
+      this.showFeedback(
+        `[БЮДЖЕТ] НЕ ХВАТАЕТ ОЧКОВ (НУЖНО ${GAME_CONFIG.interceptorCost})!`,
+        '#ef4444',
+      );
+      return;
+    }
+
+    this.score -= GAME_CONFIG.interceptorCost;
+    this.interceptors++;
+    this.showFeedback(
+      `[СНАБЖЕНИЕ] +1 РАКЕТА (-${GAME_CONFIG.interceptorCost} ОЧКОВ)`,
+      '#22c55e',
+    );
+    this.updateScoreBoard();
+    this.updateTargetSelectionUI();
+  }
+
+  /**
+   * Дозакупка заряда сканирования за накопленные очки (бюджет)
+   */
+  private buyScan(): void {
+    if (this.isGameOver || this.isPaused) return;
+
+    if (this.scansAvailable >= GAME_CONFIG.maxScansPerWave) {
+      this.showFeedback(
+        `[СЕНСОРЫ] МАКСИМУМ СКАНОВ (${GAME_CONFIG.maxScansPerWave}/${GAME_CONFIG.maxScansPerWave})!`,
+        '#38bdf8',
+      );
+      return;
+    }
+
+    if (this.score < GAME_CONFIG.scanCost) {
+      this.showFeedback(
+        `[БЮДЖЕТ] НЕ ХВАТАЕТ ОЧКОВ (НУЖНО ${GAME_CONFIG.scanCost})!`,
+        '#ef4444',
+      );
+      return;
+    }
+
+    this.score -= GAME_CONFIG.scanCost;
+    this.scansAvailable++;
+    this.showFeedback(
+      `[СНАБЖЕНИЕ] +1 СКАН (-${GAME_CONFIG.scanCost} ОЧКОВ)`,
+      '#22c55e',
+    );
     this.updateScoreBoard();
     this.updateTargetSelectionUI();
   }
@@ -930,6 +1036,21 @@ export class GameScene extends Phaser.Scene {
     const scanStars = '*'.repeat(this.scansAvailable).padEnd(GAME_CONFIG.maxScansPerWave, ' ');
     this.scansText.setText(`СКАН:   [${scanStars}] ${this.scansAvailable}/${GAME_CONFIG.maxScansPerWave}`);
     this.scansText.setColor(this.scansAvailable > 0 ? '#38bdf8' : '#64748b');
+
+    // Обновление доступности кнопок снабжения
+    const canBuyMissile =
+      this.interceptors < GAME_CONFIG.maxInterceptors &&
+      this.score >= GAME_CONFIG.interceptorCost;
+    if (this.buttons.buyMissile) {
+      this.buttons.buyMissile.setEnabled(canBuyMissile);
+    }
+
+    const canBuyScan =
+      this.scansAvailable < GAME_CONFIG.maxScansPerWave &&
+      this.score >= GAME_CONFIG.scanCost;
+    if (this.buttons.buyScan) {
+      this.buttons.buyScan.setEnabled(canBuyScan);
+    }
   }
 
   private updateTargetSelectionUI(): void {

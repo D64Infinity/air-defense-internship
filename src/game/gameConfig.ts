@@ -38,10 +38,12 @@ export const GAME_CONFIG = {
   maxInterceptors: 6,
   startInterceptors: 5,
   interceptorRefillPerWave: 3,
+  interceptorCost: 150, // стоимость закупки 1 ракеты за очки (бюджет)
 
   // Параметры сканирования
   maxScansPerWave: 3,
   scanDuration: 1.5, // секунд на дешифровку сигнатуры
+  scanCost: 100, // стоимость закупки 1 заряда скана за очки (бюджет)
 
   // Характеристики типов целей (скорости сбалансированы для честного времени реакции)
   targetTypes: {
@@ -98,6 +100,7 @@ export const GAME_CONFIG = {
     btnThreat: 0xd97706,
     btnIgnore: 0x475569,
     btnScan: 0x0284c7,
+    btnSupply: 0x0f766e,
     healthGreen: 0x22c55e,
     healthYellow: 0xeab308,
     healthRed: 0xef4444,
