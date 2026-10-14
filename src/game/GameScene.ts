@@ -5,6 +5,12 @@ import {
   type DecisionChoice,
   type GameTarget,
 } from './gameConfig';
+import {
+  createExplosion,
+  updateExplosions,
+  renderExplosions,
+  type ExplosionEffect,
+} from './effects';
 
 // Реэкспорт для сохранения полной обратной совместимости
 export { GAME_CONFIG, GAME_CONFIG as RADAR_CONFIG };
@@ -30,6 +36,7 @@ export class GameScene extends Phaser.Scene {
   private beamAngle = 0;
   private targets: GameTarget[] = [];
   private selectedTarget: GameTarget | null = null;
+  private explosions: ExplosionEffect[] = [];
   private nextTargetId = 1;
   private spawnTimer = 1.2;
 
@@ -103,6 +110,7 @@ export class GameScene extends Phaser.Scene {
     this.scanProgress = 0;
     this.targets = [];
     this.selectedTarget = null;
+    this.explosions = [];
 
     // Загрузка рекорда из localStorage
     const savedRecord = localStorage.getItem('radar_station_record');
@@ -141,6 +149,7 @@ export class GameScene extends Phaser.Scene {
     this.updateTargets(dt);
     this.handleSpawning(dt);
     this.updateScanning(dt);
+    updateExplosions(this.explosions, dt);
     this.renderDynamicElements();
     this.updateFeedback(dt);
     this.updateTelemetry();
@@ -741,6 +750,7 @@ export class GameScene extends Phaser.Scene {
    */
   private restartGame(): void {
     this.isPaused = false;
+    this.explosions = [];
     this.pauseContainer.setVisible(false);
     this.gameOverContainer.setVisible(false);
     this.scene.restart();
@@ -930,6 +940,7 @@ export class GameScene extends Phaser.Scene {
    */
   private resolveDecision(choice: DecisionChoice): void {
     if (!this.selectedTarget || this.isGameOver) return;
+    const target = this.selectedTarget;
 
     // Проверка наличия ракет-перехватчиков для «Угрозы»
     if (choice === 'threat') {
@@ -938,9 +949,11 @@ export class GameScene extends Phaser.Scene {
         return;
       }
       this.interceptors--;
-    }
 
-    const target = this.selectedTarget;
+      // Эффект взрыва: для техники (ракета, бомбардировщик, союзник) - с ударной волной, для ловушки - только вспышка
+      const hasShockwave = target.type !== 'decoy';
+      this.explosions.push(createExplosion(target.x, target.y, hasShockwave));
+    }
     const typeCfg = GAME_CONFIG.targetTypes[target.type];
     const correctCategory = typeCfg.category;
 
@@ -1556,6 +1569,9 @@ export class GameScene extends Phaser.Scene {
       this.dynamicGraphics.lineTo(x + s, y + s - 4);
       this.dynamicGraphics.strokePath();
     }
+
+    // 7. Эффекты взрывов и ударных волн
+    renderExplosions(this.dynamicGraphics, this.explosions);
   }
 }
 
