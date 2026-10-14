@@ -953,7 +953,11 @@ export class GameScene extends Phaser.Scene {
     let feedbackColor = '#4ade80';
 
     if (choice === correctCategory) {
-      const points = Math.round(GAME_CONFIG.scorePerCorrect * multiplier);
+      const isDecoy = target.type === 'decoy';
+      const basePoints = isDecoy
+        ? GAME_CONFIG.scorePerDecoyIgnored
+        : GAME_CONFIG.scorePerCorrect;
+      const points = Math.round(basePoints * multiplier);
       this.score += points;
       this.streak += 1;
       if (this.streak > this.bestStreak) this.bestStreak = this.streak;
@@ -965,7 +969,10 @@ export class GameScene extends Phaser.Scene {
       } else if (target.type === 'friend') {
         feedback = `[ВЕРНО!] СОЮЗНИК ПРОПУЩЕН (+${points})`;
       } else {
-        feedback = `[ВЕРНО!] ЛОЖНАЯ ЦЕЛЬ ОТФИЛЬТРОВАНА (+${points})`;
+        feedback =
+          points > 0
+            ? `[ВЕРНО!] ЛОЖНАЯ ЦЕЛЬ ОТФИЛЬТРОВАНА (+${points})`
+            : `[ВЕРНО!] ЛОЖНАЯ ЦЕЛЬ ОТФИЛЬТРОВАНА (СЕРИЯ +1)`;
       }
     } else {
       this.streak = 0;

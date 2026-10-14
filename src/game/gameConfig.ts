@@ -30,6 +30,7 @@ export const GAME_CONFIG = {
 
   // Очки и серии
   scorePerCorrect: 100,
+  scorePerDecoyIgnored: 0, // за игнорирование ловушки очки не начисляются (только рост серии)
   friendlyFirePenalty: 150,
   streakStepForMultiplier: 2, // каждые 2 правильных ответа множитель растёт на +0.5x
   maxMultiplier: 4.0,
