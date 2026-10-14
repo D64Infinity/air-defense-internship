@@ -134,6 +134,8 @@ export class GameScene extends Phaser.Scene {
   private dynamicGraphics!: Phaser.GameObjects.Graphics;
   private hudGraphics!: Phaser.GameObjects.Graphics;
   private gameOverContainer!: Phaser.GameObjects.Container;
+  private pauseContainer!: Phaser.GameObjects.Container;
+  private isPaused = false;
 
   // Динамические параметры луча и волн
   private currentBeamSpeed = RADAR_CONFIG.beamSpeedBase;
@@ -195,6 +197,7 @@ export class GameScene extends Phaser.Scene {
 
   create(): void {
     this.isGameOver = false;
+    this.isPaused = false;
     this.baseHealth = RADAR_CONFIG.maxBaseHealth;
     this.score = 0;
     this.streak = 0;
@@ -227,6 +230,7 @@ export class GameScene extends Phaser.Scene {
     this.createHudElements();
     this.createDecisionButtons();
     this.createWaveBanner();
+    this.createPauseOverlay();
     this.createGameOverOverlay();
     this.setupInputs();
 
@@ -238,7 +242,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number): void {
-    if (this.isGameOver) return;
+    if (this.isGameOver || this.isPaused) return;
 
     const dt = Math.min(delta / 1000, 0.1);
 
@@ -701,10 +705,96 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
+   * Окно тактической паузы
+   */
+  private createPauseOverlay(): void {
+    const { width, height } = this.scale;
+    this.pauseContainer = this.add.container(0, 0);
+    this.pauseContainer.setDepth(90);
+    this.pauseContainer.setVisible(false);
+
+    // Полупрозрачное затемнение
+    const darkBg = this.add.rectangle(
+      width / 2,
+      height / 2,
+      width,
+      height,
+      0x020a05,
+      0.82,
+    );
+    darkBg.setInteractive(); // Блокирует клики сквозь паузу
+
+    // Рамка окна паузы
+    const modal = this.add.rectangle(width / 2, height / 2, 400, 180, 0x071b0f, 0.96);
+    modal.setStrokeStyle(2, 0x38bdf8, 0.9);
+
+    const title = this.add.text(
+      width / 2,
+      height / 2 - 35,
+      '// ТАКТИЧЕСКАЯ ПАУЗА //',
+      {
+        fontFamily: 'Consolas, monospace',
+        fontSize: '20px',
+        color: '#38bdf8',
+        fontStyle: 'bold',
+      },
+    );
+    title.setOrigin(0.5);
+
+    // Кнопка продолжения
+    const resumeBtn = this.add.rectangle(
+      width / 2,
+      height / 2 + 35,
+      240,
+      40,
+      0x0284c7,
+      0.9,
+    );
+    resumeBtn.setStrokeStyle(1.5, 0x38bdf8, 1);
+    resumeBtn.setInteractive({ useHandCursor: true });
+
+    const resumeText = this.add.text(
+      width / 2,
+      height / 2 + 35,
+      'ПРОДОЛЖИТЬ (P)',
+      {
+        fontFamily: 'Consolas, monospace',
+        fontSize: '14px',
+        color: '#ffffff',
+        fontStyle: 'bold',
+      },
+    );
+    resumeText.setOrigin(0.5);
+
+    resumeBtn.on('pointerover', () => resumeBtn.setFillStyle(0x0369a1, 1));
+    resumeBtn.on('pointerout', () => resumeBtn.setFillStyle(0x0284c7, 0.9));
+    resumeBtn.on('pointerdown', () => this.togglePause());
+
+    this.pauseContainer.add([
+      darkBg,
+      modal,
+      title,
+      resumeBtn,
+      resumeText,
+    ]);
+  }
+
+  /**
+   * Переключение паузы (безопасный тогл без накопления состояния)
+   */
+  private togglePause(): void {
+    if (this.isGameOver) return;
+    this.isPaused = !this.isPaused;
+    this.pauseContainer.setVisible(this.isPaused);
+  }
+
+  /**
    * Срабатывание поражения базы
    */
   private triggerGameOver(): void {
     this.isGameOver = true;
+    this.isPaused = false;
+    this.pauseContainer.setVisible(false);
     this.selectedTarget = null;
     this.isScanning = false;
     this.scanningTarget = null;
@@ -732,6 +822,8 @@ export class GameScene extends Phaser.Scene {
    * Перезапуск игры
    */
   private restartGame(): void {
+    this.isPaused = false;
+    this.pauseContainer.setVisible(false);
     this.gameOverContainer.setVisible(false);
     this.scene.restart();
   }
@@ -741,7 +833,7 @@ export class GameScene extends Phaser.Scene {
    */
   private setupInputs(): void {
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (this.isGameOver || pointer.x >= 640) return;
+      if (this.isGameOver || this.isPaused || pointer.x >= 640) return;
 
       const clicked = this.findTargetNear(pointer.x, pointer.y);
       this.selectedTarget = clicked;
@@ -749,17 +841,20 @@ export class GameScene extends Phaser.Scene {
     });
 
     if (this.input.keyboard) {
+      this.input.keyboard.on('keydown-P', () => {
+        this.togglePause();
+      });
       this.input.keyboard.on('keydown-ONE', () => {
-        if (!this.isGameOver) this.resolveDecision('friend');
+        if (!this.isGameOver && !this.isPaused) this.resolveDecision('friend');
       });
       this.input.keyboard.on('keydown-TWO', () => {
-        if (!this.isGameOver) this.resolveDecision('threat');
+        if (!this.isGameOver && !this.isPaused) this.resolveDecision('threat');
       });
       this.input.keyboard.on('keydown-THREE', () => {
-        if (!this.isGameOver) this.resolveDecision('ignore');
+        if (!this.isGameOver && !this.isPaused) this.resolveDecision('ignore');
       });
       this.input.keyboard.on('keydown-FOUR', () => {
-        if (!this.isGameOver) this.startScanning();
+        if (!this.isGameOver && !this.isPaused) this.startScanning();
       });
       this.input.keyboard.on('keydown-SPACE', () => {
         if (this.isGameOver) this.restartGame();
