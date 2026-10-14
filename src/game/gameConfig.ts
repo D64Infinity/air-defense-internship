@@ -52,9 +52,9 @@ export const GAME_CONFIG = {
       label: 'Ракета',
       category: 'threat',
       weight: 35,
-      speedRange: [40, 56], // комфортная скорость для реакции
+      speedRange: [44, 58], // повышенная скорость: быстрее бомбардировщиков, пересекается с ловушками
       signalRange: [40, 75],
-      headingJitter: 0.06, // летит строго на базу
+      headingJitter: 0.0, // летит строго по прямой в центр базы
     },
     bomber: {
       label: 'Бомбардировщик',
