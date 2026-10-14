@@ -1187,6 +1187,16 @@ export class GameScene extends Phaser.Scene {
           this.baseFlashTimer = 0.6;
         } else if (target.type === 'friend') {
           this.showFeedback(`[БАЗА] СОЮЗНИК БЕЗОПАСНО ВОШЁЛ В ЗОНУ`, '#86efac');
+        } else if (target.type === 'decoy') {
+          if (target.decoyPassesThroughBase && !target.hasPassedBase) {
+            target.hasPassedBase = true;
+            this.showFeedback(`[БАЗА] ЛОЖНАЯ ЦЕЛЬ ПРОШЛА НАВЫЛЕТ (0 УРОНА)`, '#64748b');
+            continue;
+          } else if (target.hasPassedBase) {
+            continue;
+          } else {
+            this.showFeedback(`[БАЗА] ЛОЖНЫЙ СИГНАЛ РАССЕЯЛСЯ (0 УРОНА)`, '#64748b');
+          }
         }
 
         this.drawHealthBar();
@@ -1208,7 +1218,7 @@ export class GameScene extends Phaser.Scene {
           this.triggerGameOver();
           return;
         }
-      } else if (distToBase > GAME_CONFIG.radarRadius * 1.15) {
+      } else if (distToBase > GAME_CONFIG.radarRadius * 1.05) {
         if (this.selectedTarget === target) {
           this.selectedTarget = null;
           this.updateTargetSelectionUI();
@@ -1309,10 +1319,24 @@ export class GameScene extends Phaser.Scene {
     const type = this.pickRandomType();
     const typeCfg = GAME_CONFIG.targetTypes[type];
 
-    const angleToCenter = Math.atan2(GAME_CONFIG.radarY - y, GAME_CONFIG.radarX - x);
-    const heading =
-      angleToCenter +
-      Phaser.Math.FloatBetween(-typeCfg.headingJitter, typeCfg.headingJitter);
+    let heading: number;
+    let decoyPassesThroughBase: boolean | undefined = undefined;
+
+    if (type === 'decoy') {
+      // Ловушка движется по хордам (включая диаметральные диагонали через базу)
+      const angleFromCenter = Math.atan2(y - GAME_CONFIG.radarY, x - GAME_CONFIG.radarX);
+      const deltaAngle = Phaser.Math.FloatBetween(-1.15, 1.15); // хорды от центральных до боковых
+      const exitAngle = angleFromCenter + Math.PI + deltaAngle;
+      const exitX = GAME_CONFIG.radarX + Math.cos(exitAngle) * GAME_CONFIG.radarRadius;
+      const exitY = GAME_CONFIG.radarY + Math.sin(exitAngle) * GAME_CONFIG.radarRadius;
+      heading = Math.atan2(exitY - y, exitX - x);
+      decoyPassesThroughBase = Math.random() < 0.5;
+    } else {
+      const angleToCenter = Math.atan2(GAME_CONFIG.radarY - y, GAME_CONFIG.radarX - x);
+      heading =
+        angleToCenter +
+        Phaser.Math.FloatBetween(-typeCfg.headingJitter, typeCfg.headingJitter);
+    }
 
     const waveSpeedFactor = 1 + Math.min(0.35, (this.wave - 1) * 0.04);
     const speed =
@@ -1340,6 +1364,7 @@ export class GameScene extends Phaser.Scene {
       headingDeg,
       signal,
       alpha: 0,
+      decoyPassesThroughBase,
     });
   }
 

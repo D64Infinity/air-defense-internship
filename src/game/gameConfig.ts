@@ -123,6 +123,8 @@ export interface GameTarget {
   signal: number;
   alpha: number; // 0..1 (яркость люминофора)
   isScanned?: boolean; // Раскрыт ли точный тип цели
+  decoyPassesThroughBase?: boolean; // Пролетает ли ловушка сквозь базу
+  hasPassedBase?: boolean; // Флаг фиксации пролёта через базу
 }
 
 // Псевдонимы для обратной совместимости
