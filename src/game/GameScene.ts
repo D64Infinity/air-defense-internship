@@ -1,127 +1,15 @@
 import Phaser from 'phaser';
+import {
+  GAME_CONFIG,
+  type TargetType,
+  type DecisionChoice,
+  type GameTarget,
+} from './gameConfig';
 
-/**
- * КОНФИГУРАЦИЯ БАЛАНСА И ПАРАМЕТРОВ РАДАРА
- * Все ключевые числовые настройки вынесены сюда для быстрой подкрутки.
- */
-export const RADAR_CONFIG = {
-  // Геометрия дисплея радара
-  radarX: 345,
-  radarY: 320,
-  radarRadius: 265,
+// Реэкспорт для сохранения полной обратной совместимости
+export { GAME_CONFIG, GAME_CONFIG as RADAR_CONFIG };
+export type { TargetType, DecisionChoice, GameTarget, GameTarget as RadarTarget };
 
-  // Базовые параметры луча
-  beamSpeedBase: 1.3, // базовая скорость вращения (рад/сек)
-  trailAngle: 0.4, // ширина шлейфа затухания (в радианах)
-  trailSteps: 14, // плавность градиента шлейфа
-
-  // Затухание вспышки цели
-  blipFadeDuration: 2.8, // секунд до полного угасания метки
-  blipRadius: 4, // размер точки цели
-  selectionHitRadius: 26, // радиус клика по цели на радаре
-
-  // Спавн целей (скорректированы для удобной реакции на ноутбуках)
-  spawnIntervalMinBase: 2.8,
-  spawnIntervalMaxBase: 4.8,
-  maxActiveTargetsBase: 7,
-
-  // Здоровье базы и урон
-  maxBaseHealth: 100,
-  damageMissile: 30,
-  damageBomber: 20,
-
-  // Очки и серии
-  scorePerCorrect: 100,
-  friendlyFirePenalty: 150,
-  streakStepForMultiplier: 2, // каждые 2 правильных ответа множитель растёт на +0.5x
-  maxMultiplier: 4.0,
-
-  // Ресурс перехватчиков (боезапас ПВО)
-  maxInterceptors: 6,
-  startInterceptors: 5,
-  interceptorRefillPerWave: 3,
-
-  // Параметры сканирования
-  maxScansPerWave: 3,
-  scanDuration: 1.5, // секунд на дешифровку сигнатуры
-
-  // Характеристики типов целей (скорости сбалансированы для честного времени реакции)
-  targetTypes: {
-    missile: {
-      label: 'Ракета',
-      category: 'threat',
-      weight: 35,
-      speedRange: [40, 56], // комфортная скорость для реакции
-      signalRange: [40, 75],
-      headingJitter: 0.06, // летит строго на базу
-    },
-    bomber: {
-      label: 'Бомбардировщик',
-      category: 'threat',
-      weight: 25,
-      speedRange: [22, 34],
-      signalRange: [65, 92],
-      headingJitter: 0.18,
-    },
-    friend: {
-      label: 'Союзный борт',
-      category: 'friend',
-      weight: 20,
-      speedRange: [20, 32],
-      signalRange: [75, 98],
-      headingJitter: 0.45,
-    },
-    decoy: {
-      label: 'Ложная цель (помеха)',
-      category: 'ignore',
-      weight: 20,
-      speedRange: [18, 48],
-      signalRange: [15, 48],
-      headingJitter: 0.85,
-    },
-  },
-
-  // Цветовая палитра CRT-радара
-  colors: {
-    radarBg: 0x071b0f,
-    radarBorder: 0x00ff66,
-    gridRing: 0x00cc55,
-    gridAxis: 0x00aa44,
-    dangerRing: 0xef4444,
-    beam: 0x99ffbb,
-    trail: 0x00ff66,
-    blipCore: 0xd4ffea,
-    blipHalo: 0x00ff66,
-    selectedBox: 0xfacc15,
-    scanCyan: 0x38bdf8,
-    hudBorder: 0x005522,
-    hudBg: 0x04130a,
-    btnFriend: 0x16a34a,
-    btnThreat: 0xd97706,
-    btnIgnore: 0x475569,
-    btnScan: 0x0284c7,
-    healthGreen: 0x22c55e,
-    healthYellow: 0xeab308,
-    healthRed: 0xef4444,
-  },
-};
-
-export type TargetType = keyof typeof RADAR_CONFIG.targetTypes;
-export type DecisionChoice = 'friend' | 'threat' | 'ignore';
-
-export interface RadarTarget {
-  id: number;
-  type: TargetType;
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  speed: number;
-  headingDeg: number;
-  signal: number;
-  alpha: number; // 0..1 (яркость люминофора)
-  isScanned?: boolean; // Раскрыт ли точный тип цели
-}
 
 interface ButtonItem {
   bg: Phaser.GameObjects.Rectangle;
@@ -138,22 +26,22 @@ export class GameScene extends Phaser.Scene {
   private isPaused = false;
 
   // Динамические параметры луча и волн
-  private currentBeamSpeed = RADAR_CONFIG.beamSpeedBase;
+  private currentBeamSpeed = GAME_CONFIG.beamSpeedBase;
   private beamAngle = 0;
-  private targets: RadarTarget[] = [];
-  private selectedTarget: RadarTarget | null = null;
+  private targets: GameTarget[] = [];
+  private selectedTarget: GameTarget | null = null;
   private nextTargetId = 1;
   private spawnTimer = 1.2;
 
   // Ресурсы и механика сканирования
-  private interceptors = RADAR_CONFIG.startInterceptors;
-  private scansAvailable = RADAR_CONFIG.maxScansPerWave;
+  private interceptors = GAME_CONFIG.startInterceptors;
+  private scansAvailable = GAME_CONFIG.maxScansPerWave;
   private isScanning = false;
-  private scanningTarget: RadarTarget | null = null;
+  private scanningTarget: GameTarget | null = null;
   private scanProgress = 0;
 
   // Состояние игры
-  private baseHealth = RADAR_CONFIG.maxBaseHealth;
+  private baseHealth = GAME_CONFIG.maxBaseHealth;
   private score = 0;
   private streak = 0;
   private bestStreak = 0;
@@ -198,15 +86,15 @@ export class GameScene extends Phaser.Scene {
   create(): void {
     this.isGameOver = false;
     this.isPaused = false;
-    this.baseHealth = RADAR_CONFIG.maxBaseHealth;
+    this.baseHealth = GAME_CONFIG.maxBaseHealth;
     this.score = 0;
     this.streak = 0;
     this.bestStreak = 0;
     this.wave = 1;
     this.waveTargetsToSpawn = 7;
-    this.currentBeamSpeed = RADAR_CONFIG.beamSpeedBase;
-    this.interceptors = RADAR_CONFIG.startInterceptors;
-    this.scansAvailable = RADAR_CONFIG.maxScansPerWave;
+    this.currentBeamSpeed = GAME_CONFIG.beamSpeedBase;
+    this.interceptors = GAME_CONFIG.startInterceptors;
+    this.scansAvailable = GAME_CONFIG.maxScansPerWave;
     this.isScanning = false;
     this.scanningTarget = null;
     this.scanProgress = 0;
@@ -264,7 +152,7 @@ export class GameScene extends Phaser.Scene {
    * Отрисовка постоянной сетки радара
    */
   private drawRadarGrid(): void {
-    const { radarX, radarY, radarRadius, colors } = RADAR_CONFIG;
+    const { radarX, radarY, radarRadius, colors } = GAME_CONFIG;
 
     this.staticGraphics.fillStyle(colors.radarBg, 0.88);
     this.staticGraphics.fillCircle(radarX, radarY, radarRadius);
@@ -317,7 +205,7 @@ export class GameScene extends Phaser.Scene {
    * Отрисовка правой панели консоли
    */
   private drawHudPanel(): void {
-    const { colors } = RADAR_CONFIG;
+    const { colors } = GAME_CONFIG;
     const panelX = 640;
     const panelY = 32;
     const panelW = 295;
@@ -452,7 +340,7 @@ export class GameScene extends Phaser.Scene {
    * Отрисовка полосы здоровья базы
    */
   private drawHealthBar(): void {
-    const { colors } = RADAR_CONFIG;
+    const { colors } = GAME_CONFIG;
     const barX = 660;
     const barY = 90;
     const barW = 255;
@@ -465,7 +353,7 @@ export class GameScene extends Phaser.Scene {
     this.hudGraphics.fillRect(barX + 1, barY + 1, barW - 2, barH - 2);
 
     const healthFraction = Phaser.Math.Clamp(
-      this.baseHealth / RADAR_CONFIG.maxBaseHealth,
+      this.baseHealth / GAME_CONFIG.maxBaseHealth,
       0,
       1,
     );
@@ -492,8 +380,8 @@ export class GameScene extends Phaser.Scene {
    */
   private createWaveBanner(): void {
     this.waveBannerText = this.add.text(
-      RADAR_CONFIG.radarX,
-      RADAR_CONFIG.radarY - 30,
+      GAME_CONFIG.radarX,
+      GAME_CONFIG.radarY - 30,
       '',
       {
         fontFamily: 'Consolas, monospace',
@@ -537,7 +425,7 @@ export class GameScene extends Phaser.Scene {
       btnW,
       btnH,
       '[1] СВОЙ БОРТ',
-      RADAR_CONFIG.colors.btnFriend,
+      GAME_CONFIG.colors.btnFriend,
       () => this.resolveDecision('friend'),
     );
 
@@ -547,7 +435,7 @@ export class GameScene extends Phaser.Scene {
       btnW,
       btnH,
       '[2] УГРОЗА (ПЕРЕХВАТ)',
-      RADAR_CONFIG.colors.btnThreat,
+      GAME_CONFIG.colors.btnThreat,
       () => this.resolveDecision('threat'),
     );
 
@@ -557,7 +445,7 @@ export class GameScene extends Phaser.Scene {
       btnW,
       btnH,
       '[3] ИГНОРИРОВАТЬ',
-      RADAR_CONFIG.colors.btnIgnore,
+      GAME_CONFIG.colors.btnIgnore,
       () => this.resolveDecision('ignore'),
     );
 
@@ -567,7 +455,7 @@ export class GameScene extends Phaser.Scene {
       btnW,
       btnH,
       '[4] СКАН СИГНАТУРЫ (1.5с)',
-      RADAR_CONFIG.colors.btnScan,
+      GAME_CONFIG.colors.btnScan,
       () => this.startScanning(),
     );
   }
@@ -862,9 +750,9 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private findTargetNear(x: number, y: number): RadarTarget | null {
-    let closest: RadarTarget | null = null;
-    let minDist = RADAR_CONFIG.selectionHitRadius;
+  private findTargetNear(x: number, y: number): GameTarget | null {
+    let closest: GameTarget | null = null;
+    let minDist = GAME_CONFIG.selectionHitRadius;
 
     for (const target of this.targets) {
       if (target.alpha > 0.04) {
@@ -918,10 +806,10 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.scanProgress += dt;
-    if (this.scanProgress >= RADAR_CONFIG.scanDuration) {
+    if (this.scanProgress >= GAME_CONFIG.scanDuration) {
       this.isScanning = false;
       this.scanningTarget.isScanned = true;
-      const typeCfg = RADAR_CONFIG.targetTypes[this.scanningTarget.type];
+      const typeCfg = GAME_CONFIG.targetTypes[this.scanningTarget.type];
       this.showFeedback(
         `[ОПОЗНАНО!] СИГНАТУРА: ${typeCfg.label.toUpperCase()}`,
         '#38bdf8',
@@ -947,19 +835,19 @@ export class GameScene extends Phaser.Scene {
     }
 
     const target = this.selectedTarget;
-    const typeCfg = RADAR_CONFIG.targetTypes[target.type];
+    const typeCfg = GAME_CONFIG.targetTypes[target.type];
     const correctCategory = typeCfg.category;
 
     const multiplier = Math.min(
-      RADAR_CONFIG.maxMultiplier,
-      1 + Math.floor(this.streak / RADAR_CONFIG.streakStepForMultiplier) * 0.5,
+      GAME_CONFIG.maxMultiplier,
+      1 + Math.floor(this.streak / GAME_CONFIG.streakStepForMultiplier) * 0.5,
     );
 
     let feedback = '';
     let feedbackColor = '#4ade80';
 
     if (choice === correctCategory) {
-      const points = Math.round(RADAR_CONFIG.scorePerCorrect * multiplier);
+      const points = Math.round(GAME_CONFIG.scorePerCorrect * multiplier);
       this.score += points;
       this.streak += 1;
       if (this.streak > this.bestStreak) this.bestStreak = this.streak;
@@ -978,8 +866,8 @@ export class GameScene extends Phaser.Scene {
       feedbackColor = '#f87171';
 
       if (target.type === 'friend' && choice === 'threat') {
-        this.score = Math.max(0, this.score - RADAR_CONFIG.friendlyFirePenalty);
-        feedback = `[ОШИБКА!] СБИТ СВОЙ БОРТ! (-${RADAR_CONFIG.friendlyFirePenalty})`;
+        this.score = Math.max(0, this.score - GAME_CONFIG.friendlyFirePenalty);
+        feedback = `[ОШИБКА!] СБИТ СВОЙ БОРТ! (-${GAME_CONFIG.friendlyFirePenalty})`;
       } else if (target.type === 'decoy' && choice === 'threat') {
         feedback = `[ПРОМАХ!] ПЕРЕХВАТЧИК ВПУСТУЮ НА ЛОВУШКУ! (Ост: ${this.interceptors})`;
         feedbackColor = '#fbbf24';
@@ -1027,7 +915,7 @@ export class GameScene extends Phaser.Scene {
   private updateScoreBoard(): void {
     const mult = (
       1 +
-      Math.floor(this.streak / RADAR_CONFIG.streakStepForMultiplier) * 0.5
+      Math.floor(this.streak / GAME_CONFIG.streakStepForMultiplier) * 0.5
     ).toFixed(1);
     this.scoreText.setText(`СЧЁТ: ${this.score.toString().padStart(4, '0')}`);
     this.streakText.setText(`СЕРИЯ: ${this.streak} (x${mult})`);
@@ -1035,12 +923,12 @@ export class GameScene extends Phaser.Scene {
     this.highScoreText.setText(`РЕКОРД: ${this.highScore}`);
 
     // Отображение перехватчиков и зарядов сканирования
-    const ammoBars = '|'.repeat(this.interceptors).padEnd(RADAR_CONFIG.maxInterceptors, ' ');
-    this.interceptorsText.setText(`РАКЕТЫ: [${ammoBars}] ${this.interceptors}/${RADAR_CONFIG.maxInterceptors}`);
+    const ammoBars = '|'.repeat(this.interceptors).padEnd(GAME_CONFIG.maxInterceptors, ' ');
+    this.interceptorsText.setText(`РАКЕТЫ: [${ammoBars}] ${this.interceptors}/${GAME_CONFIG.maxInterceptors}`);
     this.interceptorsText.setColor(this.interceptors > 1 ? '#facc15' : '#ef4444');
 
-    const scanStars = '*'.repeat(this.scansAvailable).padEnd(RADAR_CONFIG.maxScansPerWave, ' ');
-    this.scansText.setText(`СКАН:   [${scanStars}] ${this.scansAvailable}/${RADAR_CONFIG.maxScansPerWave}`);
+    const scanStars = '*'.repeat(this.scansAvailable).padEnd(GAME_CONFIG.maxScansPerWave, ' ');
+    this.scansText.setText(`СКАН:   [${scanStars}] ${this.scansAvailable}/${GAME_CONFIG.maxScansPerWave}`);
     this.scansText.setColor(this.scansAvailable > 0 ? '#38bdf8' : '#64748b');
   }
 
@@ -1075,7 +963,7 @@ export class GameScene extends Phaser.Scene {
 
     const t = this.selectedTarget;
     const dist = Math.round(
-      Math.hypot(t.x - RADAR_CONFIG.radarX, t.y - RADAR_CONFIG.radarY),
+      Math.hypot(t.x - GAME_CONFIG.radarX, t.y - GAME_CONFIG.radarY),
     );
 
     this.targetTelemetryTitle.setText(`ОБЪЕКТ СЛЕЖЕНИЯ: #TRK-${t.id}`);
@@ -1083,7 +971,7 @@ export class GameScene extends Phaser.Scene {
 
     let typeStr = 'ТИП:        [ НЕОПОЗНАН ]';
     if (t.isScanned) {
-      const cfg = RADAR_CONFIG.targetTypes[t.type];
+      const cfg = GAME_CONFIG.targetTypes[t.type];
       const catTag =
         cfg.category === 'threat'
           ? 'УГРОЗА!'
@@ -1094,7 +982,7 @@ export class GameScene extends Phaser.Scene {
     } else if (this.isScanning && this.scanningTarget === t) {
       const pct = Math.min(
         100,
-        Math.round((this.scanProgress / RADAR_CONFIG.scanDuration) * 100),
+        Math.round((this.scanProgress / GAME_CONFIG.scanDuration) * 100),
       );
       typeStr = `АНАЛИЗ:     [${'#'.repeat(Math.floor(pct / 10))}${'.'.repeat(10 - Math.floor(pct / 10))}] ${pct}%`;
     }
@@ -1114,11 +1002,11 @@ export class GameScene extends Phaser.Scene {
     this.beamAngle = (this.beamAngle + this.currentBeamSpeed * dt) % twoPi;
 
     for (const target of this.targets) {
-      const dx = target.x - RADAR_CONFIG.radarX;
-      const dy = target.y - RADAR_CONFIG.radarY;
+      const dx = target.x - GAME_CONFIG.radarX;
+      const dy = target.y - GAME_CONFIG.radarY;
       const dist = Math.hypot(dx, dy);
 
-      if (dist <= RADAR_CONFIG.radarRadius) {
+      if (dist <= GAME_CONFIG.radarRadius) {
         let targetAngle = Math.atan2(dy, dx);
         if (targetAngle < 0) targetAngle += twoPi;
 
@@ -1145,27 +1033,27 @@ export class GameScene extends Phaser.Scene {
       target.y += target.vy * dt;
 
       if (target.alpha > 0) {
-        target.alpha = Math.max(0, target.alpha - dt / RADAR_CONFIG.blipFadeDuration);
+        target.alpha = Math.max(0, target.alpha - dt / GAME_CONFIG.blipFadeDuration);
       }
 
       const distToBase = Math.hypot(
-        target.x - RADAR_CONFIG.radarX,
-        target.y - RADAR_CONFIG.radarY,
+        target.x - GAME_CONFIG.radarX,
+        target.y - GAME_CONFIG.radarY,
       );
 
       // Цель проникла на базу
       if (distToBase < 18) {
         if (target.type === 'missile') {
-          this.baseHealth = Math.max(0, this.baseHealth - RADAR_CONFIG.damageMissile);
+          this.baseHealth = Math.max(0, this.baseHealth - GAME_CONFIG.damageMissile);
           this.showFeedback(
-            `[УДАР!] ПРОПУЩЕНА РАКЕТА! (-${RADAR_CONFIG.damageMissile} HP)`,
+            `[УДАР!] ПРОПУЩЕНА РАКЕТА! (-${GAME_CONFIG.damageMissile} HP)`,
             '#ef4444',
           );
           this.baseFlashTimer = 0.6;
         } else if (target.type === 'bomber') {
-          this.baseHealth = Math.max(0, this.baseHealth - RADAR_CONFIG.damageBomber);
+          this.baseHealth = Math.max(0, this.baseHealth - GAME_CONFIG.damageBomber);
           this.showFeedback(
-            `[УДАР!] БОМБАРДИРОВКА БАЗЫ! (-${RADAR_CONFIG.damageBomber} HP)`,
+            `[УДАР!] БОМБАРДИРОВКА БАЗЫ! (-${GAME_CONFIG.damageBomber} HP)`,
             '#ef4444',
           );
           this.baseFlashTimer = 0.6;
@@ -1192,7 +1080,7 @@ export class GameScene extends Phaser.Scene {
           this.triggerGameOver();
           return;
         }
-      } else if (distToBase > RADAR_CONFIG.radarRadius * 1.15) {
+      } else if (distToBase > GAME_CONFIG.radarRadius * 1.15) {
         if (this.selectedTarget === target) {
           this.selectedTarget = null;
           this.updateTargetSelectionUI();
@@ -1216,7 +1104,7 @@ export class GameScene extends Phaser.Scene {
     if (this.waveTargetsToSpawn <= 0) return;
 
     this.spawnTimer -= dt;
-    const maxActive = RADAR_CONFIG.maxActiveTargetsBase + Math.floor(this.wave / 2);
+    const maxActive = GAME_CONFIG.maxActiveTargetsBase + Math.floor(this.wave / 2);
 
     if (this.spawnTimer <= 0) {
       if (this.targets.length < maxActive) {
@@ -1226,8 +1114,8 @@ export class GameScene extends Phaser.Scene {
 
       const speedUp = Math.min(1.2, (this.wave - 1) * 0.12);
       this.spawnTimer = Phaser.Math.FloatBetween(
-        Math.max(1.6, RADAR_CONFIG.spawnIntervalMinBase - speedUp),
-        Math.max(2.6, RADAR_CONFIG.spawnIntervalMaxBase - speedUp),
+        Math.max(1.6, GAME_CONFIG.spawnIntervalMinBase - speedUp),
+        Math.max(2.6, GAME_CONFIG.spawnIntervalMaxBase - speedUp),
       );
     }
   }
@@ -1242,18 +1130,18 @@ export class GameScene extends Phaser.Scene {
 
       // Луч ускоряется с каждой волной
       this.currentBeamSpeed =
-        RADAR_CONFIG.beamSpeedBase * Math.min(1.85, 1 + (this.wave - 1) * 0.09);
+        GAME_CONFIG.beamSpeedBase * Math.min(1.85, 1 + (this.wave - 1) * 0.09);
 
       // Пополнение боекомплекта перехватчиков и зарядов сканирования
       const addedAmmo = Math.min(
-        RADAR_CONFIG.maxInterceptors - this.interceptors,
-        RADAR_CONFIG.interceptorRefillPerWave,
+        GAME_CONFIG.maxInterceptors - this.interceptors,
+        GAME_CONFIG.interceptorRefillPerWave,
       );
       this.interceptors = Math.min(
-        RADAR_CONFIG.maxInterceptors,
-        this.interceptors + RADAR_CONFIG.interceptorRefillPerWave,
+        GAME_CONFIG.maxInterceptors,
+        this.interceptors + GAME_CONFIG.interceptorRefillPerWave,
       );
-      this.scansAvailable = RADAR_CONFIG.maxScansPerWave;
+      this.scansAvailable = GAME_CONFIG.maxScansPerWave;
 
       this.updateScoreBoard();
       this.showWaveBanner(
@@ -1268,32 +1156,32 @@ export class GameScene extends Phaser.Scene {
   private spawnInitialTargets(count: number): void {
     for (let i = 0; i < count; i++) {
       const dist = Phaser.Math.FloatBetween(
-        RADAR_CONFIG.radarRadius * 0.8,
-        RADAR_CONFIG.radarRadius * 0.96,
+        GAME_CONFIG.radarRadius * 0.8,
+        GAME_CONFIG.radarRadius * 0.96,
       );
       const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
       this.createTargetAt(
-        RADAR_CONFIG.radarX + Math.cos(angle) * dist,
-        RADAR_CONFIG.radarY + Math.sin(angle) * dist,
+        GAME_CONFIG.radarX + Math.cos(angle) * dist,
+        GAME_CONFIG.radarY + Math.sin(angle) * dist,
       );
     }
   }
 
   private spawnTargetAtEdge(): void {
     const spawnAngle = Phaser.Math.FloatBetween(0, Math.PI * 2);
-    const spawnDist = RADAR_CONFIG.radarRadius - 2;
+    const spawnDist = GAME_CONFIG.radarRadius - 2;
 
-    const x = RADAR_CONFIG.radarX + Math.cos(spawnAngle) * spawnDist;
-    const y = RADAR_CONFIG.radarY + Math.sin(spawnAngle) * spawnDist;
+    const x = GAME_CONFIG.radarX + Math.cos(spawnAngle) * spawnDist;
+    const y = GAME_CONFIG.radarY + Math.sin(spawnAngle) * spawnDist;
 
     this.createTargetAt(x, y);
   }
 
   private createTargetAt(x: number, y: number): void {
     const type = this.pickRandomType();
-    const typeCfg = RADAR_CONFIG.targetTypes[type];
+    const typeCfg = GAME_CONFIG.targetTypes[type];
 
-    const angleToCenter = Math.atan2(RADAR_CONFIG.radarY - y, RADAR_CONFIG.radarX - x);
+    const angleToCenter = Math.atan2(GAME_CONFIG.radarY - y, GAME_CONFIG.radarX - x);
     const heading =
       angleToCenter +
       Phaser.Math.FloatBetween(-typeCfg.headingJitter, typeCfg.headingJitter);
@@ -1328,15 +1216,15 @@ export class GameScene extends Phaser.Scene {
   }
 
   private pickRandomType(): TargetType {
-    const types = Object.keys(RADAR_CONFIG.targetTypes) as TargetType[];
+    const types = Object.keys(GAME_CONFIG.targetTypes) as TargetType[];
     const totalWeight = types.reduce(
-      (sum, t) => sum + RADAR_CONFIG.targetTypes[t].weight,
+      (sum, t) => sum + GAME_CONFIG.targetTypes[t].weight,
       0,
     );
     let rnd = Phaser.Math.Between(1, totalWeight);
 
     for (const t of types) {
-      rnd -= RADAR_CONFIG.targetTypes[t].weight;
+      rnd -= GAME_CONFIG.targetTypes[t].weight;
       if (rnd <= 0) return t;
     }
     return 'missile';
@@ -1347,7 +1235,7 @@ export class GameScene extends Phaser.Scene {
    */
   private renderDynamicElements(): void {
     const { radarX, radarY, radarRadius, colors, trailSteps, trailAngle, blipRadius } =
-      RADAR_CONFIG;
+      GAME_CONFIG;
 
     this.dynamicGraphics.clear();
 
@@ -1394,7 +1282,7 @@ export class GameScene extends Phaser.Scene {
 
       // Индикатор опознанной цели
       if (target.isScanned) {
-        const typeCfg = RADAR_CONFIG.targetTypes[target.type];
+        const typeCfg = GAME_CONFIG.targetTypes[target.type];
         const tagColor =
           typeCfg.category === 'threat'
             ? 0xef4444
