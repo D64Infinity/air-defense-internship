@@ -8,7 +8,6 @@ import {
 import {
   createExplosion,
   updateExplosions,
-  renderExplosions,
   type ExplosionEffect,
 } from './effects';
 import {
@@ -20,6 +19,7 @@ import {
   type HudManager,
 } from './ui';
 import { setupGameInputs } from './input';
+import { createRadarRender, type RadarRender } from './radarRender';
 
 // Реэкспорт для сохранения полной обратной совместимости
 export { GAME_CONFIG, GAME_CONFIG as RADAR_CONFIG };
@@ -27,8 +27,7 @@ export type { TargetType, DecisionChoice, GameTarget, GameTarget as RadarTarget 
 
 
 export class GameScene extends Phaser.Scene {
-  private staticGraphics!: Phaser.GameObjects.Graphics;
-  private dynamicGraphics!: Phaser.GameObjects.Graphics;
+  private radarRender!: RadarRender;
   private hud!: HudManager;
   private gameOverOverlay!: GameOverOverlay;
   private pauseOverlay!: PauseOverlay;
@@ -90,12 +89,8 @@ export class GameScene extends Phaser.Scene {
     const savedRecord = localStorage.getItem('radar_station_record');
     this.highScore = savedRecord ? parseInt(savedRecord, 10) || 0 : 0;
 
-    // 1. Статическая графика радара
-    this.staticGraphics = this.add.graphics();
-    this.drawRadarGrid();
-
-    // 2. Динамическая графика (луч, шлейф, метки, маркер базы)
-    this.dynamicGraphics = this.add.graphics();
+    // 1. Рендер экрана радара (статическая сетка и динамические слои)
+    this.radarRender = createRadarRender(this);
 
     // 3. Панель консоли оператора
     this.hud = createHud(this, {
@@ -138,66 +133,22 @@ export class GameScene extends Phaser.Scene {
     this.handleSpawning(dt);
     this.updateScanning(dt);
     updateExplosions(this.explosions, dt);
-    this.renderDynamicElements();
+    this.radarRender.renderDynamic({
+      beamAngle: this.beamAngle,
+      baseFlashTimer: this.baseFlashTimer,
+      targets: this.targets,
+      selectedTarget: this.selectedTarget,
+      isScanning: this.isScanning,
+      scanningTarget: this.scanningTarget,
+      timeNow: this.time.now,
+      explosions: this.explosions,
+    });
     this.updateFeedback(dt);
     this.updateTelemetry();
     this.updateWaveBanner(dt);
 
     if (this.baseFlashTimer > 0) {
       this.baseFlashTimer -= dt;
-    }
-  }
-
-  /**
-   * Отрисовка постоянной сетки радара
-   */
-  private drawRadarGrid(): void {
-    const { radarX, radarY, radarRadius, colors } = GAME_CONFIG;
-
-    this.staticGraphics.fillStyle(colors.radarBg, 0.88);
-    this.staticGraphics.fillCircle(radarX, radarY, radarRadius);
-
-    // Кольца дальности (25%, 50%, 75%, 100%)
-    const ringSteps = [0.25, 0.5, 0.75, 1.0];
-    ringSteps.forEach((fraction, index) => {
-      const isOuter = index === ringSteps.length - 1;
-      this.staticGraphics.lineStyle(
-        isOuter ? 2 : 1,
-        colors.gridRing,
-        isOuter ? 0.9 : 0.2,
-      );
-      this.staticGraphics.strokeCircle(radarX, radarY, radarRadius * fraction);
-    });
-
-    // Зона ближней опасности (danger close ring)
-    this.staticGraphics.lineStyle(1, colors.dangerRing, 0.3);
-    this.staticGraphics.strokeCircle(radarX, radarY, 70);
-
-    // Оси
-    this.staticGraphics.lineStyle(1, colors.gridAxis, 0.22);
-    this.staticGraphics.beginPath();
-    this.staticGraphics.moveTo(radarX - radarRadius, radarY);
-    this.staticGraphics.lineTo(radarX + radarRadius, radarY);
-    this.staticGraphics.moveTo(radarX, radarY - radarRadius);
-    this.staticGraphics.lineTo(radarX, radarY + radarRadius);
-    this.staticGraphics.strokePath();
-
-    // Засечки по окружности
-    for (let deg = 0; deg < 360; deg += 30) {
-      const rad = Phaser.Math.DegToRad(deg);
-      const isMajor = deg % 90 === 0;
-      const tickLength = isMajor ? 10 : 5;
-
-      const x1 = radarX + Math.cos(rad) * (radarRadius - tickLength);
-      const y1 = radarY + Math.sin(rad) * (radarRadius - tickLength);
-      const x2 = radarX + Math.cos(rad) * radarRadius;
-      const y2 = radarY + Math.sin(rad) * radarRadius;
-
-      this.staticGraphics.lineStyle(1, colors.gridRing, isMajor ? 0.7 : 0.3);
-      this.staticGraphics.beginPath();
-      this.staticGraphics.moveTo(x1, y1);
-      this.staticGraphics.lineTo(x2, y2);
-      this.staticGraphics.strokePath();
     }
   }
 
@@ -873,118 +824,6 @@ export class GameScene extends Phaser.Scene {
     return 'missile';
   }
 
-  /**
-   * Отрисовка динамических объектов радара
-   */
-  private renderDynamicElements(): void {
-    const { radarX, radarY, radarRadius, colors, trailSteps, trailAngle, blipRadius } =
-      GAME_CONFIG;
-
-    this.dynamicGraphics.clear();
-
-    // 1. Шлейф луча
-    for (let i = 0; i < trailSteps; i++) {
-      const a1 = this.beamAngle - (trailAngle * (trailSteps - i)) / trailSteps;
-      const a2 = this.beamAngle - (trailAngle * (trailSteps - (i + 1))) / trailSteps;
-      const sliceAlpha = (i / trailSteps) * 0.22;
-
-      this.dynamicGraphics.fillStyle(colors.trail, sliceAlpha);
-      this.dynamicGraphics.beginPath();
-      this.dynamicGraphics.moveTo(radarX, radarY);
-      this.dynamicGraphics.arc(radarX, radarY, radarRadius, a1, a2, false);
-      this.dynamicGraphics.closePath();
-      this.dynamicGraphics.fillPath();
-    }
-
-    // 2. Линия луча
-    const beamEndX = radarX + Math.cos(this.beamAngle) * radarRadius;
-    const beamEndY = radarY + Math.sin(this.beamAngle) * radarRadius;
-
-    this.dynamicGraphics.lineStyle(2, colors.beam, 0.95);
-    this.dynamicGraphics.beginPath();
-    this.dynamicGraphics.moveTo(radarX, radarY);
-    this.dynamicGraphics.lineTo(beamEndX, beamEndY);
-    this.dynamicGraphics.strokePath();
-
-    // 3. Маркер базы в центре (вспыхивает красным при уроне)
-    const baseColor = this.baseFlashTimer > 0 ? 0xef4444 : colors.gridRing;
-    this.dynamicGraphics.lineStyle(1.8, baseColor, 0.95);
-    this.dynamicGraphics.strokeCircle(radarX, radarY, 8);
-    this.dynamicGraphics.fillStyle(baseColor, 0.95);
-    this.dynamicGraphics.fillCircle(radarX, radarY, 3);
-
-    // 4. Метки целей (люминофор)
-    for (const target of this.targets) {
-      if (target.alpha > 0.02) {
-        this.dynamicGraphics.fillStyle(colors.blipHalo, target.alpha * 0.38);
-        this.dynamicGraphics.fillCircle(target.x, target.y, blipRadius * 2.4);
-
-        this.dynamicGraphics.fillStyle(colors.blipCore, target.alpha);
-        this.dynamicGraphics.fillCircle(target.x, target.y, blipRadius);
-      }
-
-      // Индикатор опознанной цели
-      if (target.isScanned) {
-        const typeCfg = GAME_CONFIG.targetTypes[target.type];
-        const tagColor =
-          typeCfg.category === 'threat'
-            ? 0xef4444
-            : typeCfg.category === 'friend'
-              ? 0x22c55e
-              : 0x94a3b8;
-        this.dynamicGraphics.lineStyle(1.2, tagColor, 0.85);
-        this.dynamicGraphics.strokeCircle(target.x, target.y, blipRadius * 2.8);
-      }
-    }
-
-    // 5. Анимация сканирования сигнатуры
-    if (this.isScanning && this.scanningTarget) {
-      const { x, y } = this.scanningTarget;
-      const pulse = 16 + Math.sin(this.time.now * 0.015) * 3;
-      this.dynamicGraphics.lineStyle(1.5, colors.scanCyan, 0.9);
-      this.dynamicGraphics.strokeCircle(x, y, pulse);
-
-      const rot = (this.time.now * 0.005) % (Math.PI * 2);
-      for (let i = 0; i < 4; i++) {
-        const a = rot + (i * Math.PI) / 2;
-        this.dynamicGraphics.beginPath();
-        this.dynamicGraphics.moveTo(
-          x + Math.cos(a) * (pulse - 4),
-          y + Math.sin(a) * (pulse - 4),
-        );
-        this.dynamicGraphics.lineTo(
-          x + Math.cos(a) * (pulse + 4),
-          y + Math.sin(a) * (pulse + 4),
-        );
-        this.dynamicGraphics.strokePath();
-      }
-    }
-
-    // 6. Маркер захвата выбранной цели [ · ]
-    if (this.selectedTarget) {
-      const { x, y } = this.selectedTarget;
-      const s = 11;
-      this.dynamicGraphics.lineStyle(1.5, colors.selectedBox, 0.95);
-
-      this.dynamicGraphics.beginPath();
-      this.dynamicGraphics.moveTo(x - s, y - s + 4);
-      this.dynamicGraphics.lineTo(x - s, y - s);
-      this.dynamicGraphics.lineTo(x - s + 4, y - s);
-      this.dynamicGraphics.moveTo(x + s - 4, y - s);
-      this.dynamicGraphics.lineTo(x + s, y - s);
-      this.dynamicGraphics.lineTo(x + s, y - s + 4);
-      this.dynamicGraphics.moveTo(x - s, y + s - 4);
-      this.dynamicGraphics.lineTo(x - s, y + s);
-      this.dynamicGraphics.lineTo(x - s + 4, y + s);
-      this.dynamicGraphics.moveTo(x + s - 4, y + s);
-      this.dynamicGraphics.lineTo(x + s, y + s);
-      this.dynamicGraphics.lineTo(x + s, y + s - 4);
-      this.dynamicGraphics.strokePath();
-    }
-
-    // 7. Эффекты взрывов и ударных волн
-    renderExplosions(this.dynamicGraphics, this.explosions);
-  }
 }
 
 
