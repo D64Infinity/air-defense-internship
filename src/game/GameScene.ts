@@ -19,6 +19,7 @@ import {
   type PauseOverlay,
   type HudManager,
 } from './ui';
+import { setupGameInputs } from './input';
 
 // Реэкспорт для сохранения полной обратной совместимости
 export { GAME_CONFIG, GAME_CONFIG as RADAR_CONFIG };
@@ -105,7 +106,20 @@ export class GameScene extends Phaser.Scene {
     });
     this.pauseOverlay = createPauseOverlay(this, () => this.togglePause());
     this.gameOverOverlay = createGameOverOverlay(this, () => this.restartGame());
-    this.setupInputs();
+    setupGameInputs(this, {
+      onSelectRadarTarget: (x, y) => {
+        this.selectedTarget = this.findTargetNear(x, y);
+        this.updateTargetSelectionUI();
+      },
+      onTogglePause: () => this.togglePause(),
+      onDecision: (choice) => this.resolveDecision(choice),
+      onScan: () => this.startScanning(),
+      onBuyMissile: () => this.buyInterceptor(),
+      onBuyScan: () => this.buyScan(),
+      onRestart: () => this.restartGame(),
+      isGameOver: () => this.isGameOver,
+      isPaused: () => this.isPaused,
+    });
 
     // Стартовые цели спавнятся ДАЛЕКО от базы для комфортного старта
     this.spawnInitialTargets(3);
@@ -259,51 +273,6 @@ export class GameScene extends Phaser.Scene {
     this.scene.restart();
   }
 
-  /**
-   * Настройка пользовательского ввода
-   */
-  private setupInputs(): void {
-    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (this.isGameOver || this.isPaused || pointer.x >= 640) return;
-
-      const clicked = this.findTargetNear(pointer.x, pointer.y);
-      this.selectedTarget = clicked;
-      this.updateTargetSelectionUI();
-    });
-
-    if (this.input.keyboard) {
-      this.input.keyboard.on('keydown-P', () => {
-        this.togglePause();
-      });
-      this.input.keyboard.on('keydown-ONE', () => {
-        if (!this.isGameOver && !this.isPaused) this.resolveDecision('friend');
-      });
-      this.input.keyboard.on('keydown-TWO', () => {
-        if (!this.isGameOver && !this.isPaused) this.resolveDecision('threat');
-      });
-      this.input.keyboard.on('keydown-THREE', () => {
-        if (!this.isGameOver && !this.isPaused) this.resolveDecision('ignore');
-      });
-      this.input.keyboard.on('keydown-FOUR', () => {
-        if (!this.isGameOver && !this.isPaused) this.startScanning();
-      });
-      this.input.keyboard.on('keydown-FIVE', () => {
-        if (!this.isGameOver && !this.isPaused) this.buyInterceptor();
-      });
-      this.input.keyboard.on('keydown-NUMPAD_FIVE', () => {
-        if (!this.isGameOver && !this.isPaused) this.buyInterceptor();
-      });
-      this.input.keyboard.on('keydown-SIX', () => {
-        if (!this.isGameOver && !this.isPaused) this.buyScan();
-      });
-      this.input.keyboard.on('keydown-NUMPAD_SIX', () => {
-        if (!this.isGameOver && !this.isPaused) this.buyScan();
-      });
-      this.input.keyboard.on('keydown-SPACE', () => {
-        if (this.isGameOver) this.restartGame();
-      });
-    }
-  }
 
   private findTargetNear(x: number, y: number): GameTarget | null {
     let closest: GameTarget | null = null;
