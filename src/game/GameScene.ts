@@ -52,10 +52,12 @@ export class GameScene extends Phaser.Scene {
   // Состояние игры
   private baseHealth = GAME_CONFIG.maxBaseHealth;
   private score = 0;
+  private credits = GAME_CONFIG.startCredits;
   private streak = 0;
   private bestStreak = 0;
   private wave = 1;
   private waveTargetsToSpawn = 7;
+  private waveHadFlaws = false;
   private isGameOver = false;
   private highScore = 0;
 
@@ -71,10 +73,12 @@ export class GameScene extends Phaser.Scene {
     this.isPaused = false;
     this.baseHealth = GAME_CONFIG.maxBaseHealth;
     this.score = 0;
+    this.credits = GAME_CONFIG.startCredits;
     this.streak = 0;
     this.bestStreak = 0;
     this.wave = 1;
     this.waveTargetsToSpawn = 7;
+    this.waveHadFlaws = false;
     this.currentBeamSpeed = GAME_CONFIG.beamSpeedBase;
     this.interceptors = GAME_CONFIG.startInterceptors;
     this.scansAvailable = GAME_CONFIG.maxScansPerWave;
@@ -277,7 +281,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Дозакупка ракеты-перехватчика за накопленные очки (бюджет)
+   * Дозакупка ракеты-перехватчика за кредиты снабжения базы
    */
   private buyInterceptor(): void {
     if (this.isGameOver || this.isPaused) return;
@@ -290,18 +294,18 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    if (this.score < GAME_CONFIG.interceptorCost) {
+    if (this.credits < GAME_CONFIG.interceptorCost) {
       this.showFeedback(
-        `[БЮДЖЕТ] НЕ ХВАТАЕТ ОЧКОВ (НУЖНО ${GAME_CONFIG.interceptorCost})!`,
+        `[БЮДЖЕТ] НЕ ХВАТАЕТ КРЕДИТОВ (НУЖНО ${GAME_CONFIG.interceptorCost} CR)!`,
         '#ef4444',
       );
       return;
     }
 
-    this.score -= GAME_CONFIG.interceptorCost;
+    this.credits -= GAME_CONFIG.interceptorCost;
     this.interceptors++;
     this.showFeedback(
-      `[СНАБЖЕНИЕ] +1 РАКЕТА (-${GAME_CONFIG.interceptorCost} ОЧКОВ)`,
+      `[СНАБЖЕНИЕ] +1 РАКЕТА (-${GAME_CONFIG.interceptorCost} CR)`,
       '#22c55e',
     );
     this.updateScoreBoard();
@@ -309,7 +313,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Дозакупка заряда сканирования за накопленные очки (бюджет)
+   * Дозакупка заряда сканирования за кредиты снабжения базы
    */
   private buyScan(): void {
     if (this.isGameOver || this.isPaused) return;
@@ -322,18 +326,18 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    if (this.score < GAME_CONFIG.scanCost) {
+    if (this.credits < GAME_CONFIG.scanCost) {
       this.showFeedback(
-        `[БЮДЖЕТ] НЕ ХВАТАЕТ ОЧКОВ (НУЖНО ${GAME_CONFIG.scanCost})!`,
+        `[БЮДЖЕТ] НЕ ХВАТАЕТ КРЕДИТОВ (НУЖНО ${GAME_CONFIG.scanCost} CR)!`,
         '#ef4444',
       );
       return;
     }
 
-    this.score -= GAME_CONFIG.scanCost;
+    this.credits -= GAME_CONFIG.scanCost;
     this.scansAvailable++;
     this.showFeedback(
-      `[СНАБЖЕНИЕ] +1 СКАН (-${GAME_CONFIG.scanCost} ОЧКОВ)`,
+      `[СНАБЖЕНИЕ] +1 СКАН (-${GAME_CONFIG.scanCost} CR)`,
       '#22c55e',
     );
     this.updateScoreBoard();
@@ -399,19 +403,33 @@ export class GameScene extends Phaser.Scene {
     let feedbackColor = '#4ade80';
 
     if (choice === correctCategory) {
+      const isThreat = target.type === 'missile' || target.type === 'bomber';
+      const distToBase = Math.hypot(
+        target.x - GAME_CONFIG.radarX,
+        target.y - GAME_CONFIG.radarY,
+      );
+      const distFactor = isThreat
+        ? 1 + (distToBase / GAME_CONFIG.radarRadius) * GAME_CONFIG.distanceBonusMax
+        : 1.0;
+
       const isDecoy = target.type === 'decoy';
       const basePoints = isDecoy
         ? GAME_CONFIG.scorePerDecoyIgnored
         : GAME_CONFIG.scorePerCorrect;
-      const points = Math.round(basePoints * multiplier);
+      const points = Math.round(basePoints * multiplier * distFactor);
       this.score += points;
       this.streak += 1;
       if (this.streak > this.bestStreak) this.bestStreak = this.streak;
 
+      const isLongRange = isThreat && distToBase >= GAME_CONFIG.radarRadius * 0.7;
+      const rangeTag = isLongRange ? ' [ДАЛЬНИЙ РУБЕЖ]' : '';
+
       if (target.type === 'missile') {
-        feedback = `[ВЕРНО!] РАКЕТА СБИТА (+${points}) [РАКЕТ: ${this.interceptors}]`;
+        this.credits += GAME_CONFIG.creditsPerMissile;
+        feedback = `[ВЕРНО!] РАКЕТА СБИТА (+${points}, +${GAME_CONFIG.creditsPerMissile} CR)${rangeTag}`;
       } else if (target.type === 'bomber') {
-        feedback = `[ВЕРНО!] БОМБАРДИРОВЩИК СБИТ (+${points}) [РАКЕТ: ${this.interceptors}]`;
+        this.credits += GAME_CONFIG.creditsPerBomber;
+        feedback = `[ВЕРНО!] БОМБАРДИРОВЩИК СБИТ (+${points}, +${GAME_CONFIG.creditsPerBomber} CR)${rangeTag}`;
       } else if (target.type === 'friend') {
         feedback = `[ВЕРНО!] СОЮЗНИК ПРОПУЩЕН (+${points})`;
       } else {
@@ -425,8 +443,10 @@ export class GameScene extends Phaser.Scene {
       feedbackColor = '#f87171';
 
       if (target.type === 'friend' && choice === 'threat') {
+        this.waveHadFlaws = true;
         this.score = Math.max(0, this.score - GAME_CONFIG.friendlyFirePenalty);
-        feedback = `[ОШИБКА!] СБИТ СВОЙ БОРТ! (-${GAME_CONFIG.friendlyFirePenalty})`;
+        this.credits = Math.max(0, this.credits - GAME_CONFIG.creditsFriendlyFirePenalty);
+        feedback = `[ОШИБКА!] СБИТ СВОЙ БОРТ! (-${GAME_CONFIG.friendlyFirePenalty} очк, -${GAME_CONFIG.creditsFriendlyFirePenalty} CR)`;
       } else if (target.type === 'decoy' && choice === 'threat') {
         feedback = `[ПРОМАХ!] ПЕРЕХВАТЧИК ВПУСТУЮ НА ЛОВУШКУ! (Ост: ${this.interceptors})`;
         feedbackColor = '#fbbf24';
@@ -467,6 +487,7 @@ export class GameScene extends Phaser.Scene {
   private updateScoreBoard(): void {
     this.hud.updateScoreBoard({
       score: this.score,
+      credits: this.credits,
       streak: this.streak,
       wave: this.wave,
       highScore: this.highScore,
@@ -565,6 +586,7 @@ export class GameScene extends Phaser.Scene {
       // Цель проникла на базу
       if (distToBase < 18) {
         if (target.type === 'missile') {
+          this.waveHadFlaws = true;
           this.baseHealth = Math.max(0, this.baseHealth - GAME_CONFIG.damageMissile);
           this.showFeedback(
             `[УДАР!] ПРОПУЩЕНА РАКЕТА! (-${GAME_CONFIG.damageMissile} HP)`,
@@ -576,6 +598,7 @@ export class GameScene extends Phaser.Scene {
             continue;
           }
           target.hasBombedBase = true;
+          this.waveHadFlaws = true;
           this.baseHealth = Math.max(0, this.baseHealth - GAME_CONFIG.damageBomber);
           this.showFeedback(
             `[УДАР!] БОМБАРДИРОВКА БАЗЫ! (-${GAME_CONFIG.damageBomber} HP)`,
@@ -696,9 +719,21 @@ export class GameScene extends Phaser.Scene {
       );
       this.scansAvailable = GAME_CONFIG.maxScansPerWave;
 
+      const waveCredits =
+        GAME_CONFIG.creditsWaveBase +
+        (this.wave - 1) * GAME_CONFIG.creditsWavePerLevel;
+      this.credits += waveCredits;
+
+      let cleanBonusText = '';
+      if (!this.waveHadFlaws) {
+        this.score += GAME_CONFIG.cleanWaveBonus;
+        cleanBonusText = `\nЧИСТАЯ ВОЛНА! (+${GAME_CONFIG.cleanWaveBonus} ОЧК)`;
+      }
+      this.waveHadFlaws = false;
+
       this.updateScoreBoard();
       this.showWaveBanner(
-        `ВОЛНА ${this.wave}\nСНАБЖЕНИЕ: +${addedAmmo} РАКЕТЫ, СКАНЫ 3/3`,
+        `ВОЛНА ${this.wave}\nСНАБЖЕНИЕ: +${addedAmmo} РАКЕТЫ, +${waveCredits} CR, СКАНЫ 3/3${cleanBonusText}`,
       );
     }
   }

@@ -32,19 +32,29 @@ export const GAME_CONFIG = {
   scorePerCorrect: 100,
   scorePerDecoyIgnored: 0, // за игнорирование ловушки очки не начисляются (только рост серии)
   friendlyFirePenalty: 150,
+  cleanWaveBonus: 300, // бонус к счёту за волну без урона и без огня по своим
+  distanceBonusMax: 0.6, // максимальный бонус за дальность перехвата (до +60% на границе радара)
   streakStepForMultiplier: 2, // каждые 2 правильных ответа множитель растёт на +0.5x
   maxMultiplier: 4.0,
+
+  // Экономика (кредиты и снабжение базы)
+  startCredits: 200,
+  creditsPerMissile: 100,
+  creditsPerBomber: 150,
+  creditsWaveBase: 150,
+  creditsWavePerLevel: 25,
+  creditsFriendlyFirePenalty: 150,
 
   // Ресурс перехватчиков (боезапас ПВО)
   maxInterceptors: 6,
   startInterceptors: 5,
   interceptorRefillPerWave: 3,
-  interceptorCost: 150, // стоимость закупки 1 ракеты за очки (бюджет)
+  interceptorCost: 150, // стоимость закупки 1 ракеты в кредитах
 
   // Параметры сканирования
   maxScansPerWave: 3,
   scanDuration: 1.5, // секунд на дешифровку сигнатуры
-  scanCost: 100, // стоимость закупки 1 заряда скана за очки (бюджет)
+  scanCost: 75, // стоимость закупки 1 заряда скана в кредитах
 
   // Характеристики типов целей (скорости сбалансированы для честного времени реакции)
   targetTypes: {

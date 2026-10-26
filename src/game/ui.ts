@@ -279,6 +279,7 @@ export interface HudCallbacks {
 
 export interface ScoreBoardData {
   score: number;
+  credits: number;
   streak: number;
   wave: number;
   highScore: number;
@@ -368,30 +369,37 @@ export function createHud(
     fontStyle: 'bold',
   });
 
-  const scoreText = scene.add.text(660, 104, 'СЧЁТ: 0000', {
+  const scoreText = scene.add.text(660, 102, 'СЧЁТ: 0000', {
     ...monoStyle,
-    fontSize: '15px',
+    fontSize: '14px',
     color: '#facc15',
     fontStyle: 'bold',
   });
 
-  const highScoreText = scene.add.text(785, 104, 'РЕКОРД: 0', {
+  const highScoreText = scene.add.text(785, 102, 'РЕКОРД: 0', {
     ...monoStyle,
     fontSize: '12px',
     color: '#cbd5e1',
   });
 
-  const streakText = scene.add.text(660, 132, 'СЕРИЯ: 0 (x1.0)', {
-    ...monoStyle,
-    fontSize: '12px',
-    color: '#86efac',
-  });
-
-  const waveText = scene.add.text(785, 132, 'ВОЛНА: 1', {
+  const creditsText = scene.add.text(660, 120, 'КРЕДИТЫ: 200 CR', {
     ...monoStyle,
     fontSize: '12px',
     color: '#38bdf8',
     fontStyle: 'bold',
+  });
+
+  const waveText = scene.add.text(785, 120, 'ВОЛНА: 1', {
+    ...monoStyle,
+    fontSize: '12px',
+    color: '#38bdf8',
+    fontStyle: 'bold',
+  });
+
+  const streakText = scene.add.text(660, 137, 'СЕРИЯ: 0 (x1.0)', {
+    ...monoStyle,
+    fontSize: '12px',
+    color: '#86efac',
   });
 
   const interceptorsText = scene.add.text(660, 154, 'РАКЕТЫ: [|||||] 5/6', {
@@ -554,7 +562,7 @@ export function createHud(
       startY + (btnH + gap) * 4,
       124,
       btnH,
-      `[5] +РАКЕТА (${GAME_CONFIG.interceptorCost})`,
+      `[5] +РАКЕТА (${GAME_CONFIG.interceptorCost} CR)`,
       GAME_CONFIG.colors.btnSupply,
       () => callbacks.onBuyMissile(),
       '11px',
@@ -564,7 +572,7 @@ export function createHud(
       startY + (btnH + gap) * 4,
       124,
       btnH,
-      `[6] +СКАН (${GAME_CONFIG.scanCost})`,
+      `[6] +СКАН (${GAME_CONFIG.scanCost} CR)`,
       GAME_CONFIG.colors.btnSupply,
       () => callbacks.onBuyScan(),
       '11px',
@@ -614,6 +622,7 @@ export function createHud(
       Math.floor(data.streak / GAME_CONFIG.streakStepForMultiplier) * 0.5
     ).toFixed(1);
     scoreText.setText(`СЧЁТ: ${data.score.toString().padStart(4, '0')}`);
+    creditsText.setText(`КРЕДИТЫ: ${data.credits} CR`);
     streakText.setText(`СЕРИЯ: ${data.streak} (x${mult})`);
     waveText.setText(`ВОЛНА: ${data.wave}`);
     highScoreText.setText(`РЕКОРД: ${data.highScore}`);
@@ -628,12 +637,12 @@ export function createHud(
 
     const canBuyMissile =
       data.interceptors < GAME_CONFIG.maxInterceptors &&
-      data.score >= GAME_CONFIG.interceptorCost;
+      data.credits >= GAME_CONFIG.interceptorCost;
     buttons.buyMissile.setEnabled(canBuyMissile);
 
     const canBuyScan =
       data.scansAvailable < GAME_CONFIG.maxScansPerWave &&
-      data.score >= GAME_CONFIG.scanCost;
+      data.credits >= GAME_CONFIG.scanCost;
     buttons.buyScan.setEnabled(canBuyScan);
   };
 
