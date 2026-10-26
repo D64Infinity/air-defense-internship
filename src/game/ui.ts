@@ -5,6 +5,14 @@ import {
   type GameTarget,
 } from './gameConfig';
 
+export interface GameSessionStats {
+  missilesShot: number;
+  bombersShot: number;
+  friendsSaved: number;
+  threatsMissed: number;
+  friendlyFireCount: number;
+}
+
 /**
  * Интерфейс управления оверлеем поражения
  */
@@ -16,6 +24,7 @@ export interface GameOverOverlay {
     wave: number,
     bestStreak: number,
     isNewRecord: boolean,
+    stats: GameSessionStats,
   ) => void;
   hide: () => void;
 }
@@ -58,7 +67,7 @@ export function createGameOverOverlay(
     width / 2,
     height / 2,
     480,
-    320,
+    340,
     0x071b0f,
     0.96,
   );
@@ -106,8 +115,8 @@ export function createGameOverOverlay(
 
   const wavesText = scene.add.text(
     width / 2,
-    height / 2 + 30,
-    'ОТРАЖЕНО ВОЛН: 1',
+    height / 2 + 25,
+    'ВОЛНА: 1 | МАКС. СЕРИЯ: 0',
     {
       fontFamily: 'Consolas, monospace',
       fontSize: '13px',
@@ -116,10 +125,18 @@ export function createGameOverOverlay(
   );
   wavesText.setOrigin(0.5);
 
+  const statsText = scene.add.text(width / 2, height / 2 + 55, '', {
+    fontFamily: 'Consolas, monospace',
+    fontSize: '12px',
+    color: '#cbd5e1',
+    align: 'center',
+    lineSpacing: 3,
+  }).setOrigin(0.5);
+
   // Кнопка рестарта
   const restartBtn = scene.add.rectangle(
     width / 2,
-    height / 2 + 85,
+    height / 2 + 105,
     260,
     42,
     0x16a34a,
@@ -130,7 +147,7 @@ export function createGameOverOverlay(
 
   const restartText = scene.add.text(
     width / 2,
-    height / 2 + 85,
+    height / 2 + 105,
     'ЕЩЁ РАЗ (ПРОБЕЛ)',
     {
       fontFamily: 'Consolas, monospace',
@@ -152,18 +169,24 @@ export function createGameOverOverlay(
     scoreText,
     recordText,
     wavesText,
+    statsText,
     restartBtn,
     restartText,
   ]);
 
   return {
     container,
-    show: (score, highScore, wave, bestStreak, isNewRecord) => {
+    show: (score, highScore, wave, bestStreak, isNewRecord, stats) => {
       scoreText.setText(
         `ИТОГОВЫЙ СЧЁТ: ${score}` + (isNewRecord ? ' (НОВЫЙ РЕКОРД!)' : ''),
       );
       recordText.setText(`ЛУЧШИЙ РЕКОРД: ${highScore}`);
       wavesText.setText(`ВОЛНА: ${wave} | МАКС. СЕРИЯ: ${bestStreak}`);
+      statsText.setText(
+        `СБИТО: ${stats.missilesShot} РАКЕТ, ${stats.bombersShot} БОМБ.\n` +
+        `СОЮЗНИКИ: ${stats.friendsSaved} | ПРОПУЩЕНО: ${stats.threatsMissed}` +
+        (stats.friendlyFireCount > 0 ? ` | СВОИ: -${stats.friendlyFireCount}` : ''),
+      );
       container.setVisible(true);
     },
     hide: () => {

@@ -17,6 +17,7 @@ import {
   type GameOverOverlay,
   type PauseOverlay,
   type HudManager,
+  type GameSessionStats,
 } from './ui';
 import { setupGameInputs } from './input';
 import { createRadarRender, type RadarRender } from './radarRender';
@@ -60,6 +61,7 @@ export class GameScene extends Phaser.Scene {
   private waveHadFlaws = false;
   private isGameOver = false;
   private highScore = 0;
+  private stats: GameSessionStats = { missilesShot: 0, bombersShot: 0, friendsSaved: 0, threatsMissed: 0, friendlyFireCount: 0 };
 
   // Таймеры эффектов
   private baseFlashTimer = 0;
@@ -79,6 +81,7 @@ export class GameScene extends Phaser.Scene {
     this.wave = 1;
     this.waveTargetsToSpawn = 7;
     this.waveHadFlaws = false;
+    this.stats = { missilesShot: 0, bombersShot: 0, friendsSaved: 0, threatsMissed: 0, friendlyFireCount: 0 };
     this.currentBeamSpeed = GAME_CONFIG.beamSpeedBase;
     this.interceptors = GAME_CONFIG.startInterceptors;
     this.scansAvailable = GAME_CONFIG.maxScansPerWave;
@@ -224,6 +227,7 @@ export class GameScene extends Phaser.Scene {
       this.wave,
       this.bestStreak,
       isNewRecord,
+      this.stats,
     );
   }
 
@@ -425,12 +429,15 @@ export class GameScene extends Phaser.Scene {
       const rangeTag = isLongRange ? ' [ДАЛЬНИЙ РУБЕЖ]' : '';
 
       if (target.type === 'missile') {
+        this.stats.missilesShot++;
         this.credits += GAME_CONFIG.creditsPerMissile;
         feedback = `[ВЕРНО!] РАКЕТА СБИТА (+${points}, +${GAME_CONFIG.creditsPerMissile} CR)${rangeTag}`;
       } else if (target.type === 'bomber') {
+        this.stats.bombersShot++;
         this.credits += GAME_CONFIG.creditsPerBomber;
         feedback = `[ВЕРНО!] БОМБАРДИРОВЩИК СБИТ (+${points}, +${GAME_CONFIG.creditsPerBomber} CR)${rangeTag}`;
       } else if (target.type === 'friend') {
+        this.stats.friendsSaved++;
         feedback = `[ВЕРНО!] СОЮЗНИК ПРОПУЩЕН (+${points})`;
       } else {
         feedback =
@@ -443,6 +450,7 @@ export class GameScene extends Phaser.Scene {
       feedbackColor = '#f87171';
 
       if (target.type === 'friend' && choice === 'threat') {
+        this.stats.friendlyFireCount++;
         this.waveHadFlaws = true;
         this.score = Math.max(0, this.score - GAME_CONFIG.friendlyFirePenalty);
         this.credits = Math.max(0, this.credits - GAME_CONFIG.creditsFriendlyFirePenalty);
@@ -586,6 +594,7 @@ export class GameScene extends Phaser.Scene {
       // Цель проникла на базу
       if (distToBase < 18) {
         if (target.type === 'missile') {
+          this.stats.threatsMissed++;
           this.waveHadFlaws = true;
           this.baseHealth = Math.max(0, this.baseHealth - GAME_CONFIG.damageMissile);
           this.showFeedback(
@@ -598,6 +607,7 @@ export class GameScene extends Phaser.Scene {
             continue;
           }
           target.hasBombedBase = true;
+          this.stats.threatsMissed++;
           this.waveHadFlaws = true;
           this.baseHealth = Math.max(0, this.baseHealth - GAME_CONFIG.damageBomber);
           this.showFeedback(
