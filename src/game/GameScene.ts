@@ -23,10 +23,6 @@ import { setupGameInputs } from './input';
 import { createRadarRender, type RadarRender } from './radarRender';
 import { createSpawner, type TargetSpawner } from './spawner';
 
-// Реэкспорт для сохранения полной обратной совместимости
-export { GAME_CONFIG, GAME_CONFIG as RADAR_CONFIG };
-export type { TargetType, DecisionChoice, GameTarget, GameTarget as RadarTarget };
-
 
 export class GameScene extends Phaser.Scene {
   private radarRender!: RadarRender;
@@ -160,16 +156,14 @@ export class GameScene extends Phaser.Scene {
       timeNow: this.time.now,
       explosions: this.explosions,
     });
-    this.updateFeedback(dt);
+    this.hud.updateFeedback(dt);
     this.updateTelemetry();
-    this.updateWaveBanner(dt);
+    this.hud.updateWaveBanner(dt);
 
     if (this.baseFlashTimer > 0) {
       this.baseFlashTimer -= dt;
     }
   }
-
-
 
   /**
    * Отрисовка полосы здоровья базы (делегирование в HUD)
@@ -184,14 +178,6 @@ export class GameScene extends Phaser.Scene {
   private showWaveBanner(text: string): void {
     this.hud.showWaveBanner(text);
   }
-
-  /**
-   * Обновление таймера баннера волны (делегирование в HUD)
-   */
-  private updateWaveBanner(dt: number): void {
-    this.hud.updateWaveBanner(dt);
-  }
-
 
   /**
    * Переключение паузы (безопасный тогл без накопления состояния)
@@ -259,6 +245,29 @@ export class GameScene extends Phaser.Scene {
     return closest;
   }
 
+  private getDistToBase(x: number, y: number): number {
+    return Math.hypot(x - GAME_CONFIG.radarX, y - GAME_CONFIG.radarY);
+  }
+
+  /**
+   * Корректное удаление цели: снятие выделения, сброс сканирования и проверка волны
+   */
+  private removeTarget(target: GameTarget): void {
+    const idx = this.targets.indexOf(target);
+    if (idx !== -1) {
+      this.targets.splice(idx, 1);
+    }
+    if (this.selectedTarget === target) {
+      this.selectedTarget = null;
+      this.updateTargetSelectionUI();
+    }
+    if (this.scanningTarget === target) {
+      this.isScanning = false;
+      this.scanningTarget = null;
+    }
+    this.checkWaveProgress();
+  }
+
   /**
    * Запуск глубокого сканирования сигнатуры цели (1.5 сек)
    */
@@ -285,67 +294,58 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Дозакупка ракеты-перехватчика за кредиты снабжения базы
+   * Универсальная дозакупка снабжения за кредиты базы
    */
-  private buyInterceptor(): void {
+  private buySupplyItem(
+    current: number,
+    max: number,
+    cost: number,
+    maxFeedback: string,
+    maxColor: string,
+    successFeedback: string,
+    onSuccess: () => void,
+  ): void {
     if (this.isGameOver || this.isPaused) return;
 
-    if (this.interceptors >= GAME_CONFIG.maxInterceptors) {
-      this.showFeedback(
-        `[СКЛАД] МАКСИМУМ РАКЕТ (${GAME_CONFIG.maxInterceptors}/${GAME_CONFIG.maxInterceptors})!`,
-        '#facc15',
-      );
+    if (current >= max) {
+      this.showFeedback(maxFeedback, maxColor);
       return;
     }
 
-    if (this.credits < GAME_CONFIG.interceptorCost) {
-      this.showFeedback(
-        `[БЮДЖЕТ] НЕ ХВАТАЕТ КРЕДИТОВ (НУЖНО ${GAME_CONFIG.interceptorCost} CR)!`,
-        '#ef4444',
-      );
+    if (this.credits < cost) {
+      this.showFeedback(`[БЮДЖЕТ] НЕ ХВАТАЕТ КРЕДИТОВ (НУЖНО ${cost} CR)!`, '#ef4444');
       return;
     }
 
-    this.credits -= GAME_CONFIG.interceptorCost;
-    this.interceptors++;
-    this.showFeedback(
-      `[СНАБЖЕНИЕ] +1 РАКЕТА (-${GAME_CONFIG.interceptorCost} CR)`,
-      '#22c55e',
-    );
+    this.credits -= cost;
+    onSuccess();
+    this.showFeedback(successFeedback, '#22c55e');
     this.updateScoreBoard();
     this.updateTargetSelectionUI();
   }
 
-  /**
-   * Дозакупка заряда сканирования за кредиты снабжения базы
-   */
-  private buyScan(): void {
-    if (this.isGameOver || this.isPaused) return;
-
-    if (this.scansAvailable >= GAME_CONFIG.maxScansPerWave) {
-      this.showFeedback(
-        `[СЕНСОРЫ] МАКСИМУМ СКАНОВ (${GAME_CONFIG.maxScansPerWave}/${GAME_CONFIG.maxScansPerWave})!`,
-        '#38bdf8',
-      );
-      return;
-    }
-
-    if (this.credits < GAME_CONFIG.scanCost) {
-      this.showFeedback(
-        `[БЮДЖЕТ] НЕ ХВАТАЕТ КРЕДИТОВ (НУЖНО ${GAME_CONFIG.scanCost} CR)!`,
-        '#ef4444',
-      );
-      return;
-    }
-
-    this.credits -= GAME_CONFIG.scanCost;
-    this.scansAvailable++;
-    this.showFeedback(
-      `[СНАБЖЕНИЕ] +1 СКАН (-${GAME_CONFIG.scanCost} CR)`,
-      '#22c55e',
+  private buyInterceptor(): void {
+    this.buySupplyItem(
+      this.interceptors,
+      GAME_CONFIG.maxInterceptors,
+      GAME_CONFIG.interceptorCost,
+      `[СКЛАД] МАКСИМУМ РАКЕТ (${GAME_CONFIG.maxInterceptors}/${GAME_CONFIG.maxInterceptors})!`,
+      '#facc15',
+      `[СНАБЖЕНИЕ] +1 РАКЕТА (-${GAME_CONFIG.interceptorCost} CR)`,
+      () => this.interceptors++,
     );
-    this.updateScoreBoard();
-    this.updateTargetSelectionUI();
+  }
+
+  private buyScan(): void {
+    this.buySupplyItem(
+      this.scansAvailable,
+      GAME_CONFIG.maxScansPerWave,
+      GAME_CONFIG.scanCost,
+      `[СЕНСОРЫ] МАКСИМУМ СКАНОВ (${GAME_CONFIG.maxScansPerWave}/${GAME_CONFIG.maxScansPerWave})!`,
+      '#38bdf8',
+      `[СНАБЖЕНИЕ] +1 СКАН (-${GAME_CONFIG.scanCost} CR)`,
+      () => this.scansAvailable++,
+    );
   }
 
   /**
@@ -408,10 +408,7 @@ export class GameScene extends Phaser.Scene {
 
     if (choice === correctCategory) {
       const isThreat = target.type === 'missile' || target.type === 'bomber';
-      const distToBase = Math.hypot(
-        target.x - GAME_CONFIG.radarX,
-        target.y - GAME_CONFIG.radarY,
-      );
+      const distToBase = this.getDistToBase(target.x, target.y);
       const distFactor = isThreat
         ? 1 + (distToBase / GAME_CONFIG.radarRadius) * GAME_CONFIG.distanceBonusMax
         : 1.0;
@@ -467,29 +464,11 @@ export class GameScene extends Phaser.Scene {
 
     this.showFeedback(feedback, feedbackColor);
     this.updateScoreBoard();
-
-    // Сброс скана, если сканировалась эта цель
-    if (this.scanningTarget === target) {
-      this.isScanning = false;
-      this.scanningTarget = null;
-    }
-
-    const idx = this.targets.indexOf(target);
-    if (idx !== -1) {
-      this.targets.splice(idx, 1);
-    }
-    this.selectedTarget = null;
-    this.updateTargetSelectionUI();
-
-    this.checkWaveProgress();
+    this.removeTarget(target);
   }
 
   private showFeedback(text: string, color: string): void {
     this.hud.showFeedback(text, color);
-  }
-
-  private updateFeedback(dt: number): void {
-    this.hud.updateFeedback(dt);
   }
 
   private updateScoreBoard(): void {
@@ -586,10 +565,7 @@ export class GameScene extends Phaser.Scene {
         target.alpha = Math.max(0, target.alpha - dt / GAME_CONFIG.blipFadeDuration);
       }
 
-      const distToBase = Math.hypot(
-        target.x - GAME_CONFIG.radarX,
-        target.y - GAME_CONFIG.radarY,
-      );
+      const distToBase = this.getDistToBase(target.x, target.y);
 
       // Цель проникла на базу
       if (distToBase < 18) {
@@ -643,37 +619,14 @@ export class GameScene extends Phaser.Scene {
         }
 
         this.drawHealthBar();
-
-        if (this.selectedTarget === target) {
-          this.selectedTarget = null;
-          this.updateTargetSelectionUI();
-        }
-
-        if (this.scanningTarget === target) {
-          this.isScanning = false;
-          this.scanningTarget = null;
-        }
-
-        this.targets.splice(i, 1);
-        this.checkWaveProgress();
+        this.removeTarget(target);
 
         if (this.baseHealth <= 0 && !this.isGameOver) {
           this.triggerGameOver();
           return;
         }
       } else if (distToBase > GAME_CONFIG.radarRadius * 1.05) {
-        if (this.selectedTarget === target) {
-          this.selectedTarget = null;
-          this.updateTargetSelectionUI();
-        }
-
-        if (this.scanningTarget === target) {
-          this.isScanning = false;
-          this.scanningTarget = null;
-        }
-
-        this.targets.splice(i, 1);
-        this.checkWaveProgress();
+        this.removeTarget(target);
       }
     }
   }

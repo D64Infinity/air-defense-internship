@@ -67,59 +67,32 @@ export function setupGameInputs(
 
   if (!scene.input.keyboard) return;
 
+  const canAct = () => !actions.isGameOver() && !actions.isPaused();
+  const bindActiveKey = (key: string, callback: () => void) => {
+    scene.input.keyboard!.on(key, () => {
+      if (canAct()) callback();
+    });
+  };
+
   // Тактическая пауза (P)
-  scene.input.keyboard.on('keydown-P', () => {
-    actions.onTogglePause();
-  });
+  scene.input.keyboard.on('keydown-P', () => actions.onTogglePause());
 
   // Классификация целей (1, 2, 3)
-  scene.input.keyboard.on('keydown-ONE', () => {
-    if (!actions.isGameOver() && !actions.isPaused()) {
-      actions.onDecision('friend');
-    }
-  });
-
-  scene.input.keyboard.on('keydown-TWO', () => {
-    if (!actions.isGameOver() && !actions.isPaused()) {
-      actions.onDecision('threat');
-    }
-  });
-
-  scene.input.keyboard.on('keydown-THREE', () => {
-    if (!actions.isGameOver() && !actions.isPaused()) {
-      actions.onDecision('ignore');
-    }
-  });
+  bindActiveKey('keydown-ONE', () => actions.onDecision('friend'));
+  bindActiveKey('keydown-TWO', () => actions.onDecision('threat'));
+  bindActiveKey('keydown-THREE', () => actions.onDecision('ignore'));
 
   // Сканирование сигнатуры (4)
-  scene.input.keyboard.on('keydown-FOUR', () => {
-    if (!actions.isGameOver() && !actions.isPaused()) {
-      actions.onScan();
-    }
-  });
+  bindActiveKey('keydown-FOUR', () => actions.onScan());
 
-  // Снабжение: дозакупка ракет (5 / NumPad 5)
-  const triggerBuyMissile = () => {
-    if (!actions.isGameOver() && !actions.isPaused()) {
-      actions.onBuyMissile();
-    }
-  };
-  scene.input.keyboard.on('keydown-FIVE', triggerBuyMissile);
-  scene.input.keyboard.on('keydown-NUMPAD_FIVE', triggerBuyMissile);
-
-  // Снабжение: дозакупка сканов (6 / NumPad 6)
-  const triggerBuyScan = () => {
-    if (!actions.isGameOver() && !actions.isPaused()) {
-      actions.onBuyScan();
-    }
-  };
-  scene.input.keyboard.on('keydown-SIX', triggerBuyScan);
-  scene.input.keyboard.on('keydown-NUMPAD_SIX', triggerBuyScan);
+  // Снабжение: дозакупка ракет (5 / NumPad 5) и сканов (6 / NumPad 6)
+  bindActiveKey('keydown-FIVE', () => actions.onBuyMissile());
+  bindActiveKey('keydown-NUMPAD_FIVE', () => actions.onBuyMissile());
+  bindActiveKey('keydown-SIX', () => actions.onBuyScan());
+  bindActiveKey('keydown-NUMPAD_SIX', () => actions.onBuyScan());
 
   // Перезапуск игры при поражении (Пробел)
   scene.input.keyboard.on('keydown-SPACE', () => {
-    if (actions.isGameOver()) {
-      actions.onRestart();
-    }
+    if (actions.isGameOver()) actions.onRestart();
   });
 }
