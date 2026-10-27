@@ -31,9 +31,19 @@ export interface RadarRender {
 }
 
 /**
+ * Опции конфигурации и коллбэков рендера радара
+ */
+export interface RadarRenderOptions {
+  onTargetSwept?: (target: GameTarget) => void;
+}
+
+/**
  * Фабрика рендера экрана радара (статическая сетка, луч и динамические слои)
  */
-export function createRadarRender(scene: Phaser.Scene): RadarRender {
+export function createRadarRender(
+  scene: Phaser.Scene,
+  options?: RadarRenderOptions,
+): RadarRender {
   const staticGraphics = scene.add.graphics();
   const dynamicGraphics = scene.add.graphics();
 
@@ -64,6 +74,7 @@ export function createRadarRender(scene: Phaser.Scene): RadarRender {
 
         if (isAngleBetween(targetAngle, prevAngle, beamAngle)) {
           target.alpha = 1.0;
+          options?.onTargetSwept?.(target);
         }
       }
     }

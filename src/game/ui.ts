@@ -198,7 +198,7 @@ export function createGameOverOverlay(
 
       statsText.setText(
         `СБИТО: ${stats.missilesShot} РАКЕТ, ${stats.bombersShot} БОМБАРДИРОВЩИКОВ, ${stats.friendlyFireCount} СВОИХ\n` +
-        `СПАСЕНО СОЮЗНИКОВ: ${stats.friendsSaved} | ЛОВУШКИ: ${stats.decoysFiltered} | УПУЩЕНО УГРОЗ: ${stats.threatsMissed}\n` +
+        `СПАСЕНО СОЮЗНИКОВ: ${stats.friendsSaved} | ОТСЛЕЖЕНО ЛОВУШЕК: ${stats.decoysFiltered} | УПУЩЕНО УГРОЗ: ${stats.threatsMissed}\n` +
         `ТОЧНОСТЬ: ${acc}% | ВРЕМЯ ДЕЖУРСТВА: ${timeStr}`,
       );
       container.setVisible(true);

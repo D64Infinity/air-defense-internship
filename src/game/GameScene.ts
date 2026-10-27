@@ -26,6 +26,7 @@ import { createSpawner, type TargetSpawner } from './spawner';
 import { createScoreTracker, type ScoreTracker } from './scoring';
 import { createArmory, type ArmoryTracker } from './armory';
 import { createStatsTracker, type StatsTracker } from './stats';
+import { createSoundSystem, type SoundSystem } from './audio';
 import {
   getDistToBase,
   findTargetNear,
@@ -46,6 +47,7 @@ export class GameScene extends Phaser.Scene {
   private scoring: ScoreTracker = createScoreTracker();
   private armory: ArmoryTracker = createArmory();
   private stats: StatsTracker = createStatsTracker();
+  private soundSystem: SoundSystem = createSoundSystem();
   private isPaused = false;
   private isGameStarted = false;
 
@@ -88,8 +90,14 @@ export class GameScene extends Phaser.Scene {
     this.highScore = savedRecord ? parseInt(savedRecord, 10) || 0 : 0;
 
     // 1. Рендер экрана радара (статическая сетка, луч и динамические слои)
-    this.radarRender = createRadarRender(this);
+    this.radarRender = createRadarRender(this, {
+      onTargetSwept: () => this.soundSystem.playRadarPing(),
+    });
     this.radarRender.reset();
+
+    // Разблокировка Web Audio по первому клику или клавише (требование браузеров)
+    this.input.on('pointerdown', () => this.soundSystem.resume());
+    this.input.keyboard?.on('keydown', () => this.soundSystem.resume());
 
     // 3. Панель консоли оператора
     this.hud = createHud(this, {
@@ -209,6 +217,7 @@ export class GameScene extends Phaser.Scene {
    * Обработка закрытия окна инструктажа
    */
   private handleBriefingClose(): void {
+    this.soundSystem.resume();
     if (!this.isGameStarted) {
       GameScene.hasSeenBriefing = true;
       this.briefingOverlay.hide();
