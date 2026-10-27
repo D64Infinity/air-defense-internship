@@ -1,3 +1,5 @@
+import { SCORING_CONFIG } from './scoring';
+
 /**
  * КОНФИГУРАЦИЯ БАЛАНСА И ПАРАМЕТРОВ ИГРЫ
  * Все ключевые числовые настройки, параметры целей и визуальная палитра.
@@ -28,15 +30,16 @@ export const GAME_CONFIG = {
   damageMissile: 30,
   damageBomber: 20,
 
-  // Очки и серии (сбалансированы под аккуратный 4-значный счёт без гиперинфляции)
-  scorePerCorrect: 15, // базовые очки за подтверждённую цель (перехват / посадка)
-  scorePerDecoyIgnored: 0, // за фильтрацию ловушки только рост серии
-  friendlyFirePenalty: 40, // штраф к счёту за уничтожение своего борта
-  cleanWaveBonus: 50, // бонус к счёту за волну без урона базе и без дружественного огня
-  distanceBonusMax: 0.5, // максимальный бонус за дальность перехвата (до +50% на границе радара)
-  streakStepForMultiplier: 3, // каждые 3 правильных действия множитель растёт
-  multiplierStep: 0.5, // шаг прироста множителя (+0.5x)
-  maxMultiplier: 2.5, // потолок комбо-множителя (x2.5)
+  // Система очков и серий вынесена в отдельный модуль src/game/scoring.ts
+  scoring: SCORING_CONFIG,
+  scorePerCorrect: SCORING_CONFIG.scorePerCorrect,
+  scorePerDecoyIgnored: 0,
+  friendlyFirePenalty: SCORING_CONFIG.friendlyFirePenalty,
+  cleanWaveBonus: SCORING_CONFIG.cleanWaveBonus,
+  distanceBonusMax: SCORING_CONFIG.distanceBonusMax,
+  streakStepForMultiplier: SCORING_CONFIG.streakStep,
+  multiplierStep: SCORING_CONFIG.multiplierStep,
+  maxMultiplier: SCORING_CONFIG.maxMultiplier,
 
   // Экономика (кредиты и снабжение базы)
   startCredits: 200,
@@ -149,3 +152,4 @@ export interface GameTarget {
 // Псевдонимы для обратной совместимости
 export const RADAR_CONFIG = GAME_CONFIG;
 export type RadarTarget = GameTarget;
+export { SCORING_CONFIG } from './scoring';

@@ -4,6 +4,7 @@ import {
   type DecisionChoice,
   type GameTarget,
 } from './gameConfig';
+import { calculateStreakMultiplier } from './scoring';
 
 export interface GameSessionStats {
   missilesShot: number;
@@ -856,12 +857,7 @@ export function createHud(
 
   // 6. Обновление счета и ресурсов
   const updateScoreBoard = (data: ScoreBoardData) => {
-    const mult = Math.min(
-      GAME_CONFIG.maxMultiplier,
-      1 +
-        Math.floor(data.streak / GAME_CONFIG.streakStepForMultiplier) *
-          GAME_CONFIG.multiplierStep,
-    ).toFixed(1);
+    const mult = calculateStreakMultiplier(data.streak).toFixed(1);
     scoreText.setText(`СЧЁТ: ${data.score.toString().padStart(4, '0')}`);
     creditsText.setText(`КРЕДИТЫ: ${data.credits} CR`);
     streakText.setText(`СЕРИЯ: ${data.streak} (x${mult})`);

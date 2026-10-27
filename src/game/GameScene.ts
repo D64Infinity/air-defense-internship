@@ -24,6 +24,7 @@ import {
 import { setupGameInputs } from './input';
 import { createRadarRender, type RadarRender } from './radarRender';
 import { createSpawner, type TargetSpawner } from './spawner';
+import { createScoreTracker, type ScoreTracker } from './scoring';
 
 
 export class GameScene extends Phaser.Scene {
@@ -35,6 +36,7 @@ export class GameScene extends Phaser.Scene {
   private pauseOverlay!: PauseOverlay;
   private briefingOverlay!: BriefingOverlay;
   private spawner: TargetSpawner = createSpawner();
+  private scoring: ScoreTracker = createScoreTracker();
   private isPaused = false;
   private isGameStarted = false;
 
@@ -54,10 +56,7 @@ export class GameScene extends Phaser.Scene {
 
   // Состояние игры
   private baseHealth = GAME_CONFIG.maxBaseHealth;
-  private score = 0;
   private credits = GAME_CONFIG.startCredits;
-  private streak = 0;
-  private bestStreak = 0;
   private wave = 1;
   private waveTargetsToSpawn = 7;
   private waveHadFlaws = false;
@@ -77,10 +76,8 @@ export class GameScene extends Phaser.Scene {
     this.isPaused = false;
     this.isGameStarted = false;
     this.baseHealth = GAME_CONFIG.maxBaseHealth;
-    this.score = 0;
+    this.scoring.reset();
     this.credits = GAME_CONFIG.startCredits;
-    this.streak = 0;
-    this.bestStreak = 0;
     this.wave = 1;
     this.waveTargetsToSpawn = 7;
     this.waveHadFlaws = false;
@@ -270,17 +267,17 @@ export class GameScene extends Phaser.Scene {
     this.updateTargetSelectionUI();
 
     let isNewRecord = false;
-    if (this.score > this.highScore) {
-      this.highScore = this.score;
+    if (this.scoring.score > this.highScore) {
+      this.highScore = this.scoring.score;
       localStorage.setItem('radar_station_record', this.highScore.toString());
       isNewRecord = true;
     }
 
     this.gameOverOverlay.show(
-      this.score,
+      this.scoring.score,
       this.highScore,
       this.wave,
-      this.bestStreak,
+      this.scoring.bestStreak,
       isNewRecord,
       this.stats,
     );
@@ -481,17 +478,11 @@ export class GameScene extends Phaser.Scene {
 
     if (target.type === 'missile' || target.type === 'bomber') {
       this.stats.correctDecisions++;
-      const multiplier = this.getScoreMultiplier();
       const distToBase = this.getDistToBase(target.x, target.y);
-      const distFactor =
-        1 + (distToBase / GAME_CONFIG.radarRadius) * GAME_CONFIG.distanceBonusMax;
-      const points = Math.round(GAME_CONFIG.scorePerCorrect * multiplier * distFactor);
-
-      this.score += points;
-      this.streak += 1;
-      if (this.streak > this.bestStreak) this.bestStreak = this.streak;
-
-      const isLongRange = distToBase >= GAME_CONFIG.radarRadius * 0.7;
+      const { points, isLongRange } = this.scoring.addThreatScore(
+        distToBase,
+        GAME_CONFIG.radarRadius,
+      );
       const rangeTag = isLongRange ? ' [ДАЛЬНИЙ РУБЕЖ]' : '';
 
       if (target.type === 'missile') {
@@ -511,18 +502,17 @@ export class GameScene extends Phaser.Scene {
       }
     } else if (target.type === 'friend') {
       // Огонь по своим
-      this.streak = 0;
       this.stats.friendlyFireCount++;
       this.waveHadFlaws = true;
-      this.score = Math.max(0, this.score - GAME_CONFIG.friendlyFirePenalty);
+      const penalty = this.scoring.applyFriendlyFirePenalty();
       this.credits = Math.max(0, this.credits - GAME_CONFIG.creditsFriendlyFirePenalty);
       this.showFeedback(
-        `[ОШИБКА!] СБИТ СВОЙ БОРТ! (-${GAME_CONFIG.friendlyFirePenalty} очк, -${GAME_CONFIG.creditsFriendlyFirePenalty} CR)`,
+        `[ОШИБКА!] СБИТ СВОЙ БОРТ! (-${penalty} очк, -${GAME_CONFIG.creditsFriendlyFirePenalty} CR)`,
         '#f87171',
       );
     } else {
       // Ловушка
-      this.streak = 0;
+      this.scoring.resetStreak();
       this.showFeedback(
         `[ПРОМАХ!] ПЕРЕХВАТЧИК ВПУСТУЮ НА ЛОВУШКУ! (Ост: ${this.interceptors})`,
         '#fbbf24',
@@ -534,28 +524,13 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Расчёт текущего множителя серии очков
-   */
-  private getScoreMultiplier(): number {
-    return Math.min(
-      GAME_CONFIG.maxMultiplier,
-      1 +
-        Math.floor(this.streak / GAME_CONFIG.streakStepForMultiplier) *
-          GAME_CONFIG.multiplierStep,
-    );
-  }
-
-  /**
    * Обработка завершения маршрута союзного судна (посадка или транзитный пролёт)
    */
   private handleFriendCompletion(target: GameTarget, isLanding: boolean): void {
     this.stats.totalDecisions++;
 
     if (target.markedAs === 'friend') {
-      const points = Math.round(GAME_CONFIG.scorePerCorrect * this.getScoreMultiplier());
-      this.score += points;
-      this.streak++;
-      if (this.streak > this.bestStreak) this.bestStreak = this.streak;
+      const points = this.scoring.addFriendlyScore();
       this.stats.correctDecisions++;
       this.stats.friendsSaved++;
 
@@ -563,7 +538,7 @@ export class GameScene extends Phaser.Scene {
       const tag = isLanding ? '[ПОСАДКА]' : '[ТРАНЗИТ]';
       this.showFeedback(`${tag} СОЮЗНИК ${action} (+${points}, СЕРИЯ +1)`, '#86efac');
     } else {
-      this.streak = 0;
+      this.scoring.resetStreak();
       this.waveHadFlaws = true;
       const penalty = GAME_CONFIG.unidentifiedFriendPenalty;
       this.credits = Math.max(0, this.credits - penalty);
@@ -583,13 +558,12 @@ export class GameScene extends Phaser.Scene {
       this.stats.totalDecisions++;
       this.stats.correctDecisions++;
       this.stats.decoysFiltered++;
-      this.streak++;
-      if (this.streak > this.bestStreak) this.bestStreak = this.streak;
+      this.scoring.addDecoySuccess();
       const reason = isDissipated ? 'СИГНАЛ РАССЕЯЛСЯ' : 'ПОКИНУЛА СЕКТОР';
       this.showFeedback(`[ФИЛЬТР] ЛОЖНАЯ ЦЕЛЬ (${reason}) (СЕРИЯ +1)`, '#94a3b8');
     } else if (target.markedAs === 'friend') {
       this.stats.totalDecisions++;
-      this.streak = 0;
+      this.scoring.resetStreak();
       this.waveHadFlaws = true;
       this.showFeedback(`[ОШИБКА!] ЛОЖНАЯ ЦЕЛЬ БЫЛА ПРИНЯТА ЗА СОЮЗНИКА!`, '#f87171');
     } else if (isDissipated) {
@@ -605,9 +579,9 @@ export class GameScene extends Phaser.Scene {
 
   private updateScoreBoard(): void {
     this.hud.updateScoreBoard({
-      score: this.score,
+      score: this.scoring.score,
       credits: this.credits,
-      streak: this.streak,
+      streak: this.scoring.streak,
       wave: this.wave,
       highScore: this.highScore,
       interceptors: this.interceptors,
@@ -705,7 +679,7 @@ export class GameScene extends Phaser.Scene {
           this.stats.totalDecisions++;
           this.stats.threatsMissed++;
           this.waveHadFlaws = true;
-          this.streak = 0;
+          this.scoring.resetStreak();
           this.baseHealth = Math.max(0, this.baseHealth - GAME_CONFIG.damageMissile);
           this.showFeedback(
             `[УДАР!] ПРОПУЩЕНА РАКЕТА! (-${GAME_CONFIG.damageMissile} HP)`,
@@ -720,7 +694,7 @@ export class GameScene extends Phaser.Scene {
           this.stats.totalDecisions++;
           this.stats.threatsMissed++;
           this.waveHadFlaws = true;
-          this.streak = 0;
+          this.scoring.resetStreak();
           this.baseHealth = Math.max(0, this.baseHealth - GAME_CONFIG.damageBomber);
           this.showFeedback(
             `[УДАР!] БОМБАРДИРОВКА БАЗЫ! (-${GAME_CONFIG.damageBomber} HP)`,
@@ -830,8 +804,8 @@ export class GameScene extends Phaser.Scene {
 
       let cleanBonusText = '';
       if (!this.waveHadFlaws) {
-        this.score += GAME_CONFIG.cleanWaveBonus;
-        cleanBonusText = `\nЧИСТАЯ ВОЛНА! (+${GAME_CONFIG.cleanWaveBonus} ОЧК)`;
+        const bonus = this.scoring.applyCleanWaveBonus();
+        cleanBonusText = `\nЧИСТАЯ ВОЛНА! (+${bonus} ОЧК)`;
       }
       this.waveHadFlaws = false;
 
