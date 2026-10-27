@@ -57,7 +57,7 @@ export class GameScene extends Phaser.Scene {
   private waveHadFlaws = false;
   private isGameOver = false;
   private highScore = 0;
-  private stats: GameSessionStats = { missilesShot: 0, bombersShot: 0, friendsSaved: 0, threatsMissed: 0, friendlyFireCount: 0 };
+  private stats: GameSessionStats = { missilesShot: 0, bombersShot: 0, friendsSaved: 0, decoysFiltered: 0, threatsMissed: 0, friendlyFireCount: 0, correctDecisions: 0, totalDecisions: 0, sessionTime: 0 };
 
   // Таймеры эффектов
   private baseFlashTimer = 0;
@@ -77,7 +77,7 @@ export class GameScene extends Phaser.Scene {
     this.wave = 1;
     this.waveTargetsToSpawn = 7;
     this.waveHadFlaws = false;
-    this.stats = { missilesShot: 0, bombersShot: 0, friendsSaved: 0, threatsMissed: 0, friendlyFireCount: 0 };
+    this.stats = { missilesShot: 0, bombersShot: 0, friendsSaved: 0, decoysFiltered: 0, threatsMissed: 0, friendlyFireCount: 0, correctDecisions: 0, totalDecisions: 0, sessionTime: 0 };
     this.currentBeamSpeed = GAME_CONFIG.beamSpeedBase;
     this.interceptors = GAME_CONFIG.startInterceptors;
     this.scansAvailable = GAME_CONFIG.maxScansPerWave;
@@ -131,6 +131,7 @@ export class GameScene extends Phaser.Scene {
     if (this.isGameOver || this.isPaused) return;
 
     const dt = Math.min(delta / 1000, 0.1);
+    this.stats.sessionTime += dt;
 
     this.updateBeam(dt);
     this.updateTargets(dt);
@@ -406,7 +407,10 @@ export class GameScene extends Phaser.Scene {
     let feedback = '';
     let feedbackColor = '#4ade80';
 
+    this.stats.totalDecisions++;
+
     if (choice === correctCategory) {
+      this.stats.correctDecisions++;
       const isThreat = target.type === 'missile' || target.type === 'bomber';
       const distToBase = this.getDistToBase(target.x, target.y);
       const distFactor = isThreat
@@ -437,6 +441,7 @@ export class GameScene extends Phaser.Scene {
         this.stats.friendsSaved++;
         feedback = `[ВЕРНО!] СОЮЗНИК ПРОПУЩЕН (+${points})`;
       } else {
+        this.stats.decoysFiltered++;
         feedback =
           points > 0
             ? `[ВЕРНО!] ЛОЖНАЯ ЦЕЛЬ ОТФИЛЬТРОВАНА (+${points})`

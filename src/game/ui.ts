@@ -9,8 +9,12 @@ export interface GameSessionStats {
   missilesShot: number;
   bombersShot: number;
   friendsSaved: number;
+  decoysFiltered: number;
   threatsMissed: number;
   friendlyFireCount: number;
+  correctDecisions: number;
+  totalDecisions: number;
+  sessionTime: number;
 }
 
 /**
@@ -67,7 +71,7 @@ export function createGameOverOverlay(
     width / 2,
     height / 2,
     480,
-    340,
+    360,
     0x071b0f,
     0.96,
   );
@@ -75,7 +79,7 @@ export function createGameOverOverlay(
 
   const title = scene.add.text(
     width / 2,
-    height / 2 - 110,
+    height / 2 - 120,
     'СИСТЕМА ОБОРОНЫ ПРОРВАНА\n[ БАЗА УНИЧТОЖЕНА ]',
     {
       fontFamily: 'Consolas, monospace',
@@ -90,7 +94,7 @@ export function createGameOverOverlay(
 
   const scoreText = scene.add.text(
     width / 2,
-    height / 2 - 35,
+    height / 2 - 50,
     'ИТОГОВЫЙ СЧЁТ: 0',
     {
       fontFamily: 'Consolas, monospace',
@@ -103,7 +107,7 @@ export function createGameOverOverlay(
 
   const recordText = scene.add.text(
     width / 2,
-    height / 2,
+    height / 2 - 22,
     'ЛУЧШИЙ РЕКОРД: 0',
     {
       fontFamily: 'Consolas, monospace',
@@ -115,7 +119,7 @@ export function createGameOverOverlay(
 
   const wavesText = scene.add.text(
     width / 2,
-    height / 2 + 25,
+    height / 2 + 2,
     'ВОЛНА: 1 | МАКС. СЕРИЯ: 0',
     {
       fontFamily: 'Consolas, monospace',
@@ -125,18 +129,18 @@ export function createGameOverOverlay(
   );
   wavesText.setOrigin(0.5);
 
-  const statsText = scene.add.text(width / 2, height / 2 + 55, '', {
+  const statsText = scene.add.text(width / 2, height / 2 + 42, '', {
     fontFamily: 'Consolas, monospace',
     fontSize: '12px',
     color: '#cbd5e1',
     align: 'center',
-    lineSpacing: 3,
+    lineSpacing: 4,
   }).setOrigin(0.5);
 
   // Кнопка рестарта
   const restartBtn = scene.add.rectangle(
     width / 2,
-    height / 2 + 105,
+    height / 2 + 115,
     260,
     42,
     0x16a34a,
@@ -147,7 +151,7 @@ export function createGameOverOverlay(
 
   const restartText = scene.add.text(
     width / 2,
-    height / 2 + 105,
+    height / 2 + 115,
     'ЕЩЁ РАЗ (ПРОБЕЛ)',
     {
       fontFamily: 'Consolas, monospace',
@@ -182,10 +186,18 @@ export function createGameOverOverlay(
       );
       recordText.setText(`ЛУЧШИЙ РЕКОРД: ${highScore}`);
       wavesText.setText(`ВОЛНА: ${wave} | МАКС. СЕРИЯ: ${bestStreak}`);
+
+      const acc = stats.totalDecisions > 0
+        ? Math.round((stats.correctDecisions / stats.totalDecisions) * 100)
+        : 100;
+      const mins = Math.floor(stats.sessionTime / 60);
+      const secs = Math.floor(stats.sessionTime % 60);
+      const timeStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+
       statsText.setText(
-        `СБИТО: ${stats.missilesShot} РАКЕТ, ${stats.bombersShot} БОМБ.\n` +
-        `СОЮЗНИКИ: ${stats.friendsSaved} | ПРОПУЩЕНО: ${stats.threatsMissed}` +
-        (stats.friendlyFireCount > 0 ? ` | СВОИ: -${stats.friendlyFireCount}` : ''),
+        `СБИТО: ${stats.missilesShot} РАКЕТ, ${stats.bombersShot} БОМБАРДИРОВЩИКОВ, ${stats.friendlyFireCount} СВОИХ\n` +
+        `СПАСЕНО СОЮЗНИКОВ: ${stats.friendsSaved} | ЛОВУШКИ: ${stats.decoysFiltered} | УПУЩЕНО УГРОЗ: ${stats.threatsMissed}\n` +
+        `ТОЧНОСТЬ: ${acc}% | ВРЕМЯ ДЕЖУРСТВА: ${timeStr}`,
       );
       container.setVisible(true);
     },
@@ -453,7 +465,7 @@ export function createHud(
     lineSpacing: 3,
   });
 
-  const feedbackText = scene.add.text(660, 448, '', {
+  const feedbackText = scene.add.text(660, 452, '', {
     ...monoStyle,
     fontSize: '11px',
     fontStyle: 'bold',
@@ -463,10 +475,9 @@ export function createHud(
     660,
     472,
     '--- ПРИЗНАКИ И СНАБЖЕНИЕ ---\n' +
-      '• [4] Скан: сигнатура за 1.5с (время идёт!)\n' +
-      '• Снабжение: [5] Ракета (150) | [6] Скан (100)\n' +
-      '• Ракета (-30HP) | Бомбардировщик (-20HP)\n' +
-      'Горячие клавиши: [1] [2] [3] [4] [5] [6]',
+      '• [4] Скан сигнатуры (1.5 сек.)\n' +
+      '• [5] Ракета (150 CR) | [6] Скан (75 CR)\n' +
+      '• Ракета (-30 HP) | Бомбардировщик (-20 HP)\n',
     {
       ...monoStyle,
       fontSize: '11px',
@@ -538,10 +549,10 @@ export function createHud(
     return { bg, text, setEnabled };
   }
 
-  const startY = 295;
+  const startY = 292;
   const btnW = 255;
   const btnH = 26;
-  const gap = 4;
+  const gap = 6;
 
   const buttons = {
     friend: createButton(
@@ -576,29 +587,29 @@ export function createHud(
       startY + (btnH + gap) * 3,
       btnW,
       btnH,
-      '[4] СКАН СИГНАТУРЫ (1.5с)',
+      '[4] СКАН СИГНАТУРЫ (1.5 сек.)',
       GAME_CONFIG.colors.btnScan,
       () => callbacks.onScan(),
     ),
     buyMissile: createButton(
       660,
       startY + (btnH + gap) * 4,
-      124,
+      132,
       btnH,
       `[5] +РАКЕТА (${GAME_CONFIG.interceptorCost} CR)`,
       GAME_CONFIG.colors.btnSupply,
       () => callbacks.onBuyMissile(),
-      '11px',
+      '10px',
     ),
     buyScan: createButton(
-      660 + 124 + 7,
+      660 + 132 + gap,
       startY + (btnH + gap) * 4,
-      124,
+      117,
       btnH,
       `[6] +СКАН (${GAME_CONFIG.scanCost} CR)`,
       GAME_CONFIG.colors.btnSupply,
       () => callbacks.onBuyScan(),
-      '11px',
+      '10px',
     ),
   };
 
