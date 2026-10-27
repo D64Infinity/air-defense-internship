@@ -372,33 +372,109 @@ export function createBriefingOverlay(
     },
   ).setOrigin(0.5);
 
-  const bodyText = scene.add.text(
+  interface TextSegment {
+    text: string;
+    color: string;
+    bold?: boolean;
+  }
+
+  const contentObjects: Phaser.GameObjects.GameObject[] = [];
+
+  const addRow = (x: number, y: number, segments: TextSegment[]) => {
+    let curX = x;
+    for (const seg of segments) {
+      const txt = scene.add.text(curX, y, seg.text, {
+        fontFamily: 'Consolas, monospace',
+        fontSize: '11px',
+        color: seg.color,
+        fontStyle: seg.bold ? 'bold' : 'normal',
+      });
+      contentObjects.push(txt);
+      curX += txt.width;
+    }
+  };
+
+  const startX = width / 2 - 250;
+  const cy = height / 2;
+
+  // Разделитель под заголовком
+  const dividerTop = scene.add.rectangle(width / 2, cy - 150, 500, 1, 0x14532d, 0.9);
+  contentObjects.push(dividerTop);
+
+  // 1. Угрозы (красный акцент)
+  addRow(startX, cy - 136, [
+    { text: '• УГРОЗЫ: ', color: '#ef4444', bold: true },
+    { text: 'Ракеты и бомбардировщики летят к центру базы.', color: '#e2e8f0' },
+  ]);
+  addRow(startX, cy - 118, [
+    { text: '  ДЕЙСТВИЕ: ', color: '#94a3b8' },
+    { text: 'УНИЧТОЖИТЬ [2]', color: '#f87171', bold: true },
+    { text: ' (требует ракеты-перехватчики)', color: '#94a3b8' },
+  ]);
+
+  // 2. Союзники (зелёный акцент)
+  addRow(startX, cy - 88, [
+    { text: '• СОЮЗНИКИ: ', color: '#4ade80', bold: true },
+    { text: 'Зелёные метки с курсом в сектор — свои борта.', color: '#e2e8f0' },
+  ]);
+  addRow(startX, cy - 70, [
+    { text: '  ДЕЙСТВИЕ: ', color: '#94a3b8' },
+    { text: 'ПРОПУСТИТЬ [1]', color: '#4ade80', bold: true },
+    { text: ' (огонь по своим карается ', color: '#94a3b8' },
+    { text: 'ШТРАФОМ 150 CR', color: '#f87171', bold: true },
+    { text: '!)', color: '#94a3b8' },
+  ]);
+
+  // 3. Ловушки (серый/нейтральный акцент)
+  addRow(startX, cy - 40, [
+    { text: '• ЛОВУШКИ: ', color: '#94a3b8', bold: true },
+    { text: 'Имитаторы идут по хордам мимо базы (нет урона).', color: '#e2e8f0' },
+  ]);
+  addRow(startX, cy - 22, [
+    { text: '  ДЕЙСТВИЕ: ', color: '#94a3b8' },
+    { text: 'ИГНОРИРОВАТЬ [3]', color: '#cbd5e1', bold: true },
+    { text: ' (фильтруйте пустышки, экономя боезапас)', color: '#94a3b8' },
+  ]);
+
+  // 4. Сенсоры и снабжение (голубой / бирюзовый акцент)
+  addRow(startX, cy + 8, [
+    { text: '• СЕНСОРЫ: ', color: '#38bdf8', bold: true },
+    { text: 'Клавиша ', color: '#e2e8f0' },
+    { text: '[4] СКАН', color: '#38bdf8', bold: true },
+    { text: ' раскрывает тип цели за 1.5 с (расходует заряд).', color: '#e2e8f0' },
+  ]);
+  addRow(startX, cy + 26, [
+    { text: '• СНАБЖЕНИЕ: ', color: '#2dd4bf', bold: true },
+    { text: 'Докупка ракет ', color: '#e2e8f0' },
+    { text: '[5]', color: '#facc15', bold: true },
+    { text: ' (150 CR)   |   Докупка сканов ', color: '#e2e8f0' },
+    { text: '[6]', color: '#facc15', bold: true },
+    { text: ' (75 CR)', color: '#e2e8f0' },
+  ]);
+
+  // 5. Панель быстрого управления (жёлтый акцент)
+  const cmdPanel = scene.add.rectangle(width / 2, cy + 74, 500, 32, 0x081f14, 0.95);
+  cmdPanel.setStrokeStyle(1.5, 0xca8a04, 0.7);
+  contentObjects.push(cmdPanel);
+
+  const cmdText = scene.add.text(
     width / 2,
-    height / 2 - 15,
-    'БОЕВАЯ ЗАДАЧА ОПЕРАТОРА РЛС:\n\n' +
-      '• УГРОЗЫ: Ракеты и бомбардировщики летят к центру базы.\n' +
-      '  Уничтожайте их клавишей [2] (требует ракеты-перехватчики).\n\n' +
-      '• СОЮЗНИКИ: Зелёные метки с курсом в сектор могут быть своими.\n' +
-      '  Пропускайте их клавишей [1] — за огонь по своим штраф в бюджет!\n\n' +
-      '• ЛОВУШКИ: Ложные цели идут по хордам и не наносят урона.\n' +
-      '  Фильтруйте их клавишей [3], чтобы не тратить боезапас.\n\n' +
-      '• СЕНСОРЫ: Клавиша [4] запускает глубокий скан сигнатуры (1.5 с).\n' +
-      '• СНАБЖЕНИЕ: Докупайте ракеты [5] (150 CR) и сканы [6] (75 CR).\n\n' +
-      'УПРАВЛЕНИЕ: [1] СВОЙ  [2] УГРОЗА  [3] ИГНОР  [4] СКАН  [P] ПАУЗА',
+    cy + 74,
+    'УПРАВЛЕНИЕ:  [1] СВОЙ   [2] УГРОЗА   [3] ИГНОР   [4] СКАН   [P] ПАУЗА',
     {
       fontFamily: 'Consolas, monospace',
       fontSize: '11px',
-      color: '#cbd5e1',
-      align: 'left',
-      lineSpacing: 4,
+      color: '#facc15',
+      fontStyle: 'bold',
     },
   ).setOrigin(0.5);
+  contentObjects.push(cmdText);
 
-  const actionBtn = scene.add.rectangle(width / 2, height / 2 + 168, 300, 42, 0x16a34a, 0.9);
+  const actionBtn = scene.add.rectangle(width / 2, cy + 155, 300, 42, 0x16a34a, 0.9);
   actionBtn.setStrokeStyle(1.5, 0x4ade80, 1);
   actionBtn.setInteractive({ useHandCursor: true });
 
-  const actionText = scene.add.text(width / 2, height / 2 + 168, 'ЗАСТУПИТЬ НА СМЕНУ (ПРОБЕЛ)', {
+  const actionText = scene.add.text(width / 2, cy + 155, 'ЗАСТУПИТЬ НА СМЕНУ (ПРОБЕЛ)', {
     fontFamily: 'Consolas, monospace',
     fontSize: '13px',
     color: '#ffffff',
@@ -409,7 +485,7 @@ export function createBriefingOverlay(
   actionBtn.on('pointerout', () => actionBtn.setFillStyle(0x16a34a, 0.9));
   actionBtn.on('pointerdown', () => onClose());
 
-  container.add([darkBg, modal, title, bodyText, actionBtn, actionText]);
+  container.add([darkBg, modal, title, ...contentObjects, actionBtn, actionText]);
 
   return {
     container,
