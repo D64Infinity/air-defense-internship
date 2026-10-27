@@ -921,8 +921,20 @@ export function createHud(
       Math.hypot(t.x - GAME_CONFIG.radarX, t.y - GAME_CONFIG.radarY),
     );
 
-    targetTelemetryTitle.setText(`ОБЪЕКТ СЛЕЖЕНИЯ: #TRK-${t.id}`);
-    targetTelemetryTitle.setColor('#facc15');
+    const markBadge =
+      t.markedAs === 'friend'
+        ? ' [СВОЙ]'
+        : t.markedAs === 'ignore'
+          ? ' [ПОМЕХА]'
+          : '';
+    targetTelemetryTitle.setText(`ОБЪЕКТ СЛЕЖЕНИЯ: #TRK-${t.id}${markBadge}`);
+    targetTelemetryTitle.setColor(
+      t.markedAs === 'friend'
+        ? '#4ade80'
+        : t.markedAs === 'ignore'
+          ? '#94a3b8'
+          : '#facc15',
+    );
 
     let typeStr = 'ТИП:        [ НЕОПОЗНАН ]';
     if (t.isScanned) {

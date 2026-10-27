@@ -453,92 +453,148 @@ export class GameScene extends Phaser.Scene {
     if (!this.selectedTarget || this.isGameOver) return;
     const target = this.selectedTarget;
 
-    // Проверка наличия ракет-перехватчиков для «Угрозы»
-    if (choice === 'threat') {
-      if (this.interceptors <= 0) {
-        this.showFeedback('[ОТКАЗ!] БОЕКОМПЛЕКТ ПУСТ! ОЖИДАЙТЕ СНАБЖЕНИЯ', '#ef4444');
-        return;
+    // 1. Пометка цели (Свой / Помеха) без немедленного удаления с карты
+    if (choice === 'friend' || choice === 'ignore') {
+      target.markedAs = choice;
+      if (choice === 'friend') {
+        this.showFeedback('[МЕТКА] ЦЕЛЬ ПРИНЯТА КАК СОЮЗНИК', '#4ade80');
+      } else {
+        this.showFeedback('[МЕТКА] ЦЕЛЬ ОТМЕЧЕНА КАК ПОМЕХА', '#94a3b8');
       }
-      this.interceptors--;
-
-      // Эффект взрыва: для техники (ракета, бомбардировщик, союзник) - с ударной волной, для ловушки - только вспышка
-      const hasShockwave = target.type !== 'decoy';
-      this.explosions.push(createExplosion(target.x, target.y, hasShockwave));
+      this.updateTelemetry();
+      this.updateTargetSelectionUI();
+      return;
     }
-    const typeCfg = GAME_CONFIG.targetTypes[target.type];
-    const correctCategory = typeCfg.category;
 
-    const multiplier = Math.min(
-      GAME_CONFIG.maxMultiplier,
-      1 + Math.floor(this.streak / GAME_CONFIG.streakStepForMultiplier) * 0.5,
-    );
+    // 2. Боевой перехват (Угроза) — немедленный пуск ракеты
+    if (this.interceptors <= 0) {
+      this.showFeedback('[ОТКАЗ!] БОЕКОМПЛЕКТ ПУСТ! ОЖИДАЙТЕ СНАБЖЕНИЯ', '#ef4444');
+      return;
+    }
+    this.interceptors--;
 
-    let feedback = '';
-    let feedbackColor = '#4ade80';
+    // Эффект взрыва: для техники - с ударной волной, для ловушки - только вспышка
+    const hasShockwave = target.type !== 'decoy';
+    this.explosions.push(createExplosion(target.x, target.y, hasShockwave));
 
     this.stats.totalDecisions++;
 
-    if (choice === correctCategory) {
+    if (target.type === 'missile' || target.type === 'bomber') {
       this.stats.correctDecisions++;
-      const isThreat = target.type === 'missile' || target.type === 'bomber';
+      const multiplier = this.getScoreMultiplier();
       const distToBase = this.getDistToBase(target.x, target.y);
-      const distFactor = isThreat
-        ? 1 + (distToBase / GAME_CONFIG.radarRadius) * GAME_CONFIG.distanceBonusMax
-        : 1.0;
+      const distFactor =
+        1 + (distToBase / GAME_CONFIG.radarRadius) * GAME_CONFIG.distanceBonusMax;
+      const points = Math.round(GAME_CONFIG.scorePerCorrect * multiplier * distFactor);
 
-      const isDecoy = target.type === 'decoy';
-      const basePoints = isDecoy
-        ? GAME_CONFIG.scorePerDecoyIgnored
-        : GAME_CONFIG.scorePerCorrect;
-      const points = Math.round(basePoints * multiplier * distFactor);
       this.score += points;
       this.streak += 1;
       if (this.streak > this.bestStreak) this.bestStreak = this.streak;
 
-      const isLongRange = isThreat && distToBase >= GAME_CONFIG.radarRadius * 0.7;
+      const isLongRange = distToBase >= GAME_CONFIG.radarRadius * 0.7;
       const rangeTag = isLongRange ? ' [ДАЛЬНИЙ РУБЕЖ]' : '';
 
       if (target.type === 'missile') {
         this.stats.missilesShot++;
         this.credits += GAME_CONFIG.creditsPerMissile;
-        feedback = `[ВЕРНО!] РАКЕТА СБИТА (+${points}, +${GAME_CONFIG.creditsPerMissile} CR)${rangeTag}`;
-      } else if (target.type === 'bomber') {
+        this.showFeedback(
+          `[ВЕРНО!] РАКЕТА СБИТА (+${points}, +${GAME_CONFIG.creditsPerMissile} CR)${rangeTag}`,
+          '#4ade80',
+        );
+      } else {
         this.stats.bombersShot++;
         this.credits += GAME_CONFIG.creditsPerBomber;
-        feedback = `[ВЕРНО!] БОМБАРДИРОВЩИК СБИТ (+${points}, +${GAME_CONFIG.creditsPerBomber} CR)${rangeTag}`;
-      } else if (target.type === 'friend') {
-        this.stats.friendsSaved++;
-        feedback = `[ВЕРНО!] СОЮЗНИК ПРОПУЩЕН (+${points})`;
-      } else {
-        this.stats.decoysFiltered++;
-        feedback =
-          points > 0
-            ? `[ВЕРНО!] ЛОЖНАЯ ЦЕЛЬ ОТФИЛЬТРОВАНА (+${points})`
-            : `[ВЕРНО!] ЛОЖНАЯ ЦЕЛЬ ОТФИЛЬТРОВАНА (СЕРИЯ +1)`;
+        this.showFeedback(
+          `[ВЕРНО!] БОМБАРДИРОВЩИК СБИТ (+${points}, +${GAME_CONFIG.creditsPerBomber} CR)${rangeTag}`,
+          '#4ade80',
+        );
       }
-    } else {
+    } else if (target.type === 'friend') {
+      // Огонь по своим
       this.streak = 0;
-      feedbackColor = '#f87171';
-
-      if (target.type === 'friend' && choice === 'threat') {
-        this.stats.friendlyFireCount++;
-        this.waveHadFlaws = true;
-        this.score = Math.max(0, this.score - GAME_CONFIG.friendlyFirePenalty);
-        this.credits = Math.max(0, this.credits - GAME_CONFIG.creditsFriendlyFirePenalty);
-        feedback = `[ОШИБКА!] СБИТ СВОЙ БОРТ! (-${GAME_CONFIG.friendlyFirePenalty} очк, -${GAME_CONFIG.creditsFriendlyFirePenalty} CR)`;
-      } else if (target.type === 'decoy' && choice === 'threat') {
-        feedback = `[ПРОМАХ!] ПЕРЕХВАТЧИК ВПУСТУЮ НА ЛОВУШКУ! (Ост: ${this.interceptors})`;
-        feedbackColor = '#fbbf24';
-      } else if (target.type === 'missile' || target.type === 'bomber') {
-        feedback = `[ОШИБКА!] ПРОПУЩЕНА УГРОЗА (${typeCfg.label})`;
-      } else {
-        feedback = `[ОШИБКА!] НЕВЕРНАЯ КЛАССИФИКАЦИЯ`;
-      }
+      this.stats.friendlyFireCount++;
+      this.waveHadFlaws = true;
+      this.score = Math.max(0, this.score - GAME_CONFIG.friendlyFirePenalty);
+      this.credits = Math.max(0, this.credits - GAME_CONFIG.creditsFriendlyFirePenalty);
+      this.showFeedback(
+        `[ОШИБКА!] СБИТ СВОЙ БОРТ! (-${GAME_CONFIG.friendlyFirePenalty} очк, -${GAME_CONFIG.creditsFriendlyFirePenalty} CR)`,
+        '#f87171',
+      );
+    } else {
+      // Ловушка
+      this.streak = 0;
+      this.showFeedback(
+        `[ПРОМАХ!] ПЕРЕХВАТЧИК ВПУСТУЮ НА ЛОВУШКУ! (Ост: ${this.interceptors})`,
+        '#fbbf24',
+      );
     }
 
-    this.showFeedback(feedback, feedbackColor);
     this.updateScoreBoard();
     this.removeTarget(target);
+  }
+
+  /**
+   * Расчёт текущего множителя серии очков
+   */
+  private getScoreMultiplier(): number {
+    return Math.min(
+      GAME_CONFIG.maxMultiplier,
+      1 + Math.floor(this.streak / GAME_CONFIG.streakStepForMultiplier) * 0.5,
+    );
+  }
+
+  /**
+   * Обработка завершения маршрута союзного судна (посадка или транзитный пролёт)
+   */
+  private handleFriendCompletion(target: GameTarget, isLanding: boolean): void {
+    this.stats.totalDecisions++;
+
+    if (target.markedAs === 'friend') {
+      const points = Math.round(GAME_CONFIG.scorePerCorrect * this.getScoreMultiplier());
+      this.score += points;
+      this.streak++;
+      if (this.streak > this.bestStreak) this.bestStreak = this.streak;
+      this.stats.correctDecisions++;
+      this.stats.friendsSaved++;
+
+      const action = isLanding ? 'БЕЗОПАСНО СЕЛ НА БАЗУ' : 'БЕЗОПАСНО ПОКИНУЛ СЕКТОР';
+      const tag = isLanding ? '[ПОСАДКА]' : '[ТРАНЗИТ]';
+      this.showFeedback(`${tag} СОЮЗНИК ${action} (+${points}, СЕРИЯ +1)`, '#86efac');
+    } else {
+      this.streak = 0;
+      this.waveHadFlaws = true;
+      const penalty = GAME_CONFIG.unidentifiedFriendPenalty;
+      this.credits = Math.max(0, this.credits - penalty);
+
+      const cause = target.markedAs === 'ignore' ? 'ПРИНЯТ ЗА ПОМЕХУ' : 'ПРОПУЩЕН БЕЗ ОПОЗНАНИЯ';
+      this.showFeedback(`[ОШИБКА!] СОЮЗНИК ${cause} (-${penalty} CR, СЕРИЯ СБРОШЕНА)`, '#f87171');
+    }
+
+    this.updateScoreBoard();
+  }
+
+  /**
+   * Обработка завершения пути ложной цели (выход из сектора или рассеивание)
+   */
+  private handleDecoyCompletion(target: GameTarget, isDissipated = false): void {
+    if (target.markedAs === 'ignore') {
+      this.stats.totalDecisions++;
+      this.stats.correctDecisions++;
+      this.stats.decoysFiltered++;
+      this.streak++;
+      if (this.streak > this.bestStreak) this.bestStreak = this.streak;
+      const reason = isDissipated ? 'СИГНАЛ РАССЕЯЛСЯ' : 'ПОКИНУЛА СЕКТОР';
+      this.showFeedback(`[ФИЛЬТР] ЛОЖНАЯ ЦЕЛЬ (${reason}) (СЕРИЯ +1)`, '#94a3b8');
+    } else if (target.markedAs === 'friend') {
+      this.stats.totalDecisions++;
+      this.streak = 0;
+      this.waveHadFlaws = true;
+      this.showFeedback(`[ОШИБКА!] ЛОЖНАЯ ЦЕЛЬ БЫЛА ПРИНЯТА ЗА СОЮЗНИКА!`, '#f87171');
+    } else if (isDissipated) {
+      this.showFeedback(`[БАЗА] ЛОЖНЫЙ СИГНАЛ РАССЕЯЛСЯ (0 УРОНА)`, '#64748b');
+    }
+
+    this.updateScoreBoard();
   }
 
   private showFeedback(text: string, color: string): void {
@@ -644,8 +700,10 @@ export class GameScene extends Phaser.Scene {
       // Цель проникла на базу
       if (distToBase < 18) {
         if (target.type === 'missile') {
+          this.stats.totalDecisions++;
           this.stats.threatsMissed++;
           this.waveHadFlaws = true;
+          this.streak = 0;
           this.baseHealth = Math.max(0, this.baseHealth - GAME_CONFIG.damageMissile);
           this.showFeedback(
             `[УДАР!] ПРОПУЩЕНА РАКЕТА! (-${GAME_CONFIG.damageMissile} HP)`,
@@ -657,8 +715,10 @@ export class GameScene extends Phaser.Scene {
             continue;
           }
           target.hasBombedBase = true;
+          this.stats.totalDecisions++;
           this.stats.threatsMissed++;
           this.waveHadFlaws = true;
+          this.streak = 0;
           this.baseHealth = Math.max(0, this.baseHealth - GAME_CONFIG.damageBomber);
           this.showFeedback(
             `[УДАР!] БОМБАРДИРОВКА БАЗЫ! (-${GAME_CONFIG.damageBomber} HP)`,
@@ -679,7 +739,7 @@ export class GameScene extends Phaser.Scene {
           }
           continue;
         } else if (target.type === 'friend') {
-          this.showFeedback(`[БАЗА] СОЮЗНИК БЕЗОПАСНО ВОШЁЛ В ЗОНУ`, '#86efac');
+          this.handleFriendCompletion(target, true);
         } else if (target.type === 'decoy') {
           if (target.decoyPassesThroughBase && !target.hasPassedBase) {
             target.hasPassedBase = true;
@@ -688,7 +748,7 @@ export class GameScene extends Phaser.Scene {
           } else if (target.hasPassedBase) {
             continue;
           } else {
-            this.showFeedback(`[БАЗА] ЛОЖНЫЙ СИГНАЛ РАССЕЯЛСЯ (0 УРОНА)`, '#64748b');
+            this.handleDecoyCompletion(target, true);
           }
         }
 
@@ -700,6 +760,11 @@ export class GameScene extends Phaser.Scene {
           return;
         }
       } else if (distToBase > GAME_CONFIG.radarRadius * 1.05) {
+        if (target.type === 'friend') {
+          this.handleFriendCompletion(target, false);
+        } else if (target.type === 'decoy') {
+          this.handleDecoyCompletion(target, false);
+        }
         this.removeTarget(target);
       }
     }

@@ -137,7 +137,7 @@ export function createRadarRender(scene: Phaser.Scene): RadarRender {
         dynamicGraphics.fillCircle(target.x, target.y, blipRadius);
       }
 
-      // Индикатор опознанной цели
+      // Индикатор опознанной цели (сканирование)
       if (target.isScanned) {
         const typeCfg = GAME_CONFIG.targetTypes[target.type];
         const tagColor =
@@ -147,7 +147,14 @@ export function createRadarRender(scene: Phaser.Scene): RadarRender {
               ? 0x22c55e
               : 0x94a3b8;
         dynamicGraphics.lineStyle(1.2, tagColor, 0.85);
-        dynamicGraphics.strokeCircle(target.x, target.y, blipRadius * 2.8);
+        dynamicGraphics.strokeCircle(target.x, target.y, blipRadius * 2.6);
+      }
+
+      // Тактическая окантовка оператора (союзник / помеха) с угасанием люминофора
+      if (target.markedAs && target.alpha > 0.02) {
+        const markColor = target.markedAs === 'friend' ? 0x22c55e : 0x94a3b8;
+        dynamicGraphics.lineStyle(1.4, markColor, target.alpha * 0.9);
+        dynamicGraphics.strokeCircle(target.x, target.y, blipRadius * 3.4);
       }
     }
 

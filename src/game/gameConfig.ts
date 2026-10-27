@@ -44,6 +44,7 @@ export const GAME_CONFIG = {
   creditsWaveBase: 150,
   creditsWavePerLevel: 25,
   creditsFriendlyFirePenalty: 150,
+  unidentifiedFriendPenalty: 25, // штраф в кредитах за посадку/пролёт неопознанного союзника
 
   // Ресурс перехватчиков (боезапас ПВО)
   maxInterceptors: 6,
@@ -138,6 +139,7 @@ export interface GameTarget {
   signal: number;
   alpha: number; // 0..1 (яркость люминофора)
   isScanned?: boolean; // Раскрыт ли точный тип цели
+  markedAs?: 'friend' | 'ignore' | null; // Пользовательская тактическая метка цели
   decoyPassesThroughBase?: boolean; // Пролетает ли ловушка сквозь базу
   hasPassedBase?: boolean; // Флаг фиксации пролёта через базу
   hasBombedBase?: boolean; // Флаг: бомбардировщик уже сбросил бомбы на базу
