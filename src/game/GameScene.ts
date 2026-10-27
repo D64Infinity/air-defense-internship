@@ -376,6 +376,7 @@ export class GameScene extends Phaser.Scene {
 
     // 2. Боевой перехват (Угроза) — немедленный пуск ракеты
     if (!this.armory.consumeInterceptor()) {
+      this.soundSystem.playDenyClick();
       this.showFeedback('[ОТКАЗ!] БОЕКОМПЛЕКТ ПУСТ! ОЖИДАЙТЕ СНАБЖЕНИЯ', '#ef4444');
       return;
     }
@@ -383,6 +384,7 @@ export class GameScene extends Phaser.Scene {
     // Эффект взрыва: для техники - с ударной волной, для ловушки - только вспышка
     const hasShockwave = target.type !== 'decoy';
     this.explosions.push(createExplosion(target.x, target.y, hasShockwave));
+    this.soundSystem.playExplosion(target.type);
 
     if (target.type === 'missile' || target.type === 'bomber') {
       const distToBase = getDistToBase(target.x, target.y);
