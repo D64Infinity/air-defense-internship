@@ -122,3 +122,79 @@ export function updateTargetMotion(target: GameTarget, dt: number): void {
     target.alpha = Math.max(0, target.alpha - dt / GAME_CONFIG.blipFadeDuration);
   }
 }
+
+/**
+ * События перемещения и пересечения границ целей
+ */
+export type TargetSimulationEvent =
+  | { type: 'missile_hit'; target: GameTarget }
+  | { type: 'bomber_bomb'; target: GameTarget }
+  | { type: 'friend_landed'; target: GameTarget }
+  | { type: 'friend_exited'; target: GameTarget }
+  | { type: 'decoy_passed_base'; target: GameTarget }
+  | { type: 'decoy_dissipated'; target: GameTarget }
+  | { type: 'decoy_exited'; target: GameTarget }
+  | { type: 'target_escaped'; target: GameTarget };
+
+/**
+ * Результат одного тика симуляции массива целей
+ */
+export interface SimulationStepResult {
+  events: TargetSimulationEvent[];
+  targetsToRemove: GameTarget[];
+}
+
+/**
+ * Полный шаг симуляции целей: движение, маневры, угасание и детекция достижения базы или границы
+ */
+export function updateTargetsSimulation(
+  targets: GameTarget[],
+  dt: number,
+): SimulationStepResult {
+  const events: TargetSimulationEvent[] = [];
+  const targetsToRemove: GameTarget[] = [];
+  const baseRadius = 18;
+  const exitRadius = GAME_CONFIG.radarRadius * 1.05;
+
+  for (let i = targets.length - 1; i >= 0; i--) {
+    const target = targets[i];
+    updateTargetMotion(target, dt);
+
+    const distToBase = getDistToBase(target.x, target.y);
+
+    if (distToBase < baseRadius) {
+      if (target.type === 'missile') {
+        events.push({ type: 'missile_hit', target });
+        targetsToRemove.push(target);
+      } else if (target.type === 'bomber') {
+        if (!target.hasBombedBase) {
+          target.hasBombedBase = true;
+          disengageTarget(target);
+          events.push({ type: 'bomber_bomb', target });
+        }
+      } else if (target.type === 'friend') {
+        events.push({ type: 'friend_landed', target });
+        targetsToRemove.push(target);
+      } else if (target.type === 'decoy') {
+        if (target.decoyPassesThroughBase && !target.hasPassedBase) {
+          target.hasPassedBase = true;
+          events.push({ type: 'decoy_passed_base', target });
+        } else if (!target.decoyPassesThroughBase) {
+          events.push({ type: 'decoy_dissipated', target });
+          targetsToRemove.push(target);
+        }
+      }
+    } else if (distToBase > exitRadius) {
+      if (target.type === 'friend') {
+        events.push({ type: 'friend_exited', target });
+      } else if (target.type === 'decoy') {
+        events.push({ type: 'decoy_exited', target });
+      } else {
+        events.push({ type: 'target_escaped', target });
+      }
+      targetsToRemove.push(target);
+    }
+  }
+
+  return { events, targetsToRemove };
+}

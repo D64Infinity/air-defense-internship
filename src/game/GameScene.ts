@@ -30,8 +30,8 @@ import { createSoundSystem, type SoundSystem } from './audio';
 import {
   getDistToBase,
   findTargetNear,
-  updateTargetMotion,
-  disengageTarget,
+  updateTargetsSimulation,
+  type TargetSimulationEvent,
 } from './targetSimulation';
 
 
@@ -514,80 +514,83 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Движение целей и проверка достижения базы
+   * Шаг движения целей и диспетчеризация событий пересечения границ
    */
   private updateTargets(dt: number): void {
-    for (let i = this.targets.length - 1; i >= 0; i--) {
-      const target = this.targets[i];
-      updateTargetMotion(target, dt);
+    const { events, targetsToRemove } = updateTargetsSimulation(this.targets, dt);
 
-      const distToBase = getDistToBase(target.x, target.y);
+    for (const ev of events) {
+      this.handleTargetSimulationEvent(ev);
+      if (this.isGameOver) break;
+    }
 
-      // Цель проникла на базу
-      if (distToBase < 18) {
-        if (target.type === 'missile') {
-          this.stats.recordThreatMissed();
-          this.waveHadFlaws = true;
-          this.scoring.resetStreak();
-          this.baseHealth = Math.max(0, this.baseHealth - GAME_CONFIG.damageMissile);
-          this.showFeedback(
-            `[УДАР!] ПРОПУЩЕНА РАКЕТА! (-${GAME_CONFIG.damageMissile} HP)`,
-            '#ef4444',
-          );
-          this.baseFlashTimer = 0.6;
-        } else if (target.type === 'bomber') {
-          if (target.hasBombedBase) {
-            continue;
-          }
-          target.hasBombedBase = true;
-          this.stats.recordThreatMissed();
-          this.waveHadFlaws = true;
-          this.scoring.resetStreak();
-          this.baseHealth = Math.max(0, this.baseHealth - GAME_CONFIG.damageBomber);
-          this.showFeedback(
-            `[УДАР!] БОМБАРДИРОВКА БАЗЫ! (-${GAME_CONFIG.damageBomber} HP)`,
-            '#ef4444',
-          );
-          this.baseFlashTimer = 0.6;
-          this.drawHealthBar();
+    for (const target of targetsToRemove) {
+      this.removeTarget(target);
+    }
+  }
 
-          // Бомбардировщик сбросил бомбы и уходит по прямой за пределы зоны
-          disengageTarget(target);
+  /**
+   * Реакция на события физической симуляции целей
+   */
+  private handleTargetSimulationEvent(ev: TargetSimulationEvent): void {
+    switch (ev.type) {
+      case 'missile_hit':
+        this.stats.recordThreatMissed();
+        this.waveHadFlaws = true;
+        this.scoring.resetStreak();
+        this.applyBaseDamage(
+          GAME_CONFIG.damageMissile,
+          `[УРОН!] ПРОПУЩЕНА РАКЕТА! (-${GAME_CONFIG.damageMissile} HP)`,
+        );
+        break;
 
-          if (this.baseHealth <= 0 && !this.isGameOver) {
-            this.triggerGameOver();
-            return;
-          }
-          continue;
-        } else if (target.type === 'friend') {
-          this.handleFriendCompletion(target, true);
-        } else if (target.type === 'decoy') {
-          if (target.decoyPassesThroughBase && !target.hasPassedBase) {
-            target.hasPassedBase = true;
-            this.showFeedback(`[БАЗА] ЛОЖНАЯ ЦЕЛЬ ПРОШЛА НАВЫЛЕТ (0 УРОНА)`, '#64748b');
-            continue;
-          } else if (target.hasPassedBase) {
-            continue;
-          } else {
-            this.handleDecoyCompletion(target, true);
-          }
-        }
+      case 'bomber_bomb':
+        this.stats.recordThreatMissed();
+        this.waveHadFlaws = true;
+        this.scoring.resetStreak();
+        this.applyBaseDamage(
+          GAME_CONFIG.damageBomber,
+          `[УРОН!] БОМБАРДИРОВКА БАЗЫ! (-${GAME_CONFIG.damageBomber} HP)`,
+        );
+        break;
 
-        this.drawHealthBar();
-        this.removeTarget(target);
+      case 'friend_landed':
+        this.handleFriendCompletion(ev.target, true);
+        break;
 
-        if (this.baseHealth <= 0 && !this.isGameOver) {
-          this.triggerGameOver();
-          return;
-        }
-      } else if (distToBase > GAME_CONFIG.radarRadius * 1.05) {
-        if (target.type === 'friend') {
-          this.handleFriendCompletion(target, false);
-        } else if (target.type === 'decoy') {
-          this.handleDecoyCompletion(target, false);
-        }
-        this.removeTarget(target);
-      }
+      case 'friend_exited':
+        this.handleFriendCompletion(ev.target, false);
+        break;
+
+      case 'decoy_passed_base':
+        this.showFeedback('[БАЗА] ЛОЖНАЯ ЦЕЛЬ ПРОШЛА НАВЫЛЕТ (-0 HP)', '#64748b');
+        break;
+
+      case 'decoy_dissipated':
+        this.handleDecoyCompletion(ev.target, true);
+        break;
+
+      case 'decoy_exited':
+        this.handleDecoyCompletion(ev.target, false);
+        break;
+
+      case 'target_escaped':
+        // Уход цели за пределы зоны без последствий
+        break;
+    }
+  }
+
+  /**
+   * Применение урона базе с эффектом вспышки и проверкой Game Over
+   */
+  private applyBaseDamage(damage: number, feedback: string): void {
+    this.baseHealth = Math.max(0, this.baseHealth - damage);
+    this.baseFlashTimer = 0.6;
+    this.showFeedback(feedback, '#ef4444');
+    this.drawHealthBar();
+
+    if (this.baseHealth <= 0 && !this.isGameOver) {
+      this.triggerGameOver();
     }
   }
 
