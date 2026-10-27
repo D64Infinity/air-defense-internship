@@ -856,9 +856,11 @@ export function createHud(
 
   // 6. Обновление счета и ресурсов
   const updateScoreBoard = (data: ScoreBoardData) => {
-    const mult = (
+    const mult = Math.min(
+      GAME_CONFIG.maxMultiplier,
       1 +
-      Math.floor(data.streak / GAME_CONFIG.streakStepForMultiplier) * 0.5
+        Math.floor(data.streak / GAME_CONFIG.streakStepForMultiplier) *
+          GAME_CONFIG.multiplierStep,
     ).toFixed(1);
     scoreText.setText(`СЧЁТ: ${data.score.toString().padStart(4, '0')}`);
     creditsText.setText(`КРЕДИТЫ: ${data.credits} CR`);

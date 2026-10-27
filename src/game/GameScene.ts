@@ -539,7 +539,9 @@ export class GameScene extends Phaser.Scene {
   private getScoreMultiplier(): number {
     return Math.min(
       GAME_CONFIG.maxMultiplier,
-      1 + Math.floor(this.streak / GAME_CONFIG.streakStepForMultiplier) * 0.5,
+      1 +
+        Math.floor(this.streak / GAME_CONFIG.streakStepForMultiplier) *
+          GAME_CONFIG.multiplierStep,
     );
   }
 
