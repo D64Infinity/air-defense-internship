@@ -5,18 +5,9 @@ import {
   type GameTarget,
 } from './gameConfig';
 import { calculateStreakMultiplier } from './scoring';
+import type { GameSessionStats } from './stats';
 
-export interface GameSessionStats {
-  missilesShot: number;
-  bombersShot: number;
-  friendsSaved: number;
-  decoysFiltered: number;
-  threatsMissed: number;
-  friendlyFireCount: number;
-  correctDecisions: number;
-  totalDecisions: number;
-  sessionTime: number;
-}
+export type { GameSessionStats };
 
 /**
  * Интерфейс управления оверлеем поражения

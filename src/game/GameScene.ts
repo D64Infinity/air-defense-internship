@@ -19,13 +19,13 @@ import {
   type PauseOverlay,
   type BriefingOverlay,
   type HudManager,
-  type GameSessionStats,
 } from './ui';
 import { setupGameInputs } from './input';
 import { createRadarRender, type RadarRender } from './radarRender';
 import { createSpawner, type TargetSpawner } from './spawner';
 import { createScoreTracker, type ScoreTracker } from './scoring';
 import { createArmory, type ArmoryTracker } from './armory';
+import { createStatsTracker, type StatsTracker } from './stats';
 import {
   getDistToBase,
   findTargetNear,
@@ -45,6 +45,7 @@ export class GameScene extends Phaser.Scene {
   private spawner: TargetSpawner = createSpawner();
   private scoring: ScoreTracker = createScoreTracker();
   private armory: ArmoryTracker = createArmory();
+  private stats: StatsTracker = createStatsTracker();
   private isPaused = false;
   private isGameStarted = false;
 
@@ -59,7 +60,6 @@ export class GameScene extends Phaser.Scene {
   private waveHadFlaws = false;
   private isGameOver = false;
   private highScore = 0;
-  private stats: GameSessionStats = { missilesShot: 0, bombersShot: 0, friendsSaved: 0, decoysFiltered: 0, threatsMissed: 0, friendlyFireCount: 0, correctDecisions: 0, totalDecisions: 0, sessionTime: 0 };
 
   // Таймеры эффектов
   private baseFlashTimer = 0;
@@ -75,10 +75,10 @@ export class GameScene extends Phaser.Scene {
     this.baseHealth = GAME_CONFIG.maxBaseHealth;
     this.scoring.reset();
     this.armory.reset();
+    this.stats.reset();
     this.wave = 1;
     this.waveTargetsToSpawn = 7;
     this.waveHadFlaws = false;
-    this.stats = { missilesShot: 0, bombersShot: 0, friendsSaved: 0, decoysFiltered: 0, threatsMissed: 0, friendlyFireCount: 0, correctDecisions: 0, totalDecisions: 0, sessionTime: 0 };
     this.targets = [];
     this.selectedTarget = null;
     this.explosions = [];
@@ -150,7 +150,7 @@ export class GameScene extends Phaser.Scene {
 
     if (this.isGameOver || this.isPaused) return;
 
-    this.stats.sessionTime += dt;
+    this.stats.updateTime(dt);
 
     this.radarRender.updateBeam(dt, this.targets);
     this.updateTargets(dt);
@@ -268,7 +268,7 @@ export class GameScene extends Phaser.Scene {
       this.wave,
       this.scoring.bestStreak,
       isNewRecord,
-      this.stats,
+      this.stats.snapshot,
     );
   }
 
@@ -375,10 +375,7 @@ export class GameScene extends Phaser.Scene {
     const hasShockwave = target.type !== 'decoy';
     this.explosions.push(createExplosion(target.x, target.y, hasShockwave));
 
-    this.stats.totalDecisions++;
-
     if (target.type === 'missile' || target.type === 'bomber') {
-      this.stats.correctDecisions++;
       const distToBase = getDistToBase(target.x, target.y);
       const { points, isLongRange } = this.scoring.addThreatScore(
         distToBase,
@@ -387,14 +384,14 @@ export class GameScene extends Phaser.Scene {
       const rangeTag = isLongRange ? ' [ДАЛЬНИЙ РУБЕЖ]' : '';
 
       if (target.type === 'missile') {
-        this.stats.missilesShot++;
+        this.stats.recordMissileIntercept();
         this.armory.addCredits(GAME_CONFIG.creditsPerMissile);
         this.showFeedback(
           `[ВЕРНО!] РАКЕТА СБИТА (+${points}, +${GAME_CONFIG.creditsPerMissile} CR)${rangeTag}`,
           '#4ade80',
         );
       } else {
-        this.stats.bombersShot++;
+        this.stats.recordBomberIntercept();
         this.armory.addCredits(GAME_CONFIG.creditsPerBomber);
         this.showFeedback(
           `[ВЕРНО!] БОМБАРДИРОВЩИК СБИТ (+${points}, +${GAME_CONFIG.creditsPerBomber} CR)${rangeTag}`,
@@ -403,7 +400,7 @@ export class GameScene extends Phaser.Scene {
       }
     } else if (target.type === 'friend') {
       // Огонь по своим
-      this.stats.friendlyFireCount++;
+      this.stats.recordFriendlyFire();
       this.waveHadFlaws = true;
       const penalty = this.scoring.applyFriendlyFirePenalty();
       this.armory.deductCredits(GAME_CONFIG.creditsFriendlyFirePenalty);
@@ -413,6 +410,7 @@ export class GameScene extends Phaser.Scene {
       );
     } else {
       // Ловушка
+      this.stats.recordDecoyIntercept();
       this.scoring.resetStreak();
       this.showFeedback(
         `[ПРОМАХ!] ПЕРЕХВАТЧИК ВПУСТУЮ НА ЛОВУШКУ! (Ост: ${this.armory.interceptors})`,
@@ -428,17 +426,15 @@ export class GameScene extends Phaser.Scene {
    * Обработка завершения маршрута союзного судна (посадка или транзитный пролёт)
    */
   private handleFriendCompletion(target: GameTarget, isLanding: boolean): void {
-    this.stats.totalDecisions++;
-
     if (target.markedAs === 'friend') {
+      this.stats.recordFriendSaved();
       const points = this.scoring.addFriendlyScore();
-      this.stats.correctDecisions++;
-      this.stats.friendsSaved++;
 
       const action = isLanding ? 'БЕЗОПАСНО СЕЛ НА БАЗУ' : 'БЕЗОПАСНО ПОКИНУЛ СЕКТОР';
       const tag = isLanding ? '[ПОСАДКА]' : '[ТРАНЗИТ]';
       this.showFeedback(`${tag} СОЮЗНИК ${action} (+${points}, СЕРИЯ +1)`, '#86efac');
     } else {
+      this.stats.recordFriendMissed();
       this.scoring.resetStreak();
       this.waveHadFlaws = true;
       const penalty = GAME_CONFIG.unidentifiedFriendPenalty;
@@ -456,14 +452,12 @@ export class GameScene extends Phaser.Scene {
    */
   private handleDecoyCompletion(target: GameTarget, isDissipated = false): void {
     if (target.markedAs === 'ignore') {
-      this.stats.totalDecisions++;
-      this.stats.correctDecisions++;
-      this.stats.decoysFiltered++;
+      this.stats.recordDecoyFiltered();
       this.scoring.addDecoySuccess();
       const reason = isDissipated ? 'СИГНАЛ РАССЕЯЛСЯ' : 'ПОКИНУЛА СЕКТОР';
       this.showFeedback(`[ФИЛЬТР] ЛОЖНАЯ ЦЕЛЬ (${reason}) (СЕРИЯ +1)`, '#94a3b8');
     } else if (target.markedAs === 'friend') {
-      this.stats.totalDecisions++;
+      this.stats.recordDecoyMistake();
       this.scoring.resetStreak();
       this.waveHadFlaws = true;
       this.showFeedback(`[ОШИБКА!] ЛОЖНАЯ ЦЕЛЬ БЫЛА ПРИНЯТА ЗА СОЮЗНИКА!`, '#f87171');
@@ -521,8 +515,7 @@ export class GameScene extends Phaser.Scene {
       // Цель проникла на базу
       if (distToBase < 18) {
         if (target.type === 'missile') {
-          this.stats.totalDecisions++;
-          this.stats.threatsMissed++;
+          this.stats.recordThreatMissed();
           this.waveHadFlaws = true;
           this.scoring.resetStreak();
           this.baseHealth = Math.max(0, this.baseHealth - GAME_CONFIG.damageMissile);
@@ -536,8 +529,7 @@ export class GameScene extends Phaser.Scene {
             continue;
           }
           target.hasBombedBase = true;
-          this.stats.totalDecisions++;
-          this.stats.threatsMissed++;
+          this.stats.recordThreatMissed();
           this.waveHadFlaws = true;
           this.scoring.resetStreak();
           this.baseHealth = Math.max(0, this.baseHealth - GAME_CONFIG.damageBomber);
