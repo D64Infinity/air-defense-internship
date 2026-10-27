@@ -25,6 +25,12 @@ import { setupGameInputs } from './input';
 import { createRadarRender, type RadarRender } from './radarRender';
 import { createSpawner, type TargetSpawner } from './spawner';
 import { createScoreTracker, type ScoreTracker } from './scoring';
+import {
+  getDistToBase,
+  findTargetNear,
+  updateTargetMotion,
+  disengageTarget,
+} from './targetSimulation';
 
 
 export class GameScene extends Phaser.Scene {
@@ -114,7 +120,7 @@ export class GameScene extends Phaser.Scene {
     this.gameOverOverlay = createGameOverOverlay(this, () => this.restartGame());
     setupGameInputs(this, {
       onSelectRadarTarget: (x, y) => {
-        this.selectedTarget = this.findTargetNear(x, y);
+        this.selectedTarget = findTargetNear(this.targets, x, y);
         this.updateTargetSelectionUI();
       },
       onTogglePause: () => this.togglePause(),
@@ -295,27 +301,6 @@ export class GameScene extends Phaser.Scene {
     this.scene.restart();
   }
 
-
-  private findTargetNear(x: number, y: number): GameTarget | null {
-    let closest: GameTarget | null = null;
-    let minDist = GAME_CONFIG.selectionHitRadius;
-
-    for (const target of this.targets) {
-      if (target.alpha > 0.04) {
-        const d = Math.hypot(target.x - x, target.y - y);
-        if (d < minDist) {
-          minDist = d;
-          closest = target;
-        }
-      }
-    }
-    return closest;
-  }
-
-  private getDistToBase(x: number, y: number): number {
-    return Math.hypot(x - GAME_CONFIG.radarX, y - GAME_CONFIG.radarY);
-  }
-
   /**
    * Корректное удаление цели: снятие выделения, сброс сканирования и проверка волны
    */
@@ -478,7 +463,7 @@ export class GameScene extends Phaser.Scene {
 
     if (target.type === 'missile' || target.type === 'bomber') {
       this.stats.correctDecisions++;
-      const distToBase = this.getDistToBase(target.x, target.y);
+      const distToBase = getDistToBase(target.x, target.y);
       const { points, isLongRange } = this.scoring.addThreatScore(
         distToBase,
         GAME_CONFIG.radarRadius,
@@ -639,39 +624,9 @@ export class GameScene extends Phaser.Scene {
   private updateTargets(dt: number): void {
     for (let i = this.targets.length - 1; i >= 0; i--) {
       const target = this.targets[i];
+      updateTargetMotion(target, dt);
 
-      // ИИ маневрирования: проверка наступления запланированного манёвра у кораблей
-      if (target.maneuverTimer !== undefined && !target.hasManeuvered) {
-        target.maneuverTimer -= dt;
-        if (target.maneuverTimer <= 0) {
-          target.hasManeuvered = true;
-          this.executeShipManeuver(target);
-        }
-      }
-
-      // Плавный доворот судна к целевому курсу
-      if (target.turnRate > 0 && target.headingRad !== target.targetHeadingRad) {
-        target.headingRad = Phaser.Math.Angle.RotateTo(
-          target.headingRad,
-          target.targetHeadingRad,
-          target.turnRate * dt,
-        );
-        target.vx = Math.cos(target.headingRad) * target.speed;
-        target.vy = Math.sin(target.headingRad) * target.speed;
-
-        let deg = Math.round(Phaser.Math.RadToDeg(target.headingRad));
-        if (deg < 0) deg += 360;
-        target.headingDeg = deg;
-      }
-
-      target.x += target.vx * dt;
-      target.y += target.vy * dt;
-
-      if (target.alpha > 0) {
-        target.alpha = Math.max(0, target.alpha - dt / GAME_CONFIG.blipFadeDuration);
-      }
-
-      const distToBase = this.getDistToBase(target.x, target.y);
+      const distToBase = getDistToBase(target.x, target.y);
 
       // Цель проникла на базу
       if (distToBase < 18) {
@@ -704,10 +659,7 @@ export class GameScene extends Phaser.Scene {
           this.drawHealthBar();
 
           // Бомбардировщик сбросил бомбы и уходит по прямой за пределы зоны
-          target.targetHeadingRad = target.headingRad;
-          target.turnRate = 0;
-          target.vx = Math.cos(target.headingRad) * target.speed;
-          target.vy = Math.sin(target.headingRad) * target.speed;
+          disengageTarget(target);
 
           if (this.baseHealth <= 0 && !this.isGameOver) {
             this.triggerGameOver();
@@ -742,34 +694,6 @@ export class GameScene extends Phaser.Scene {
           this.handleDecoyCompletion(target, false);
         }
         this.removeTarget(target);
-      }
-    }
-  }
-
-  /**
-   * ИИ манёвра кораблей (бомбардировщиков и союзников)
-   */
-  private executeShipManeuver(target: GameTarget): void {
-    if (target.type === 'bomber') {
-      // 70% шанс: бомбардировщик доворачивает прямо на базу для атаки
-      if (Math.random() < 0.7) {
-        target.targetHeadingRad = Math.atan2(
-          GAME_CONFIG.radarY - target.y,
-          GAME_CONFIG.radarX - target.x,
-        );
-      } else {
-        // 30% шанс: транзитный уход в сторону от базы
-        target.targetHeadingRad = target.headingRad + Phaser.Math.FloatBetween(-0.6, 0.6);
-      }
-    } else if (target.type === 'friend') {
-      // Союзник: 50% заход на базу (посадка/дозаправка), 50% транзитный пролёт
-      if (Math.random() < 0.5) {
-        target.targetHeadingRad = Math.atan2(
-          GAME_CONFIG.radarY - target.y,
-          GAME_CONFIG.radarX - target.x,
-        );
-      } else {
-        target.targetHeadingRad = target.headingRad + Phaser.Math.FloatBetween(-0.5, 0.5);
       }
     }
   }
