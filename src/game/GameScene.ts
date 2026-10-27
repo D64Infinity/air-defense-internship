@@ -25,6 +25,7 @@ import { setupGameInputs } from './input';
 import { createRadarRender, type RadarRender } from './radarRender';
 import { createSpawner, type TargetSpawner } from './spawner';
 import { createScoreTracker, type ScoreTracker } from './scoring';
+import { createArmory, type ArmoryTracker } from './armory';
 import {
   getDistToBase,
   findTargetNear,
@@ -43,6 +44,7 @@ export class GameScene extends Phaser.Scene {
   private briefingOverlay!: BriefingOverlay;
   private spawner: TargetSpawner = createSpawner();
   private scoring: ScoreTracker = createScoreTracker();
+  private armory: ArmoryTracker = createArmory();
   private isPaused = false;
   private isGameStarted = false;
 
@@ -53,16 +55,8 @@ export class GameScene extends Phaser.Scene {
   private selectedTarget: GameTarget | null = null;
   private explosions: ExplosionEffect[] = [];
 
-  // Ресурсы и механика сканирования
-  private interceptors = GAME_CONFIG.startInterceptors;
-  private scansAvailable = GAME_CONFIG.maxScansPerWave;
-  private isScanning = false;
-  private scanningTarget: GameTarget | null = null;
-  private scanProgress = 0;
-
   // Состояние игры
   private baseHealth = GAME_CONFIG.maxBaseHealth;
-  private credits = GAME_CONFIG.startCredits;
   private wave = 1;
   private waveTargetsToSpawn = 7;
   private waveHadFlaws = false;
@@ -83,17 +77,12 @@ export class GameScene extends Phaser.Scene {
     this.isGameStarted = false;
     this.baseHealth = GAME_CONFIG.maxBaseHealth;
     this.scoring.reset();
-    this.credits = GAME_CONFIG.startCredits;
+    this.armory.reset();
     this.wave = 1;
     this.waveTargetsToSpawn = 7;
     this.waveHadFlaws = false;
     this.stats = { missilesShot: 0, bombersShot: 0, friendsSaved: 0, decoysFiltered: 0, threatsMissed: 0, friendlyFireCount: 0, correctDecisions: 0, totalDecisions: 0, sessionTime: 0 };
     this.currentBeamSpeed = GAME_CONFIG.beamSpeedBase;
-    this.interceptors = GAME_CONFIG.startInterceptors;
-    this.scansAvailable = GAME_CONFIG.maxScansPerWave;
-    this.isScanning = false;
-    this.scanningTarget = null;
-    this.scanProgress = 0;
     this.targets = [];
     this.selectedTarget = null;
     this.explosions = [];
@@ -186,8 +175,8 @@ export class GameScene extends Phaser.Scene {
       baseFlashTimer: this.baseFlashTimer,
       targets: this.targets,
       selectedTarget: this.selectedTarget,
-      isScanning: this.isScanning,
-      scanningTarget: this.scanningTarget,
+      isScanning: this.armory.isScanning,
+      scanningTarget: this.armory.scanningTarget,
       timeNow: this.time.now,
       explosions: this.explosions,
     });
@@ -268,8 +257,7 @@ export class GameScene extends Phaser.Scene {
     this.pauseOverlay.hide();
     this.briefingOverlay.hide();
     this.selectedTarget = null;
-    this.isScanning = false;
-    this.scanningTarget = null;
+    this.armory.cancelScan();
     this.updateTargetSelectionUI();
 
     let isNewRecord = false;
@@ -313,10 +301,7 @@ export class GameScene extends Phaser.Scene {
       this.selectedTarget = null;
       this.updateTargetSelectionUI();
     }
-    if (this.scanningTarget === target) {
-      this.isScanning = false;
-      this.scanningTarget = null;
-    }
+    this.armory.cancelScanIfTarget(target);
     this.checkWaveProgress();
   }
 
@@ -324,108 +309,45 @@ export class GameScene extends Phaser.Scene {
    * Запуск глубокого сканирования сигнатуры цели (1.5 сек)
    */
   private startScanning(): void {
-    if (!this.selectedTarget || this.isGameOver || this.isScanning) return;
-
-    if (this.selectedTarget.isScanned) {
-      this.showFeedback('[СКАН] ЦЕЛЬ УЖЕ ОПОЗНАНА', '#38bdf8');
-      return;
+    if (!this.selectedTarget || this.isGameOver || this.armory.isScanning) return;
+    const res = this.armory.startScan(this.selectedTarget);
+    this.showFeedback(res.message, res.color);
+    if (res.success) {
+      this.updateScoreBoard();
+      this.updateTargetSelectionUI();
     }
-
-    if (this.scansAvailable <= 0) {
-      this.showFeedback('[ОТКАЗ] НЕТ ЗАРЯДОВ СКАНИРОВАНИЯ (0 шт.)!', '#ef4444');
-      return;
-    }
-
-    this.scansAvailable--;
-    this.isScanning = true;
-    this.scanningTarget = this.selectedTarget;
-    this.scanProgress = 0;
-    this.showFeedback('[СИСТЕМА] АНАЛИЗ СИГНАТУРЫ... (1.5 СЕК)', '#38bdf8');
-    this.updateScoreBoard();
-    this.updateTargetSelectionUI();
-  }
-
-  /**
-   * Универсальная дозакупка снабжения за кредиты базы
-   */
-  private buySupplyItem(
-    current: number,
-    max: number,
-    cost: number,
-    maxFeedback: string,
-    maxColor: string,
-    successFeedback: string,
-    onSuccess: () => void,
-  ): void {
-    if (this.isGameOver || this.isPaused) return;
-
-    if (current >= max) {
-      this.showFeedback(maxFeedback, maxColor);
-      return;
-    }
-
-    if (this.credits < cost) {
-      this.showFeedback(`[БЮДЖЕТ] НЕ ХВАТАЕТ КРЕДИТОВ (НУЖНО ${cost} CR)!`, '#ef4444');
-      return;
-    }
-
-    this.credits -= cost;
-    onSuccess();
-    this.showFeedback(successFeedback, '#22c55e');
-    this.updateScoreBoard();
-    this.updateTargetSelectionUI();
   }
 
   private buyInterceptor(): void {
-    this.buySupplyItem(
-      this.interceptors,
-      GAME_CONFIG.maxInterceptors,
-      GAME_CONFIG.interceptorCost,
-      `[СКЛАД] МАКСИМУМ РАКЕТ (${GAME_CONFIG.maxInterceptors}/${GAME_CONFIG.maxInterceptors})!`,
-      '#facc15',
-      `[СНАБЖЕНИЕ] +1 РАКЕТА (-${GAME_CONFIG.interceptorCost} CR)`,
-      () => this.interceptors++,
-    );
+    if (this.isGameOver || this.isPaused) return;
+    const res = this.armory.buyInterceptor();
+    this.showFeedback(res.message, res.color);
+    if (res.success) {
+      this.updateScoreBoard();
+      this.updateTargetSelectionUI();
+    }
   }
 
   private buyScan(): void {
-    this.buySupplyItem(
-      this.scansAvailable,
-      GAME_CONFIG.maxScansPerWave,
-      GAME_CONFIG.scanCost,
-      `[СЕНСОРЫ] МАКСИМУМ СКАНОВ (${GAME_CONFIG.maxScansPerWave}/${GAME_CONFIG.maxScansPerWave})!`,
-      '#38bdf8',
-      `[СНАБЖЕНИЕ] +1 СКАН (-${GAME_CONFIG.scanCost} CR)`,
-      () => this.scansAvailable++,
-    );
+    if (this.isGameOver || this.isPaused) return;
+    const res = this.armory.buyScan();
+    this.showFeedback(res.message, res.color);
+    if (res.success) {
+      this.updateScoreBoard();
+      this.updateTargetSelectionUI();
+    }
   }
 
   /**
    * Обновление таймера сканирования (время в игре идёт непрерывно)
    */
   private updateScanning(dt: number): void {
-    if (!this.isScanning || !this.scanningTarget) return;
-
-    if (!this.targets.includes(this.scanningTarget)) {
-      this.isScanning = false;
-      this.scanningTarget = null;
-      this.scanProgress = 0;
-      this.updateTargetSelectionUI();
-      return;
+    const res = this.armory.updateScanning(dt, this.targets);
+    if (!res) return;
+    if (res.completed && res.message && res.color) {
+      this.showFeedback(res.message, res.color);
     }
-
-    this.scanProgress += dt;
-    if (this.scanProgress >= GAME_CONFIG.scanDuration) {
-      this.isScanning = false;
-      this.scanningTarget.isScanned = true;
-      const typeCfg = GAME_CONFIG.targetTypes[this.scanningTarget.type];
-      this.showFeedback(
-        `[ОПОЗНАНО!] СИГНАТУРА: ${typeCfg.label.toUpperCase()}`,
-        '#38bdf8',
-      );
-      this.scanningTarget = null;
-      this.updateTargetSelectionUI();
-    }
+    this.updateTargetSelectionUI();
   }
 
   /**
@@ -449,11 +371,10 @@ export class GameScene extends Phaser.Scene {
     }
 
     // 2. Боевой перехват (Угроза) — немедленный пуск ракеты
-    if (this.interceptors <= 0) {
+    if (!this.armory.consumeInterceptor()) {
       this.showFeedback('[ОТКАЗ!] БОЕКОМПЛЕКТ ПУСТ! ОЖИДАЙТЕ СНАБЖЕНИЯ', '#ef4444');
       return;
     }
-    this.interceptors--;
 
     // Эффект взрыва: для техники - с ударной волной, для ловушки - только вспышка
     const hasShockwave = target.type !== 'decoy';
@@ -472,14 +393,14 @@ export class GameScene extends Phaser.Scene {
 
       if (target.type === 'missile') {
         this.stats.missilesShot++;
-        this.credits += GAME_CONFIG.creditsPerMissile;
+        this.armory.addCredits(GAME_CONFIG.creditsPerMissile);
         this.showFeedback(
           `[ВЕРНО!] РАКЕТА СБИТА (+${points}, +${GAME_CONFIG.creditsPerMissile} CR)${rangeTag}`,
           '#4ade80',
         );
       } else {
         this.stats.bombersShot++;
-        this.credits += GAME_CONFIG.creditsPerBomber;
+        this.armory.addCredits(GAME_CONFIG.creditsPerBomber);
         this.showFeedback(
           `[ВЕРНО!] БОМБАРДИРОВЩИК СБИТ (+${points}, +${GAME_CONFIG.creditsPerBomber} CR)${rangeTag}`,
           '#4ade80',
@@ -490,7 +411,7 @@ export class GameScene extends Phaser.Scene {
       this.stats.friendlyFireCount++;
       this.waveHadFlaws = true;
       const penalty = this.scoring.applyFriendlyFirePenalty();
-      this.credits = Math.max(0, this.credits - GAME_CONFIG.creditsFriendlyFirePenalty);
+      this.armory.deductCredits(GAME_CONFIG.creditsFriendlyFirePenalty);
       this.showFeedback(
         `[ОШИБКА!] СБИТ СВОЙ БОРТ! (-${penalty} очк, -${GAME_CONFIG.creditsFriendlyFirePenalty} CR)`,
         '#f87171',
@@ -499,7 +420,7 @@ export class GameScene extends Phaser.Scene {
       // Ловушка
       this.scoring.resetStreak();
       this.showFeedback(
-        `[ПРОМАХ!] ПЕРЕХВАТЧИК ВПУСТУЮ НА ЛОВУШКУ! (Ост: ${this.interceptors})`,
+        `[ПРОМАХ!] ПЕРЕХВАТЧИК ВПУСТУЮ НА ЛОВУШКУ! (Ост: ${this.armory.interceptors})`,
         '#fbbf24',
       );
     }
@@ -526,7 +447,7 @@ export class GameScene extends Phaser.Scene {
       this.scoring.resetStreak();
       this.waveHadFlaws = true;
       const penalty = GAME_CONFIG.unidentifiedFriendPenalty;
-      this.credits = Math.max(0, this.credits - penalty);
+      this.armory.deductCredits(penalty);
 
       const cause = target.markedAs === 'ignore' ? 'ПРИНЯТ ЗА ПОМЕХУ' : 'ПРОПУЩЕН БЕЗ ОПОЗНАНИЯ';
       this.showFeedback(`[ОШИБКА!] СОЮЗНИК ${cause} (-${penalty} CR, СЕРИЯ СБРОШЕНА)`, '#f87171');
@@ -565,30 +486,30 @@ export class GameScene extends Phaser.Scene {
   private updateScoreBoard(): void {
     this.hud.updateScoreBoard({
       score: this.scoring.score,
-      credits: this.credits,
+      credits: this.armory.credits,
       streak: this.scoring.streak,
       wave: this.wave,
       highScore: this.highScore,
-      interceptors: this.interceptors,
-      scansAvailable: this.scansAvailable,
+      interceptors: this.armory.interceptors,
+      scansAvailable: this.armory.scansAvailable,
     });
   }
 
   private updateTargetSelectionUI(): void {
     this.hud.updateTargetSelectionUI({
       selectedTarget: this.selectedTarget,
-      interceptors: this.interceptors,
-      scansAvailable: this.scansAvailable,
-      isScanning: this.isScanning,
+      interceptors: this.armory.interceptors,
+      scansAvailable: this.armory.scansAvailable,
+      isScanning: this.armory.isScanning,
     });
   }
 
   private updateTelemetry(): void {
     this.hud.updateTelemetry({
       selectedTarget: this.selectedTarget,
-      isScanning: this.isScanning,
-      scanningTarget: this.scanningTarget,
-      scanProgress: this.scanProgress,
+      isScanning: this.armory.isScanning,
+      scanningTarget: this.armory.scanningTarget,
+      scanProgress: this.armory.scanProgress,
     });
   }
 
@@ -710,21 +631,8 @@ export class GameScene extends Phaser.Scene {
       this.currentBeamSpeed =
         GAME_CONFIG.beamSpeedBase * Math.min(1.85, 1 + (this.wave - 1) * 0.09);
 
-      // Пополнение боекомплекта перехватчиков и зарядов сканирования
-      const addedAmmo = Math.min(
-        GAME_CONFIG.maxInterceptors - this.interceptors,
-        GAME_CONFIG.interceptorRefillPerWave,
-      );
-      this.interceptors = Math.min(
-        GAME_CONFIG.maxInterceptors,
-        this.interceptors + GAME_CONFIG.interceptorRefillPerWave,
-      );
-      this.scansAvailable = GAME_CONFIG.maxScansPerWave;
-
-      const waveCredits =
-        GAME_CONFIG.creditsWaveBase +
-        (this.wave - 1) * GAME_CONFIG.creditsWavePerLevel;
-      this.credits += waveCredits;
+      // Пополнение боекомплекта перехватчиков, зарядов сканирования и начисление кредитов за волну
+      const { addedAmmo, waveCredits } = this.armory.refillForWave(this.wave);
 
       let cleanBonusText = '';
       if (!this.waveHadFlaws) {
