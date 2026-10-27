@@ -6,7 +6,6 @@ import { renderExplosions, type ExplosionEffect } from './effects';
  * Данные текущего кадра для отрисовки динамических объектов радара
  */
 export interface RadarRenderData {
-  beamAngle: number;
   baseFlashTimer: number;
   targets: GameTarget[];
   selectedTarget: GameTarget | null;
@@ -17,21 +16,71 @@ export interface RadarRenderData {
 }
 
 /**
- * Интерфейс управления рендером радара
+ * Интерфейс управления рендером и развёрткой луча радара
  */
 export interface RadarRender {
   staticGraphics: Phaser.GameObjects.Graphics;
   dynamicGraphics: Phaser.GameObjects.Graphics;
+  readonly beamAngle: number;
+  readonly currentBeamSpeed: number;
+  reset: () => void;
+  setWaveSpeed: (wave: number) => void;
+  updateBeam: (dt: number, targets?: GameTarget[]) => void;
   renderStaticGrid: () => void;
   renderDynamic: (data: RadarRenderData) => void;
 }
 
 /**
- * Фабрика рендера экрана радара (статическая сетка и динамические слои)
+ * Фабрика рендера экрана радара (статическая сетка, луч и динамические слои)
  */
 export function createRadarRender(scene: Phaser.Scene): RadarRender {
   const staticGraphics = scene.add.graphics();
   const dynamicGraphics = scene.add.graphics();
+
+  let beamAngle = 0;
+  let currentBeamSpeed = GAME_CONFIG.beamSpeedBase;
+
+  const isAngleBetween = (target: number, from: number, to: number): boolean => {
+    if (to >= from) return target >= from && target <= to;
+    return target >= from || target <= to;
+  };
+
+  /**
+   * Обновление угла развёртки луча и фосфорная засветка целей в секторе
+   */
+  const updateBeam = (dt: number, targets: GameTarget[] = []): void => {
+    const prevAngle = beamAngle;
+    const twoPi = Math.PI * 2;
+    beamAngle = (beamAngle + currentBeamSpeed * dt) % twoPi;
+
+    for (const target of targets) {
+      const dx = target.x - GAME_CONFIG.radarX;
+      const dy = target.y - GAME_CONFIG.radarY;
+      const dist = Math.hypot(dx, dy);
+
+      if (dist <= GAME_CONFIG.radarRadius) {
+        let targetAngle = Math.atan2(dy, dx);
+        if (targetAngle < 0) targetAngle += twoPi;
+
+        if (isAngleBetween(targetAngle, prevAngle, beamAngle)) {
+          target.alpha = 1.0;
+        }
+      }
+    }
+  };
+
+  /**
+   * Корректировка скорости вращения луча с ростом номера волны
+   */
+  const setWaveSpeed = (wave: number): void => {
+    currentBeamSpeed =
+      GAME_CONFIG.beamSpeedBase * Math.min(1.85, 1 + (wave - 1) * 0.09);
+  };
+
+  const reset = (): void => {
+    beamAngle = 0;
+    currentBeamSpeed = GAME_CONFIG.beamSpeedBase;
+  };
 
   /**
    * Отрисовка постоянной фоновой сетки радара
@@ -98,8 +147,8 @@ export function createRadarRender(scene: Phaser.Scene): RadarRender {
 
     // 1. Шлейф луча
     for (let i = 0; i < trailSteps; i++) {
-      const a1 = data.beamAngle - (trailAngle * (trailSteps - i)) / trailSteps;
-      const a2 = data.beamAngle - (trailAngle * (trailSteps - (i + 1))) / trailSteps;
+      const a1 = beamAngle - (trailAngle * (trailSteps - i)) / trailSteps;
+      const a2 = beamAngle - (trailAngle * (trailSteps - (i + 1))) / trailSteps;
       const sliceAlpha = (i / trailSteps) * 0.22;
 
       dynamicGraphics.fillStyle(colors.trail, sliceAlpha);
@@ -111,8 +160,8 @@ export function createRadarRender(scene: Phaser.Scene): RadarRender {
     }
 
     // 2. Линия луча
-    const beamEndX = radarX + Math.cos(data.beamAngle) * radarRadius;
-    const beamEndY = radarY + Math.sin(data.beamAngle) * radarRadius;
+    const beamEndX = radarX + Math.cos(beamAngle) * radarRadius;
+    const beamEndY = radarY + Math.sin(beamAngle) * radarRadius;
 
     dynamicGraphics.lineStyle(2, colors.beam, 0.95);
     dynamicGraphics.beginPath();
@@ -213,6 +262,15 @@ export function createRadarRender(scene: Phaser.Scene): RadarRender {
   return {
     staticGraphics,
     dynamicGraphics,
+    get beamAngle() {
+      return beamAngle;
+    },
+    get currentBeamSpeed() {
+      return currentBeamSpeed;
+    },
+    reset,
+    setWaveSpeed,
+    updateBeam,
     renderStaticGrid,
     renderDynamic,
   };

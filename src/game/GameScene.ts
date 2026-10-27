@@ -48,9 +48,6 @@ export class GameScene extends Phaser.Scene {
   private isPaused = false;
   private isGameStarted = false;
 
-  // Динамические параметры луча и волн
-  private currentBeamSpeed = GAME_CONFIG.beamSpeedBase;
-  private beamAngle = 0;
   private targets: GameTarget[] = [];
   private selectedTarget: GameTarget | null = null;
   private explosions: ExplosionEffect[] = [];
@@ -82,7 +79,6 @@ export class GameScene extends Phaser.Scene {
     this.waveTargetsToSpawn = 7;
     this.waveHadFlaws = false;
     this.stats = { missilesShot: 0, bombersShot: 0, friendsSaved: 0, decoysFiltered: 0, threatsMissed: 0, friendlyFireCount: 0, correctDecisions: 0, totalDecisions: 0, sessionTime: 0 };
-    this.currentBeamSpeed = GAME_CONFIG.beamSpeedBase;
     this.targets = [];
     this.selectedTarget = null;
     this.explosions = [];
@@ -91,8 +87,9 @@ export class GameScene extends Phaser.Scene {
     const savedRecord = localStorage.getItem('radar_station_record');
     this.highScore = savedRecord ? parseInt(savedRecord, 10) || 0 : 0;
 
-    // 1. Рендер экрана радара (статическая сетка и динамические слои)
+    // 1. Рендер экрана радара (статическая сетка, луч и динамические слои)
     this.radarRender = createRadarRender(this);
+    this.radarRender.reset();
 
     // 3. Панель консоли оператора
     this.hud = createHud(this, {
@@ -138,9 +135,8 @@ export class GameScene extends Phaser.Scene {
     const dt = Math.min(delta / 1000, 0.1);
 
     if (!this.isGameStarted) {
-      this.updateBeam(dt * 0.5);
+      this.radarRender.updateBeam(dt * 0.5);
       this.radarRender.renderDynamic({
-        beamAngle: this.beamAngle,
         baseFlashTimer: 0,
         targets: [],
         selectedTarget: null,
@@ -156,7 +152,7 @@ export class GameScene extends Phaser.Scene {
 
     this.stats.sessionTime += dt;
 
-    this.updateBeam(dt);
+    this.radarRender.updateBeam(dt, this.targets);
     this.updateTargets(dt);
     const newTarget = this.spawner.update(
       dt,
@@ -171,7 +167,6 @@ export class GameScene extends Phaser.Scene {
     this.updateScanning(dt);
     updateExplosions(this.explosions, dt);
     this.radarRender.renderDynamic({
-      beamAngle: this.beamAngle,
       baseFlashTimer: this.baseFlashTimer,
       targets: this.targets,
       selectedTarget: this.selectedTarget,
@@ -513,32 +508,6 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  private updateBeam(dt: number): void {
-    const prevAngle = this.beamAngle;
-    const twoPi = Math.PI * 2;
-    this.beamAngle = (this.beamAngle + this.currentBeamSpeed * dt) % twoPi;
-
-    for (const target of this.targets) {
-      const dx = target.x - GAME_CONFIG.radarX;
-      const dy = target.y - GAME_CONFIG.radarY;
-      const dist = Math.hypot(dx, dy);
-
-      if (dist <= GAME_CONFIG.radarRadius) {
-        let targetAngle = Math.atan2(dy, dx);
-        if (targetAngle < 0) targetAngle += twoPi;
-
-        if (this.isAngleBetween(targetAngle, prevAngle, this.beamAngle)) {
-          target.alpha = 1.0;
-        }
-      }
-    }
-  }
-
-  private isAngleBetween(target: number, from: number, to: number): boolean {
-    if (to >= from) return target >= from && target <= to;
-    return target >= from || target <= to;
-  }
-
   /**
    * Движение целей и проверка достижения базы
    */
@@ -628,8 +597,7 @@ export class GameScene extends Phaser.Scene {
       this.waveTargetsToSpawn = 7 + this.wave * 2;
 
       // Луч ускоряется с каждой волной
-      this.currentBeamSpeed =
-        GAME_CONFIG.beamSpeedBase * Math.min(1.85, 1 + (this.wave - 1) * 0.09);
+      this.radarRender.setWaveSpeed(this.wave);
 
       // Пополнение боекомплекта перехватчиков, зарядов сканирования и начисление кредитов за волну
       const { addedAmmo, waveCredits } = this.armory.refillForWave(this.wave);
