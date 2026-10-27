@@ -44,6 +44,16 @@ export interface PauseOverlay {
 }
 
 /**
+ * Интерфейс управления оверлеем боевого инструктажа / стартового экрана
+ */
+export interface BriefingOverlay {
+  container: Phaser.GameObjects.Container;
+  show: (isFirstTime?: boolean) => void;
+  hide: () => void;
+  isVisible: () => boolean;
+}
+
+/**
  * Фабрика экрана поражения (Game Over)
  */
 export function createGameOverOverlay(
@@ -207,13 +217,21 @@ export function createGameOverOverlay(
   };
 }
 
+export interface PauseOverlayCallbacks {
+  onResume: () => void;
+  onOpenBriefing?: () => void;
+}
+
 /**
  * Фабрика экрана тактической паузы
  */
 export function createPauseOverlay(
   scene: Phaser.Scene,
-  onResume: () => void,
+  callbacks: PauseOverlayCallbacks | (() => void),
 ): PauseOverlay {
+  const cbs: PauseOverlayCallbacks =
+    typeof callbacks === 'function' ? { onResume: callbacks } : callbacks;
+
   const { width, height } = scene.scale;
   const container = scene.add.container(0, 0);
   container.setDepth(90);
@@ -235,7 +253,7 @@ export function createPauseOverlay(
     width / 2,
     height / 2,
     400,
-    180,
+    220,
     0x071b0f,
     0.96,
   );
@@ -243,7 +261,7 @@ export function createPauseOverlay(
 
   const title = scene.add.text(
     width / 2,
-    height / 2 - 35,
+    height / 2 - 55,
     '// ТАКТИЧЕСКАЯ ПАУЗА //',
     {
       fontFamily: 'Consolas, monospace',
@@ -254,12 +272,12 @@ export function createPauseOverlay(
   );
   title.setOrigin(0.5);
 
-  // Кнопка продолжения
+  // 1. Кнопка продолжения
   const resumeBtn = scene.add.rectangle(
     width / 2,
-    height / 2 + 35,
-    240,
-    40,
+    height / 2 + 5,
+    260,
+    38,
     0x0284c7,
     0.9,
   );
@@ -268,11 +286,11 @@ export function createPauseOverlay(
 
   const resumeText = scene.add.text(
     width / 2,
-    height / 2 + 35,
+    height / 2 + 5,
     'ПРОДОЛЖИТЬ (P)',
     {
       fontFamily: 'Consolas, monospace',
-      fontSize: '14px',
+      fontSize: '13px',
       color: '#ffffff',
       fontStyle: 'bold',
     },
@@ -281,15 +299,126 @@ export function createPauseOverlay(
 
   resumeBtn.on('pointerover', () => resumeBtn.setFillStyle(0x0369a1, 1));
   resumeBtn.on('pointerout', () => resumeBtn.setFillStyle(0x0284c7, 0.9));
-  resumeBtn.on('pointerdown', () => onResume());
+  resumeBtn.on('pointerdown', () => cbs.onResume());
 
-  container.add([darkBg, modal, title, resumeBtn, resumeText]);
+  // 2. Кнопка инструктажа
+  const briefingBtn = scene.add.rectangle(
+    width / 2,
+    height / 2 + 55,
+    260,
+    38,
+    0x0f3b25,
+    0.9,
+  );
+  briefingBtn.setStrokeStyle(1.5, 0x4ade80, 0.9);
+  briefingBtn.setInteractive({ useHandCursor: true });
+
+  const briefingText = scene.add.text(
+    width / 2,
+    height / 2 + 55,
+    'ИНСТРУКТАЖ / СПРАВКА',
+    {
+      fontFamily: 'Consolas, monospace',
+      fontSize: '13px',
+      color: '#86efac',
+      fontStyle: 'bold',
+    },
+  );
+  briefingText.setOrigin(0.5);
+
+  briefingBtn.on('pointerover', () => briefingBtn.setFillStyle(0x166534, 1));
+  briefingBtn.on('pointerout', () => briefingBtn.setFillStyle(0x0f3b25, 0.9));
+  briefingBtn.on('pointerdown', () => cbs.onOpenBriefing?.());
+
+  container.add([darkBg, modal, title, resumeBtn, resumeText, briefingBtn, briefingText]);
 
   return {
     container,
     show: () => container.setVisible(true),
     hide: () => container.setVisible(false),
     setVisible: (visible) => container.setVisible(visible),
+  };
+}
+
+/**
+ * Фабрика экрана боевого инструктажа / стартового экрана
+ */
+export function createBriefingOverlay(
+  scene: Phaser.Scene,
+  onClose: () => void,
+): BriefingOverlay {
+  const { width, height } = scene.scale;
+  const container = scene.add.container(0, 0);
+  container.setDepth(110);
+  container.setVisible(false);
+
+  // Полупрозрачный фон-затемнение
+  const darkBg = scene.add.rectangle(width / 2, height / 2, width, height, 0x020a05, 0.92);
+  darkBg.setInteractive();
+
+  // Модальное окно
+  const modal = scene.add.rectangle(width / 2, height / 2, 560, 420, 0x071b0f, 0.98);
+  modal.setStrokeStyle(2, 0x4ade80, 0.9);
+
+  const title = scene.add.text(
+    width / 2,
+    height / 2 - 170,
+    '[ БОЕВОЙ ИНСТРУКТАЖ: СЕКТОР «РУБЕЖ» ]',
+    {
+      fontFamily: 'Consolas, monospace',
+      fontSize: '17px',
+      color: '#86efac',
+      fontStyle: 'bold',
+    },
+  ).setOrigin(0.5);
+
+  const bodyText = scene.add.text(
+    width / 2,
+    height / 2 - 15,
+    'БОЕВАЯ ЗАДАЧА ОПЕРАТОРА РЛС:\n\n' +
+      '• УГРОЗЫ: Ракеты и бомбардировщики летят к центру базы.\n' +
+      '  Уничтожайте их клавишей [2] (требует ракеты-перехватчики).\n\n' +
+      '• СОЮЗНИКИ: Зелёные метки с курсом в сектор могут быть своими.\n' +
+      '  Пропускайте их клавишей [1] — за огонь по своим штраф в бюджет!\n\n' +
+      '• ЛОВУШКИ: Ложные цели идут по хордам и не наносят урона.\n' +
+      '  Фильтруйте их клавишей [3], чтобы не тратить боезапас.\n\n' +
+      '• СЕНСОРЫ: Клавиша [4] запускает глубокий скан сигнатуры (1.5 с).\n' +
+      '• СНАБЖЕНИЕ: Докупайте ракеты [5] (150 CR) и сканы [6] (75 CR).\n\n' +
+      'УПРАВЛЕНИЕ: [1] СВОЙ  [2] УГРОЗА  [3] ИГНОР  [4] СКАН  [P] ПАУЗА',
+    {
+      fontFamily: 'Consolas, monospace',
+      fontSize: '11px',
+      color: '#cbd5e1',
+      align: 'left',
+      lineSpacing: 4,
+    },
+  ).setOrigin(0.5);
+
+  const actionBtn = scene.add.rectangle(width / 2, height / 2 + 168, 300, 42, 0x16a34a, 0.9);
+  actionBtn.setStrokeStyle(1.5, 0x4ade80, 1);
+  actionBtn.setInteractive({ useHandCursor: true });
+
+  const actionText = scene.add.text(width / 2, height / 2 + 168, 'ЗАСТУПИТЬ НА СМЕНУ (ПРОБЕЛ)', {
+    fontFamily: 'Consolas, monospace',
+    fontSize: '13px',
+    color: '#ffffff',
+    fontStyle: 'bold',
+  }).setOrigin(0.5);
+
+  actionBtn.on('pointerover', () => actionBtn.setFillStyle(0x22c55e, 1));
+  actionBtn.on('pointerout', () => actionBtn.setFillStyle(0x16a34a, 0.9));
+  actionBtn.on('pointerdown', () => onClose());
+
+  container.add([darkBg, modal, title, bodyText, actionBtn, actionText]);
+
+  return {
+    container,
+    show: (isFirstTime = false) => {
+      actionText.setText(isFirstTime ? 'ЗАСТУПИТЬ НА СМЕНУ (ПРОБЕЛ)' : 'ВЕРНУТЬСЯ В ИГРУ (ПРОБЕЛ)');
+      container.setVisible(true);
+    },
+    hide: () => container.setVisible(false),
+    isVisible: () => container.visible,
   };
 }
 

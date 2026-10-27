@@ -13,9 +13,11 @@ import {
 import {
   createGameOverOverlay,
   createPauseOverlay,
+  createBriefingOverlay,
   createHud,
   type GameOverOverlay,
   type PauseOverlay,
+  type BriefingOverlay,
   type HudManager,
   type GameSessionStats,
 } from './ui';
@@ -25,12 +27,16 @@ import { createSpawner, type TargetSpawner } from './spawner';
 
 
 export class GameScene extends Phaser.Scene {
+  private static hasSeenBriefing = false;
+
   private radarRender!: RadarRender;
   private hud!: HudManager;
   private gameOverOverlay!: GameOverOverlay;
   private pauseOverlay!: PauseOverlay;
+  private briefingOverlay!: BriefingOverlay;
   private spawner: TargetSpawner = createSpawner();
   private isPaused = false;
+  private isGameStarted = false;
 
   // Динамические параметры луча и волн
   private currentBeamSpeed = GAME_CONFIG.beamSpeedBase;
@@ -69,6 +75,7 @@ export class GameScene extends Phaser.Scene {
   create(): void {
     this.isGameOver = false;
     this.isPaused = false;
+    this.isGameStarted = false;
     this.baseHealth = GAME_CONFIG.maxBaseHealth;
     this.score = 0;
     this.credits = GAME_CONFIG.startCredits;
@@ -102,7 +109,11 @@ export class GameScene extends Phaser.Scene {
       onBuyMissile: () => this.buyInterceptor(),
       onBuyScan: () => this.buyScan(),
     });
-    this.pauseOverlay = createPauseOverlay(this, () => this.togglePause());
+    this.pauseOverlay = createPauseOverlay(this, {
+      onResume: () => this.togglePause(),
+      onOpenBriefing: () => this.openBriefing(),
+    });
+    this.briefingOverlay = createBriefingOverlay(this, () => this.handleBriefingClose());
     this.gameOverOverlay = createGameOverOverlay(this, () => this.restartGame());
     setupGameInputs(this, {
       onSelectRadarTarget: (x, y) => {
@@ -115,22 +126,42 @@ export class GameScene extends Phaser.Scene {
       onBuyMissile: () => this.buyInterceptor(),
       onBuyScan: () => this.buyScan(),
       onRestart: () => this.restartGame(),
+      onCloseBriefing: () => this.handleBriefingClose(),
       isGameOver: () => this.isGameOver,
       isPaused: () => this.isPaused,
+      isBriefingOpen: () => this.briefingOverlay.isVisible(),
     });
 
-    this.spawner.reset();
-    // Стартовые цели спавнятся ДАЛЕКО от базы для комфортного старта
-    this.targets = this.spawner.spawnInitialTargets(3, this.wave);
-    this.updateTargetSelectionUI();
-    this.updateScoreBoard();
-    this.drawHealthBar();
+    if (!GameScene.hasSeenBriefing) {
+      this.isGameStarted = false;
+      this.briefingOverlay.show(true);
+      this.updateScoreBoard();
+      this.drawHealthBar();
+    } else {
+      this.startCombat();
+    }
   }
 
   update(_time: number, delta: number): void {
+    const dt = Math.min(delta / 1000, 0.1);
+
+    if (!this.isGameStarted) {
+      this.updateBeam(dt * 0.5);
+      this.radarRender.renderDynamic({
+        beamAngle: this.beamAngle,
+        baseFlashTimer: 0,
+        targets: [],
+        selectedTarget: null,
+        isScanning: false,
+        scanningTarget: null,
+        timeNow: this.time.now,
+        explosions: [],
+      });
+      return;
+    }
+
     if (this.isGameOver || this.isPaused) return;
 
-    const dt = Math.min(delta / 1000, 0.1);
     this.stats.sessionTime += dt;
 
     this.updateBeam(dt);
@@ -167,6 +198,42 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
+   * Запуск боевого дежурства (старт спавна и появление первых целей)
+   */
+  private startCombat(): void {
+    this.isGameStarted = true;
+    this.spawner.reset();
+    // Стартовые цели спавнятся ДАЛЕКО от базы для комфортного старта
+    this.targets = this.spawner.spawnInitialTargets(3, this.wave);
+    this.updateTargetSelectionUI();
+    this.updateScoreBoard();
+    this.drawHealthBar();
+  }
+
+  /**
+   * Открытие окна боевого инструктажа (из меню паузы)
+   */
+  private openBriefing(): void {
+    this.pauseOverlay.hide();
+    this.briefingOverlay.show(false);
+  }
+
+  /**
+   * Обработка закрытия окна инструктажа
+   */
+  private handleBriefingClose(): void {
+    if (!this.isGameStarted) {
+      GameScene.hasSeenBriefing = true;
+      this.briefingOverlay.hide();
+      this.startCombat();
+    } else {
+      this.briefingOverlay.hide();
+      this.isPaused = false;
+      this.pauseOverlay.hide();
+    }
+  }
+
+  /**
    * Отрисовка полосы здоровья базы (делегирование в HUD)
    */
   private drawHealthBar(): void {
@@ -184,7 +251,7 @@ export class GameScene extends Phaser.Scene {
    * Переключение паузы (безопасный тогл без накопления состояния)
    */
   private togglePause(): void {
-    if (this.isGameOver) return;
+    if (this.isGameOver || !this.isGameStarted) return;
     this.isPaused = !this.isPaused;
     this.pauseOverlay.setVisible(this.isPaused);
   }
@@ -196,6 +263,7 @@ export class GameScene extends Phaser.Scene {
     this.isGameOver = true;
     this.isPaused = false;
     this.pauseOverlay.hide();
+    this.briefingOverlay.hide();
     this.selectedTarget = null;
     this.isScanning = false;
     this.scanningTarget = null;
@@ -225,6 +293,7 @@ export class GameScene extends Phaser.Scene {
     this.isPaused = false;
     this.explosions = [];
     this.pauseOverlay.hide();
+    this.briefingOverlay.hide();
     this.gameOverOverlay.hide();
     this.scene.restart();
   }
