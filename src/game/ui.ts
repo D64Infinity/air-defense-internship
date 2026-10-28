@@ -736,21 +736,6 @@ export function createHud(
     fontStyle: 'bold',
   });
 
-  scene.add.text(
-    660,
-    472,
-    '--- ПРИЗНАКИ И СНАБЖЕНИЕ ---\n' +
-      '• [4] Скан сигнатуры (1 сек.)\n' +
-      '• [5] Ракета (150 CR) | [6] Скан (75 CR)\n' +
-      '• Ракета (-30 HP) | Бомбардировщик (-20 HP)\n',
-    {
-      ...monoStyle,
-      fontSize: '11px',
-      color: '#64748b',
-      lineSpacing: 4,
-    },
-  );
-
   // 3. Баннер волны и стартовые подсказки
   const waveBannerText = scene.add.text(
     GAME_CONFIG.radarX,
