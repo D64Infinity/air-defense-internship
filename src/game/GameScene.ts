@@ -188,6 +188,7 @@ export class GameScene extends Phaser.Scene {
     this.updateTelemetry();
     this.hud.updateWaveBanner(dt);
     this.hud.updateNotification(dt);
+    this.hud.updateAlert(dt);
 
     if (this.baseFlashTimer > 0) {
       this.baseFlashTimer -= dt;
@@ -407,6 +408,12 @@ export class GameScene extends Phaser.Scene {
           `[ВЕРНО!] РАКЕТА СБИТА (+${points}, +${GAME_CONFIG.creditsPerMissile} CR)${rangeTag}`,
           '#4ade80',
         );
+        this.hud.showInterceptAlert({
+          unitType: 'missile',
+          points,
+          credits: GAME_CONFIG.creditsPerMissile,
+          isLongRange,
+        });
       } else {
         this.stats.recordBomberIntercept();
         this.armory.addCredits(GAME_CONFIG.creditsPerBomber);
@@ -414,6 +421,12 @@ export class GameScene extends Phaser.Scene {
           `[ВЕРНО!] БОМБАРДИРОВЩИК СБИТ (+${points}, +${GAME_CONFIG.creditsPerBomber} CR)${rangeTag}`,
           '#4ade80',
         );
+        this.hud.showInterceptAlert({
+          unitType: 'bomber',
+          points,
+          credits: GAME_CONFIG.creditsPerBomber,
+          isLongRange,
+        });
       }
     } else if (target.type === 'friend') {
       // Огонь по своим
@@ -425,6 +438,12 @@ export class GameScene extends Phaser.Scene {
         `[ОШИБКА!] СБИТ СВОЙ БОРТ! (-${penalty} очк, -${GAME_CONFIG.creditsFriendlyFirePenalty} CR)`,
         '#f87171',
       );
+      this.hud.showInterceptAlert({
+        unitType: 'friend',
+        points: -penalty,
+        credits: -GAME_CONFIG.creditsFriendlyFirePenalty,
+        streakReset: true,
+      });
     } else {
       // Ловушка
       this.stats.recordDecoyIntercept();
@@ -433,6 +452,13 @@ export class GameScene extends Phaser.Scene {
         `[ПРОМАХ!] ПЕРЕХВАТЧИК ВПУСТУЮ НА ЛОВУШКУ! (Ост: ${this.armory.interceptors})`,
         '#fbbf24',
       );
+      this.hud.showInterceptAlert({
+        unitType: 'decoy',
+        points: 0,
+        credits: 0,
+        streakReset: true,
+        ammoLeft: this.armory.interceptors,
+      });
     }
 
     this.updateScoreBoard();
