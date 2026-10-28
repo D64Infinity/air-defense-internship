@@ -35,7 +35,7 @@ import {
 
 
 export class GameScene extends Phaser.Scene {
-  private static hasSeenBriefing = false;
+  private static hasSeenBriefing = true; /* !!! ВРЕМЕННО TRUE !!! */
 
   private radarRender!: RadarRender;
   private hud!: HudManager;
