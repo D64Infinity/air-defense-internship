@@ -29,7 +29,6 @@ export interface StatsTracker {
   recordDecoyFiltered: () => void;
   recordDecoyMistake: () => void;
   recordThreatMissed: () => void;
-  getAccuracy: () => number;
 }
 
 /**
@@ -113,9 +112,5 @@ export function createStatsTracker(): StatsTracker {
       threatsMissed++;
       totalDecisions++;
     },
-    getAccuracy: () =>
-      totalDecisions > 0
-        ? Math.round((correctDecisions / totalDecisions) * 100)
-        : 0,
   };
 }

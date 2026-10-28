@@ -28,21 +28,6 @@ export interface TargetSpawner {
     activeTargetsCount: number,
     targetsLeftInWave: number,
   ) => GameTarget | null;
-
-  /**
-   * Создание одиночной цели на внешнем крае зоны радара
-   */
-  spawnTargetAtEdge: (wave: number) => GameTarget;
-
-  /**
-   * Фабрика создания объекта цели в заданных координатах (x, y) с расчётом физики
-   */
-  createTarget: (x: number, y: number, wave: number) => GameTarget;
-
-  /**
-   * Выбор типа цели на основе весов вероятности
-   */
-  pickRandomType: () => TargetType;
 }
 
 /**
@@ -195,10 +180,7 @@ export function createSpawner(): TargetSpawner {
 
   return {
     reset,
-    pickRandomType,
-    createTarget,
     spawnInitialTargets,
-    spawnTargetAtEdge,
     update,
   };
 }

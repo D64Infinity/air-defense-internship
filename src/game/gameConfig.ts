@@ -1,5 +1,3 @@
-import { SCORING_CONFIG } from './scoring';
-
 /**
  * КОНФИГУРАЦИЯ БАЛАНСА И ПАРАМЕТРОВ ИГРЫ
  * Все ключевые числовые настройки, параметры целей и визуальная палитра.
@@ -137,8 +135,3 @@ export interface GameTarget {
   hasPassedBase?: boolean; // Флаг фиксации пролёта через базу
   hasBombedBase?: boolean; // Флаг: бомбардировщик уже сбросил бомбы на базу
 }
-
-// Псевдонимы для обратной совместимости
-export const RADAR_CONFIG = GAME_CONFIG;
-export type RadarTarget = GameTarget;
-export { SCORING_CONFIG } from './scoring';

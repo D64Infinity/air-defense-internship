@@ -61,7 +61,6 @@ export interface ScoreTracker {
   readonly score: number;
   readonly streak: number;
   readonly bestStreak: number;
-  getMultiplier: () => number;
   addThreatScore: (distToBase: number, radarRadius: number) => { points: number; isLongRange: boolean };
   addFriendlyScore: () => number;
   addDecoySuccess: () => void;
@@ -93,7 +92,6 @@ export function createScoreTracker(): ScoreTracker {
     get bestStreak() {
       return bestStreak;
     },
-    getMultiplier: () => calculateStreakMultiplier(streak),
     addThreatScore: (distToBase: number, radarRadius: number) => {
       const result = calculateThreatScore(streak, distToBase, radarRadius);
       score += result.points;

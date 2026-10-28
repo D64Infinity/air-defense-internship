@@ -1,7 +1,6 @@
 import Phaser from 'phaser';
 import {
   GAME_CONFIG,
-  type TargetType,
   type DecisionChoice,
   type GameTarget,
 } from './gameConfig';
