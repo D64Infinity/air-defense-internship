@@ -585,6 +585,7 @@ export class GameScene extends Phaser.Scene {
   private applyBaseDamage(damage: number, feedback: string): void {
     this.baseHealth = Math.max(0, this.baseHealth - damage);
     this.baseFlashTimer = 0.6;
+    this.soundSystem.playBaseDamage();
     this.showFeedback(feedback, '#ef4444');
     this.drawHealthBar();
 

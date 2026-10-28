@@ -8,6 +8,7 @@ export interface SoundSystem {
   resume: () => void;
   playRadarPing: (pitch?: number) => void;
   playExplosion: (targetType: TargetType) => void;
+  playBaseDamage: () => void;
   playDenyClick: () => void;
   toggleMute: () => boolean;
   readonly isMuted: boolean;
@@ -316,6 +317,100 @@ export function createSoundSystem(): SoundSystem {
     };
   };
 
+  /**
+   * Звуковой эффект прямого урона по базе (Сейсмический удар + сирена аварии бункера)
+   * Длительность ~0.56с (согласована с baseFlashTimer = 0.6с в GameScene)
+   */
+  const playBaseDamage = (): void => {
+    if (isMuted) return;
+    const audioCtx = getContext();
+    if (!audioCtx) return;
+
+    const now = audioCtx.currentTime;
+
+    // Слой 1: Тяжёлый кинетический удар по конструкции базы (0.00 - 0.45с)
+    const subOsc = audioCtx.createOscillator();
+    const subGain = audioCtx.createGain();
+    subOsc.type = 'sine';
+    subOsc.frequency.setValueAtTime(115, now);
+    subOsc.frequency.exponentialRampToValueAtTime(26, now + 0.45);
+
+    subGain.gain.setValueAtTime(0.0001, now);
+    subGain.gain.linearRampToValueAtTime(0.25, now + 0.006);
+    subGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.45);
+
+    subOsc.connect(subGain);
+    subGain.connect(audioCtx.destination);
+    subOsc.start(now);
+    subOsc.stop(now + 0.46);
+
+    const noise = audioCtx.createBufferSource();
+    noise.buffer = getNoiseBuffer(audioCtx);
+
+    const noiseFilter = audioCtx.createBiquadFilter();
+    noiseFilter.type = 'lowpass';
+    noiseFilter.frequency.setValueAtTime(340, now);
+    noiseFilter.frequency.exponentialRampToValueAtTime(45, now + 0.42);
+    noiseFilter.Q.value = 2.0;
+
+    const noiseGain = audioCtx.createGain();
+    noiseGain.gain.setValueAtTime(0.0001, now);
+    noiseGain.gain.linearRampToValueAtTime(0.20, now + 0.005);
+    noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.42);
+
+    noise.connect(noiseFilter);
+    noiseFilter.connect(noiseGain);
+    noiseGain.connect(audioCtx.destination);
+    noise.start(now);
+    noise.stop(now + 0.43);
+
+    // Слой 2: Двухтоновый вой аварийного клаксона бункера (0.10 - 0.54с)
+    const siren = audioCtx.createOscillator();
+    const sirenFilter = audioCtx.createBiquadFilter();
+    const sirenGain = audioCtx.createGain();
+
+    siren.type = 'sawtooth';
+    sirenFilter.type = 'lowpass';
+    sirenFilter.frequency.value = 1500; // Смягчение резкого спектра пилообразной волны
+
+    // Первый нисходящий импульс сирены (0.10 - 0.28с)
+    siren.frequency.setValueAtTime(540, now + 0.10);
+    siren.frequency.exponentialRampToValueAtTime(360, now + 0.28);
+    // Второй импульс сирены (0.32 - 0.54с)
+    siren.frequency.setValueAtTime(580, now + 0.32);
+    siren.frequency.exponentialRampToValueAtTime(380, now + 0.54);
+
+    sirenGain.gain.setValueAtTime(0.0001, now);
+    sirenGain.gain.setValueAtTime(0.0001, now + 0.10);
+    sirenGain.gain.linearRampToValueAtTime(0.075, now + 0.12);
+    sirenGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.28);
+    sirenGain.gain.setValueAtTime(0.0001, now + 0.32);
+    sirenGain.gain.linearRampToValueAtTime(0.075, now + 0.34);
+    sirenGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.54);
+
+    siren.connect(sirenFilter);
+    sirenFilter.connect(sirenGain);
+    sirenGain.connect(audioCtx.destination);
+    siren.start(now + 0.10);
+    siren.stop(now + 0.55);
+
+    // Очистка узлов после завершения звучания
+    subOsc.onended = () => {
+      subOsc.disconnect();
+      subGain.disconnect();
+    };
+    noise.onended = () => {
+      noise.disconnect();
+      noiseFilter.disconnect();
+      noiseGain.disconnect();
+    };
+    siren.onended = () => {
+      siren.disconnect();
+      sirenFilter.disconnect();
+      sirenGain.disconnect();
+    };
+  };
+
   const toggleMute = (): boolean => {
     isMuted = !isMuted;
     return isMuted;
@@ -325,6 +420,7 @@ export function createSoundSystem(): SoundSystem {
     resume,
     playRadarPing,
     playExplosion,
+    playBaseDamage,
     playDenyClick,
     toggleMute,
     get isMuted() {
