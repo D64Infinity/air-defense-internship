@@ -618,13 +618,13 @@ export class GameScene extends Phaser.Scene {
       let cleanBonusText = '';
       if (!this.waveHadFlaws) {
         const bonus = this.scoring.applyCleanWaveBonus();
-        cleanBonusText = `\nЧИСТАЯ ВОЛНА! (+${bonus} ОЧК)`;
+        cleanBonusText = `\n★ ЧИСТАЯ ВОЛНА! (+${bonus} ОЧК) ★`;
       }
       this.waveHadFlaws = false;
 
       this.updateScoreBoard();
       this.showWaveBanner(
-        `ВОЛНА ${this.wave}\nСНАБЖЕНИЕ: +${addedAmmo} РАКЕТЫ, +${waveCredits} CR, СКАНЫ 3/3${cleanBonusText}`,
+        `ВОЛНА ${this.wave}\nСНАБЖЕНИЕ: +${addedAmmo} РАКЕТЫ | +${waveCredits} CR | СКАНЫ 3/3${cleanBonusText}`,
       );
     }
   }

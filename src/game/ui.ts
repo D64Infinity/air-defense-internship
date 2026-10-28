@@ -737,26 +737,39 @@ export function createHud(
   });
 
   // 3. Баннер волны и стартовые подсказки
-  const waveBannerText = scene.add.text(
-    GAME_CONFIG.radarX,
-    GAME_CONFIG.radarY - 30,
-    '',
-    {
-      fontFamily: 'Consolas, monospace',
-      fontSize: '20px',
-      color: '#38bdf8',
-      backgroundColor: '#021827e6',
-      padding: { x: 16, y: 8 },
-      fontStyle: 'bold',
-      align: 'center',
-    },
-  );
-  waveBannerText.setOrigin(0.5);
-  waveBannerText.setAlpha(0);
+  const waveContainer = scene.add.container(GAME_CONFIG.radarX, GAME_CONFIG.radarY - 35);
+  waveContainer.setDepth(30);
+  waveContainer.setAlpha(0);
+  waveContainer.setVisible(false);
+
+  const bgBox = scene.add.graphics();
+
+  const titleText = scene.add.text(0, -18, '', {
+    fontFamily: 'Consolas, monospace',
+    fontSize: '24px',
+    color: '#ffffff',
+    fontStyle: 'bold',
+  }).setOrigin(0.5);
+
+  const subtitleText = scene.add.text(0, 26, '', {
+    fontFamily: 'Consolas, monospace',
+    fontSize: '12px',
+    color: '#86efac',
+    fontStyle: 'bold',
+  }).setOrigin(0.5);
+
+  const bonusText = scene.add.text(0, 42, '', {
+    fontFamily: 'Consolas, monospace',
+    fontSize: '12px',
+    color: '#facc15',
+    fontStyle: 'bold',
+  }).setOrigin(0.5);
+
+  waveContainer.add([bgBox, titleText, subtitleText, bonusText]);
 
   const notificationText = scene.add.text(
     GAME_CONFIG.radarX,
-    GAME_CONFIG.radarY + 40,
+    GAME_CONFIG.radarY + 54,
     '',
     {
       fontFamily: 'Consolas, monospace',
@@ -769,6 +782,7 @@ export function createHud(
     },
   );
   notificationText.setOrigin(0.5);
+  notificationText.setDepth(30);
   notificationText.setAlpha(0);
 
   // 4. Кнопки решений и снабжения
@@ -1041,18 +1055,120 @@ export function createHud(
   };
 
   let waveBannerTimer = 0;
+  let waveBannerTotalDuration = 3.0;
+
   const showWaveBanner = (text: string) => {
-    waveBannerText.setText(text);
-    waveBannerText.setAlpha(1);
-    waveBannerTimer = 2.4;
+    const rawLines = text
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+    const title = rawLines[0] || 'ВОЛНА';
+    const subtitle = rawLines[1] || '';
+    const bonus = rawLines[2] || '';
+
+    const hasBonus = bonus.length > 0;
+    const boxW = 410;
+    const boxH = hasBonus ? 132 : 100;
+    const halfW = boxW / 2;
+    const halfH = boxH / 2;
+
+    bgBox.clear();
+
+    // Полупрозрачный фон (тактическое стекло терминала)
+    bgBox.fillStyle(0x021622, 0.94);
+    bgBox.fillRoundedRect(-halfW, -halfH, boxW, boxH, 4);
+
+    // Рамка терминала
+    bgBox.lineStyle(1.5, 0x38bdf8, 0.85);
+    bgBox.strokeRoundedRect(-halfW, -halfH, boxW, boxH, 4);
+
+    // Верхняя акцентная полоса
+    bgBox.lineStyle(2.5, 0x38bdf8, 1);
+    bgBox.beginPath();
+    bgBox.moveTo(-halfW + 16, -halfH);
+    bgBox.lineTo(halfW - 16, -halfH);
+    bgBox.strokePath();
+
+    // Тактические угловые засечки прицела/окна
+    const corner = 10;
+    bgBox.lineStyle(2, 0x7dd3fc, 0.95);
+    bgBox.beginPath();
+    // Top-left
+    bgBox.moveTo(-halfW, -halfH + corner);
+    bgBox.lineTo(-halfW, -halfH);
+    bgBox.lineTo(-halfW + corner, -halfH);
+    // Top-right
+    bgBox.moveTo(halfW - corner, -halfH);
+    bgBox.lineTo(halfW, -halfH);
+    bgBox.lineTo(halfW, -halfH + corner);
+    // Bottom-left
+    bgBox.moveTo(-halfW, halfH - corner);
+    bgBox.lineTo(-halfW, halfH);
+    bgBox.lineTo(-halfW + corner, halfH);
+    // Bottom-right
+    bgBox.moveTo(halfW - corner, halfH);
+    bgBox.lineTo(halfW, halfH);
+    bgBox.lineTo(halfW, halfH - corner);
+    bgBox.strokePath();
+
+    // Разделительная линия между заголовком и дополнительной информацией
+    const dividerY = hasBonus ? -8 : 8;
+    bgBox.lineStyle(1, 0x38bdf8, 0.28);
+    bgBox.beginPath();
+    bgBox.moveTo(-halfW + 24, dividerY);
+    bgBox.lineTo(halfW - 24, dividerY);
+    bgBox.strokePath();
+
+    // Позиционирование текстов с выверенными пропорциями
+    titleText.setText(title);
+    titleText.setPosition(0, hasBonus ? -34 : -18);
+
+    subtitleText.setText(subtitle);
+    subtitleText.setPosition(0, hasBonus ? 14 : 28);
+
+    if (hasBonus) {
+      bonusText.setText(bonus);
+      bonusText.setPosition(0, 42);
+      bonusText.setVisible(true);
+    } else {
+      bonusText.setText('');
+      bonusText.setVisible(false);
+    }
+
+    waveBannerTotalDuration = hasBonus ? 3.6 : 3.0;
+    waveBannerTimer = waveBannerTotalDuration;
+    waveContainer.setScale(0.94);
+    waveContainer.setAlpha(0);
+    waveContainer.setVisible(true);
   };
 
   const updateWaveBanner = (dt: number) => {
     if (waveBannerTimer > 0) {
       waveBannerTimer -= dt;
-      if (waveBannerTimer <= 0.5) {
-        waveBannerText.setAlpha(Math.max(0, waveBannerTimer / 0.5));
+      if (waveBannerTimer <= 0) {
+        waveContainer.setVisible(false);
+        waveContainer.setAlpha(0);
+        return;
       }
+
+      const elapsed = waveBannerTotalDuration - waveBannerTimer;
+      const fadeInDuration = 0.22;
+      const fadeOutDuration = 0.65;
+
+      let alpha = 1.0;
+      let scale = 1.0;
+
+      if (elapsed < fadeInDuration) {
+        const progress = elapsed / fadeInDuration;
+        alpha = progress;
+        scale = 0.94 + 0.06 * progress;
+      } else if (waveBannerTimer < fadeOutDuration) {
+        alpha = waveBannerTimer / fadeOutDuration;
+        scale = 1.0;
+      }
+
+      waveContainer.setAlpha(alpha);
+      waveContainer.setScale(scale);
     }
   };
 
