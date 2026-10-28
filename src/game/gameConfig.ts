@@ -30,17 +30,6 @@ export const GAME_CONFIG = {
   damageMissile: 30,
   damageBomber: 20,
 
-  // Система очков и серий вынесена в отдельный модуль src/game/scoring.ts
-  scoring: SCORING_CONFIG,
-  scorePerCorrect: SCORING_CONFIG.scorePerCorrect,
-  scorePerDecoyIgnored: 0,
-  friendlyFirePenalty: SCORING_CONFIG.friendlyFirePenalty,
-  cleanWaveBonus: SCORING_CONFIG.cleanWaveBonus,
-  distanceBonusMax: SCORING_CONFIG.distanceBonusMax,
-  streakStepForMultiplier: SCORING_CONFIG.streakStep,
-  multiplierStep: SCORING_CONFIG.multiplierStep,
-  maxMultiplier: SCORING_CONFIG.maxMultiplier,
-
   // Экономика (кредиты и снабжение базы)
   startCredits: 200,
   creditsPerMissile: 100,
