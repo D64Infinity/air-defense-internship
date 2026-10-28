@@ -70,112 +70,204 @@ export function createGameOverOverlay(
   darkBg.setInteractive();
 
   // Рамка модального окна
-  const modal = scene.add.rectangle(
-    width / 2,
-    height / 2,
-    480,
-    360,
-    0x071b0f,
-    0.96,
+  const cx = width / 2;
+  const cy = height / 2;
+  const boxW = 680;
+  const boxH = 490;
+  const halfW = boxW / 2;
+  const halfH = boxH / 2;
+
+  // Стилизованное окно военного терминала тревоги
+  const modalGraphics = scene.add.graphics();
+
+  // Тёмный тактический фон с высокой непрозрачностью
+  modalGraphics.fillStyle(0x06130c, 0.97);
+  modalGraphics.fillRoundedRect(cx - halfW, cy - halfH, boxW, boxH, 6);
+
+  // Контур терминала (красная тревожная рамка)
+  modalGraphics.lineStyle(1.5, 0xef4444, 0.85);
+  modalGraphics.strokeRoundedRect(cx - halfW, cy - halfH, boxW, boxH, 6);
+
+  // Верхняя сигнальная полоса тревоги
+  modalGraphics.lineStyle(3, 0xef4444, 1);
+  modalGraphics.beginPath();
+  modalGraphics.moveTo(cx - halfW + 20, cy - halfH);
+  modalGraphics.lineTo(cx + halfW - 20, cy - halfH);
+  modalGraphics.strokePath();
+
+  // Тактические угловые скобки (Corner Reticles)
+  const corner = 14;
+  modalGraphics.lineStyle(2.5, 0xf87171, 0.95);
+  modalGraphics.beginPath();
+  // Top-left
+  modalGraphics.moveTo(cx - halfW, cy - halfH + corner);
+  modalGraphics.lineTo(cx - halfW, cy - halfH);
+  modalGraphics.lineTo(cx - halfW + corner, cy - halfH);
+  // Top-right
+  modalGraphics.moveTo(cx + halfW - corner, cy - halfH);
+  modalGraphics.lineTo(cx + halfW, cy - halfH);
+  modalGraphics.lineTo(cx + halfW, cy - halfH + corner);
+  // Bottom-left
+  modalGraphics.moveTo(cx - halfW, cy + halfH - corner);
+  modalGraphics.lineTo(cx - halfW, cy + halfH);
+  modalGraphics.lineTo(cx - halfW + corner, cy + halfH);
+  // Bottom-right
+  modalGraphics.moveTo(cx + halfW - corner, cy + halfH);
+  modalGraphics.lineTo(cx + halfW, cy + halfH);
+  modalGraphics.lineTo(cx + halfW, cy + halfH - corner);
+  modalGraphics.strokePath();
+
+  // Разделительные линии разделов сводки
+  modalGraphics.lineStyle(1, 0x7f1d1d, 0.55);
+  modalGraphics.beginPath();
+  // Разделитель 1: под заголовком
+  modalGraphics.moveTo(cx - halfW + 36, cy - 135);
+  modalGraphics.lineTo(cx + halfW - 36, cy - 135);
+  // Разделитель 2: перед оперативной сводкой
+  modalGraphics.moveTo(cx - halfW + 36, cy - 16);
+  modalGraphics.lineTo(cx + halfW - 36, cy - 16);
+  // Разделитель 3: перед кнопкой перезапуска
+  modalGraphics.moveTo(cx - halfW + 36, cy + 128);
+  modalGraphics.lineTo(cx + halfW - 36, cy + 128);
+  modalGraphics.strokePath();
+
+  // Тактические маркеры в углах окна
+  const tagText = scene.add.text(
+    cx - halfW + 24,
+    cy - halfH + 16,
+    '[ ТРЕВОГА ]',
+    {
+      fontFamily: 'Consolas, monospace',
+      fontSize: '11px',
+      color: '#f87171',
+      fontStyle: 'bold',
+    },
   );
-  modal.setStrokeStyle(2, 0xef4444, 0.9);
+
+  const codeText = scene.add.text(
+    cx + halfW - 24,
+    cy - halfH + 16,
+    'КОД: 0xDEFEAT',
+    {
+      fontFamily: 'Consolas, monospace',
+      fontSize: '11px',
+      color: '#7f1d1d',
+      fontStyle: 'bold',
+    },
+  ).setOrigin(1, 0);
 
   const title = scene.add.text(
-    width / 2,
-    height / 2 - 120,
+    cx,
+    cy - 180,
     'СИСТЕМА ОБОРОНЫ ПРОРВАНА\n[ БАЗА УНИЧТОЖЕНА ]',
     {
       fontFamily: 'Consolas, monospace',
-      fontSize: '20px',
+      fontSize: '22px',
       color: '#ef4444',
       fontStyle: 'bold',
       align: 'center',
       lineSpacing: 6,
     },
-  );
-  title.setOrigin(0.5);
+  ).setOrigin(0.5);
 
   const scoreText = scene.add.text(
-    width / 2,
-    height / 2 - 50,
+    cx,
+    cy - 105,
     'ИТОГОВЫЙ СЧЁТ: 0',
     {
       fontFamily: 'Consolas, monospace',
-      fontSize: '17px',
+      fontSize: '22px',
       color: '#facc15',
       fontStyle: 'bold',
     },
-  );
-  scoreText.setOrigin(0.5);
+  ).setOrigin(0.5);
 
   const recordText = scene.add.text(
-    width / 2,
-    height / 2 - 22,
+    cx,
+    cy - 72,
     'ЛУЧШИЙ РЕКОРД: 0',
     {
       fontFamily: 'Consolas, monospace',
-      fontSize: '14px',
+      fontSize: '15px',
       color: '#86efac',
+      fontStyle: 'bold',
     },
-  );
-  recordText.setOrigin(0.5);
+  ).setOrigin(0.5);
 
   const wavesText = scene.add.text(
-    width / 2,
-    height / 2 + 2,
-    'ВОЛНА: 1 | МАКС. СЕРИЯ: 0',
+    cx,
+    cy - 44,
+    'ПРОЙДЕНО ВОЛН: 1  |  МАКС. СЕРИЯ: 0',
+    {
+      fontFamily: 'Consolas, monospace',
+      fontSize: '14px',
+      color: '#94a3b8',
+    },
+  ).setOrigin(0.5);
+
+  const statsHeader = scene.add.text(
+    cx,
+    cy + 6,
+    '// ИТОГОВАЯ БОЕВАЯ СВОДКА ДЕЖУРСТВА //',
+    {
+      fontFamily: 'Consolas, monospace',
+      fontSize: '11px',
+      color: '#64748b',
+      fontStyle: 'bold',
+    },
+  ).setOrigin(0.5);
+
+  const statsText = scene.add.text(
+    cx,
+    cy + 64,
+    '',
     {
       fontFamily: 'Consolas, monospace',
       fontSize: '13px',
-      color: '#94a3b8',
+      color: '#cbd5e1',
+      align: 'center',
+      lineSpacing: 9,
     },
-  );
-  wavesText.setOrigin(0.5);
-
-  const statsText = scene.add.text(width / 2, height / 2 + 42, '', {
-    fontFamily: 'Consolas, monospace',
-    fontSize: '12px',
-    color: '#cbd5e1',
-    align: 'center',
-    lineSpacing: 4,
-  }).setOrigin(0.5);
+  ).setOrigin(0.5);
 
   // Кнопка рестарта
   const restartBtn = scene.add.rectangle(
-    width / 2,
-    height / 2 + 115,
-    260,
-    42,
+    cx,
+    cy + 185,
+    300,
+    46,
     0x16a34a,
-    0.9,
+    0.92,
   );
   restartBtn.setStrokeStyle(1.5, 0x4ade80, 1);
   restartBtn.setInteractive({ useHandCursor: true });
 
   const restartText = scene.add.text(
-    width / 2,
-    height / 2 + 115,
-    'ЕЩЁ РАЗ (ПРОБЕЛ)',
+    cx,
+    cy + 185,
+    'НАЧАТЬ ЗАНОВО (ПРОБЕЛ / R)',
     {
       fontFamily: 'Consolas, monospace',
-      fontSize: '14px',
+      fontSize: '15px',
       color: '#ffffff',
       fontStyle: 'bold',
     },
-  );
-  restartText.setOrigin(0.5);
+  ).setOrigin(0.5);
 
   restartBtn.on('pointerover', () => restartBtn.setFillStyle(0x22c55e, 1));
-  restartBtn.on('pointerout', () => restartBtn.setFillStyle(0x16a34a, 0.9));
+  restartBtn.on('pointerout', () => restartBtn.setFillStyle(0x16a34a, 0.92));
   restartBtn.on('pointerdown', () => onRestart());
 
   container.add([
     darkBg,
-    modal,
+    modalGraphics,
+    tagText,
+    codeText,
     title,
     scoreText,
     recordText,
     wavesText,
+    statsHeader,
     statsText,
     restartBtn,
     restartText,
@@ -188,7 +280,7 @@ export function createGameOverOverlay(
         `ИТОГОВЫЙ СЧЁТ: ${score}` + (isNewRecord ? ' (НОВЫЙ РЕКОРД!)' : ''),
       );
       recordText.setText(`ЛУЧШИЙ РЕКОРД: ${highScore}`);
-      wavesText.setText(`ВОЛНА: ${wave} | МАКС. СЕРИЯ: ${bestStreak}`);
+      wavesText.setText(`ПРОЙДЕНО ВОЛН: ${wave}  |  МАКС. СЕРИЯ: ${bestStreak}`);
 
       const acc = stats.totalDecisions > 0
         ? Math.round((stats.correctDecisions / stats.totalDecisions) * 100)
@@ -198,9 +290,9 @@ export function createGameOverOverlay(
       const timeStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 
       statsText.setText(
-        `СБИТО: ${stats.missilesShot} РАКЕТ, ${stats.bombersShot} БОМБАРДИРОВЩИКОВ, ${stats.friendlyFireCount} СВОИХ\n` +
-        `СПАСЕНО СОЮЗНИКОВ: ${stats.friendsSaved} | ОТСЛЕЖЕНО ЛОВУШЕК: ${stats.decoysFiltered} | УПУЩЕНО УГРОЗ: ${stats.threatsMissed}\n` +
-        `ТОЧНОСТЬ: ${acc}% | ВРЕМЯ ДЕЖУРСТВА: ${timeStr}`,
+        `УНИЧТОЖЕНО: ${stats.missilesShot} РАКЕТ  |  ${stats.bombersShot} БОМБАРДИРОВЩИКОВ  |  ${stats.friendlyFireCount} СВОИХ\n` +
+        `СОЮЗНИКИ: ${stats.friendsSaved} СПАСЕНО  |  ${stats.decoysFiltered} ЛОВУШЕК ОТФИЛЬТРОВАНО  |  ${stats.threatsMissed} ПРОПУЩЕНО\n` +
+        `ЭФФЕКТИВНОСТЬ: ${acc}% ТОЧНОСТЬ  |  ВРЕМЯ ДЕЖУРСТВА: ${timeStr}`,
       );
       container.setVisible(true);
     },
@@ -759,23 +851,23 @@ export function createHud(
 
   const bgBox = scene.add.graphics();
 
-  const titleText = scene.add.text(0, -18, '', {
+  const titleText = scene.add.text(0, -20, '', {
     fontFamily: 'Consolas, monospace',
-    fontSize: '24px',
+    fontSize: '28px',
     color: '#ffffff',
     fontStyle: 'bold',
   }).setOrigin(0.5);
 
-  const subtitleText = scene.add.text(0, 26, '', {
+  const subtitleText = scene.add.text(0, 30, '', {
     fontFamily: 'Consolas, monospace',
-    fontSize: '12px',
+    fontSize: '16px',
     color: '#86efac',
     fontStyle: 'bold',
   }).setOrigin(0.5);
 
-  const bonusText = scene.add.text(0, 42, '', {
+  const bonusText = scene.add.text(0, 46, '', {
     fontFamily: 'Consolas, monospace',
-    fontSize: '12px',
+    fontSize: '16px',
     color: '#facc15',
     fontStyle: 'bold',
   }).setOrigin(0.5);
@@ -784,14 +876,14 @@ export function createHud(
 
   const notificationText = scene.add.text(
     GAME_CONFIG.radarX,
-    GAME_CONFIG.radarY + 54,
+    GAME_CONFIG.radarY + 58,
     '',
     {
       fontFamily: 'Consolas, monospace',
-      fontSize: '12px',
+      fontSize: '13px',
       color: '#86efac',
       backgroundColor: '#031a0ce6',
-      padding: { x: 14, y: 6 },
+      padding: { x: 16, y: 7 },
       fontStyle: 'bold',
       align: 'center',
     },
@@ -807,16 +899,16 @@ export function createHud(
   alertContainer.setVisible(false);
 
   const alertBg = scene.add.graphics();
-  const alertTitleText = scene.add.text(0, -8, '', {
+  const alertTitleText = scene.add.text(0, -9, '', {
     fontFamily: 'Consolas, monospace',
-    fontSize: '13px',
+    fontSize: '15px',
     color: '#ffffff',
     fontStyle: 'bold',
   }).setOrigin(0.5);
 
-  const alertOutcomeText = scene.add.text(0, 11, '', {
+  const alertOutcomeText = scene.add.text(0, 13, '', {
     fontFamily: 'Consolas, monospace',
-    fontSize: '11px',
+    fontSize: '13px',
     color: '#86efac',
     fontStyle: 'bold',
   }).setOrigin(0.5);
@@ -1105,8 +1197,8 @@ export function createHud(
     const bonus = rawLines[2] || '';
 
     const hasBonus = bonus.length > 0;
-    const boxW = 410;
-    const boxH = hasBonus ? 132 : 100;
+    const boxW = 440;
+    const boxH = hasBonus ? 152 : 116;
     const halfW = boxW / 2;
     const halfH = boxH / 2;
 
@@ -1128,7 +1220,7 @@ export function createHud(
     bgBox.strokePath();
 
     // Тактические угловые засечки прицела/окна
-    const corner = 10;
+    const corner = 11;
     bgBox.lineStyle(2, 0x7dd3fc, 0.95);
     bgBox.beginPath();
     // Top-left
@@ -1150,7 +1242,7 @@ export function createHud(
     bgBox.strokePath();
 
     // Разделительная линия между заголовком и дополнительной информацией
-    const dividerY = hasBonus ? -8 : 8;
+    const dividerY = hasBonus ? -10 : 8;
     bgBox.lineStyle(1, 0x38bdf8, 0.28);
     bgBox.beginPath();
     bgBox.moveTo(-halfW + 24, dividerY);
@@ -1159,14 +1251,14 @@ export function createHud(
 
     // Позиционирование текстов с выверенными пропорциями
     titleText.setText(title);
-    titleText.setPosition(0, hasBonus ? -34 : -18);
+    titleText.setPosition(0, hasBonus ? -38 : -20);
 
     subtitleText.setText(subtitle);
-    subtitleText.setPosition(0, hasBonus ? 14 : 28);
+    subtitleText.setPosition(0, hasBonus ? 16 : 30);
 
     if (hasBonus) {
       bonusText.setText(bonus);
-      bonusText.setPosition(0, 42);
+      bonusText.setPosition(0, 46);
       bonusText.setVisible(true);
     } else {
       bonusText.setText('');
@@ -1276,8 +1368,8 @@ export function createHud(
       pipColor = 0xf59e0b;
     }
 
-    const boxW = 330;
-    const boxH = 54;
+    const boxW = 360;
+    const boxH = 64;
     const halfW = boxW / 2;
     const halfH = boxH / 2;
 
@@ -1296,7 +1388,7 @@ export function createHud(
     alertBg.fillRect(-halfW + 2, -halfH + 4, 4, boxH - 8);
 
     // Угловые засечки
-    const corner = 7;
+    const corner = 8;
     alertBg.lineStyle(2, pipColor, 0.95);
     alertBg.beginPath();
     // Top-left
