@@ -586,6 +586,8 @@ export interface HudManager {
   updateFeedback: (dt: number) => void;
   showWaveBanner: (text: string) => void;
   updateWaveBanner: (dt: number) => void;
+  showNotification: (text: string, duration?: number) => void;
+  updateNotification: (dt: number) => void;
 }
 
 /**
@@ -621,37 +623,44 @@ export function createHud(
   hudGraphics.lineTo(panelX + panelW - 16, panelY + 452);
   hudGraphics.strokePath();
 
-  // 2. Текстовые элементы консоли
+  // 2. Кнопка меню в левом верхнем углу (на фоне позади радара)
+  if (callbacks.onTogglePause) {
+    const btnX = 82;
+    const btnY = 38;
+    const btnW = 116;
+    const btnH = 32;
+
+    const menuBtn = scene.add.rectangle(btnX, btnY, btnW, btnH, 0x071b0f, 0.92);
+    menuBtn.setStrokeStyle(1.5, 0x38bdf8, 0.85);
+    menuBtn.setDepth(20);
+    menuBtn.setInteractive({ useHandCursor: true });
+
+    const menuText = scene.add.text(btnX, btnY, 'МЕНЮ (P)', {
+      fontFamily: 'Consolas, monospace',
+      fontSize: '13px',
+      color: '#38bdf8',
+      fontStyle: 'bold',
+    });
+    menuText.setOrigin(0.5);
+    menuText.setDepth(21);
+
+    menuBtn.on('pointerover', () => {
+      menuBtn.setFillStyle(0x0284c7, 0.95);
+      menuText.setColor('#ffffff');
+    });
+    menuBtn.on('pointerout', () => {
+      menuBtn.setFillStyle(0x071b0f, 0.92);
+      menuText.setColor('#38bdf8');
+    });
+    menuBtn.on('pointerdown', () => callbacks.onTogglePause?.());
+  }
+
+  // 3. Текстовые элементы консоли
   const monoStyle: Phaser.Types.GameObjects.Text.TextStyle = {
     fontFamily: 'Consolas, monospace',
     fontSize: '13px',
     color: '#4ade80',
   };
-
-  scene.add.text(660, 44, '[ КОНСОЛЬ ОПЕРАТОРА ПВО ]', {
-    ...monoStyle,
-    fontSize: '13px',
-    color: '#86efac',
-    fontStyle: 'bold',
-  });
-
-  if (callbacks.onTogglePause) {
-    const menuBtn = scene.add.rectangle(888, 51, 66, 20, 0x071b0f, 0.95);
-    menuBtn.setStrokeStyle(1, 0x38bdf8, 0.8);
-    menuBtn.setInteractive({ useHandCursor: true });
-
-    const menuText = scene.add.text(888, 51, 'МЕНЮ [P]', {
-      ...monoStyle,
-      fontSize: '10px',
-      color: '#38bdf8',
-      fontStyle: 'bold',
-    });
-    menuText.setOrigin(0.5);
-
-    menuBtn.on('pointerover', () => menuBtn.setFillStyle(0x0284c7, 0.9));
-    menuBtn.on('pointerout', () => menuBtn.setFillStyle(0x071b0f, 0.95));
-    menuBtn.on('pointerdown', () => callbacks.onTogglePause?.());
-  }
 
   const healthText = scene.add.text(660, 68, 'ЦЕЛОСТНОСТЬ БАЗЫ: 100%', {
     ...monoStyle,
@@ -742,7 +751,7 @@ export function createHud(
     },
   );
 
-  // 3. Баннер волны
+  // 3. Баннер волны и стартовые подсказки
   const waveBannerText = scene.add.text(
     GAME_CONFIG.radarX,
     GAME_CONFIG.radarY - 30,
@@ -754,10 +763,28 @@ export function createHud(
       backgroundColor: '#021827e6',
       padding: { x: 16, y: 8 },
       fontStyle: 'bold',
+      align: 'center',
     },
   );
   waveBannerText.setOrigin(0.5);
   waveBannerText.setAlpha(0);
+
+  const notificationText = scene.add.text(
+    GAME_CONFIG.radarX,
+    GAME_CONFIG.radarY + 40,
+    '',
+    {
+      fontFamily: 'Consolas, monospace',
+      fontSize: '12px',
+      color: '#86efac',
+      backgroundColor: '#031a0ce6',
+      padding: { x: 14, y: 6 },
+      fontStyle: 'bold',
+      align: 'center',
+    },
+  );
+  notificationText.setOrigin(0.5);
+  notificationText.setAlpha(0);
 
   // 4. Кнопки решений и снабжения
   function createButton(
@@ -1044,6 +1071,22 @@ export function createHud(
     }
   };
 
+  let notificationTimer = 0;
+  const showNotification = (text: string, duration = 4.5) => {
+    notificationText.setText(text);
+    notificationText.setAlpha(1);
+    notificationTimer = duration;
+  };
+
+  const updateNotification = (dt: number) => {
+    if (notificationTimer > 0) {
+      notificationTimer -= dt;
+      if (notificationTimer <= 0.8) {
+        notificationText.setAlpha(Math.max(0, notificationTimer / 0.8));
+      }
+    }
+  };
+
   return {
     drawHealthBar,
     updateScoreBoard,
@@ -1053,6 +1096,8 @@ export function createHud(
     updateFeedback,
     showWaveBanner,
     updateWaveBanner,
+    showNotification,
+    updateNotification,
   };
 }
 

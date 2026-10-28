@@ -63,13 +63,14 @@ export function setupGameInputs(
   scene: Phaser.Scene,
   actions: GameInputActions,
 ): void {
-  // Клик по экрану радара (зона левее консоли x < 640)
+  // Клик по экрану радара (зона левее консоли x < 640, исключая кнопку меню в левом верхнем углу)
   scene.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
     if (
       actions.isGameOver() ||
       actions.isPaused() ||
       actions.isBriefingOpen?.() ||
-      pointer.x >= 640
+      pointer.x >= 640 ||
+      (pointer.x < 150 && pointer.y < 65)
     ) {
       return;
     }

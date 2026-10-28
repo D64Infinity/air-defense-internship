@@ -187,6 +187,7 @@ export class GameScene extends Phaser.Scene {
     this.hud.updateFeedback(dt);
     this.updateTelemetry();
     this.hud.updateWaveBanner(dt);
+    this.hud.updateNotification(dt);
 
     if (this.baseFlashTimer > 0) {
       this.baseFlashTimer -= dt;
@@ -201,6 +202,10 @@ export class GameScene extends Phaser.Scene {
     this.spawner.reset();
     this.targets = [];
     this.showWaveBanner('ВОЛНА 1\nБОЕВОЕ ДЕЖУРСТВО');
+    this.hud.showNotification(
+      '[ ПОДСКАЗКА: ОПЦИИ МОЖНО АКТИВИРОВАТЬ ЦИФРАМИ 1–6 НА КЛАВИАТУРЕ ]',
+      5.0,
+    );
     this.updateTargetSelectionUI();
     this.updateScoreBoard();
     this.drawHealthBar();
