@@ -199,8 +199,8 @@ export class GameScene extends Phaser.Scene {
   private startCombat(): void {
     this.isGameStarted = true;
     this.spawner.reset();
-    // Стартовые цели спавнятся ДАЛЕКО от базы для комфортного старта
-    this.targets = this.spawner.spawnInitialTargets(3, this.wave);
+    this.targets = [];
+    this.showWaveBanner('ВОЛНА 1\nБОЕВОЕ ДЕЖУРСТВО');
     this.updateTargetSelectionUI();
     this.updateScoreBoard();
     this.drawHealthBar();

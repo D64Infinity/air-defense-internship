@@ -15,11 +15,6 @@ export interface TargetSpawner {
   reset: () => void;
 
   /**
-   * Спавн стартовых целей в безопасном кольце (0.8..0.96 радиуса)
-   */
-  spawnInitialTargets: (count: number, wave: number) => GameTarget[];
-
-  /**
    * Шаг таймера спавна текущей волны. Возвращает созданную цель или null, если спавн не произошел
    */
   update: (
@@ -123,25 +118,6 @@ export function createSpawner(): TargetSpawner {
     };
   };
 
-  const spawnInitialTargets = (count: number, wave: number): GameTarget[] => {
-    const targets: GameTarget[] = [];
-    for (let i = 0; i < count; i++) {
-      const dist = Phaser.Math.FloatBetween(
-        GAME_CONFIG.radarRadius * 0.8,
-        GAME_CONFIG.radarRadius * 0.96,
-      );
-      const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
-      targets.push(
-        createTarget(
-          GAME_CONFIG.radarX + Math.cos(angle) * dist,
-          GAME_CONFIG.radarY + Math.sin(angle) * dist,
-          wave,
-        ),
-      );
-    }
-    return targets;
-  };
-
   const spawnTargetAtEdge = (wave: number): GameTarget => {
     const spawnAngle = Phaser.Math.FloatBetween(0, Math.PI * 2);
     const spawnDist = GAME_CONFIG.radarRadius - 2;
@@ -180,7 +156,6 @@ export function createSpawner(): TargetSpawner {
 
   return {
     reset,
-    spawnInitialTargets,
     update,
   };
 }

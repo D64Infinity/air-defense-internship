@@ -464,7 +464,7 @@ export function createBriefingOverlay(
   ]);
   addRow(startX, cy - 22, [
     { text: '  ДЕЙСТВИЕ: ', color: '#94a3b8' },
-    { text: 'ИГНОРИРОВАТЬ [3]', color: '#cbd5e1', bold: true },
+    { text: 'ЛОЖНАЯ ЦЕЛЬ [3]', color: '#cbd5e1', bold: true },
     { text: ' (фильтруйте пустышки, экономя боезапас)', color: '#94a3b8' },
   ]);
 
@@ -473,7 +473,7 @@ export function createBriefingOverlay(
     { text: '• СЕНСОРЫ: ', color: '#38bdf8', bold: true },
     { text: 'Клавиша ', color: '#e2e8f0' },
     { text: '[4] СКАН', color: '#38bdf8', bold: true },
-    { text: ' раскрывает тип цели за 1.5 с (расходует заряд).', color: '#e2e8f0' },
+    { text: ' раскрывает тип цели за 1 с (расходует заряд).', color: '#e2e8f0' },
   ]);
   addRow(startX, cy + 26, [
     { text: '• СНАБЖЕНИЕ: ', color: '#2dd4bf', bold: true },
@@ -731,7 +731,7 @@ export function createHud(
     660,
     472,
     '--- ПРИЗНАКИ И СНАБЖЕНИЕ ---\n' +
-      '• [4] Скан сигнатуры (1.5 сек.)\n' +
+      '• [4] Скан сигнатуры (1 сек.)\n' +
       '• [5] Ракета (150 CR) | [6] Скан (75 CR)\n' +
       '• Ракета (-30 HP) | Бомбардировщик (-20 HP)\n',
     {
@@ -816,7 +816,7 @@ export function createHud(
       startY,
       btnW,
       btnH,
-      '[1] СВОЙ БОРТ',
+      '[1] СВОЙ БОРТ (ДРУГ)',
       GAME_CONFIG.colors.btnFriend,
       () => callbacks.onDecision('friend'),
     ),
@@ -834,7 +834,7 @@ export function createHud(
       startY + (btnH + gap) * 2,
       btnW,
       btnH,
-      '[3] ИГНОРИРОВАТЬ',
+      '[3] ЛОЖНАЯ ЦЕЛЬ',
       GAME_CONFIG.colors.btnIgnore,
       () => callbacks.onDecision('ignore'),
     ),
@@ -843,7 +843,7 @@ export function createHud(
       startY + (btnH + gap) * 3,
       btnW,
       btnH,
-      '[4] СКАН СИГНАТУРЫ (1.5 сек.)',
+      '[4] СКАН СИГНАТУРЫ (1 сек.)',
       GAME_CONFIG.colors.btnScan,
       () => callbacks.onScan(),
     ),
