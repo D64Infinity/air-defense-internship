@@ -104,10 +104,12 @@ export class GameScene extends Phaser.Scene {
       onScan: () => this.startScanning(),
       onBuyMissile: () => this.buyInterceptor(),
       onBuyScan: () => this.buyScan(),
+      onTogglePause: () => this.togglePause(),
     });
     this.pauseOverlay = createPauseOverlay(this, {
       onResume: () => this.togglePause(),
       onOpenBriefing: () => this.openBriefing(),
+      onRestart: () => this.restartGame(),
     });
     this.briefingOverlay = createBriefingOverlay(this, () => this.handleBriefingClose());
     this.gameOverOverlay = createGameOverOverlay(this, () => this.restartGame());

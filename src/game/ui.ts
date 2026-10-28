@@ -212,6 +212,7 @@ export function createGameOverOverlay(
 export interface PauseOverlayCallbacks {
   onResume: () => void;
   onOpenBriefing?: () => void;
+  onRestart?: () => void;
 }
 
 /**
@@ -245,7 +246,7 @@ export function createPauseOverlay(
     width / 2,
     height / 2,
     400,
-    220,
+    270,
     0x071b0f,
     0.96,
   );
@@ -253,7 +254,7 @@ export function createPauseOverlay(
 
   const title = scene.add.text(
     width / 2,
-    height / 2 - 55,
+    height / 2 - 85,
     '// ТАКТИЧЕСКАЯ ПАУЗА //',
     {
       fontFamily: 'Consolas, monospace',
@@ -267,9 +268,9 @@ export function createPauseOverlay(
   // 1. Кнопка продолжения
   const resumeBtn = scene.add.rectangle(
     width / 2,
-    height / 2 + 5,
+    height / 2 - 28,
     260,
-    38,
+    36,
     0x0284c7,
     0.9,
   );
@@ -278,7 +279,7 @@ export function createPauseOverlay(
 
   const resumeText = scene.add.text(
     width / 2,
-    height / 2 + 5,
+    height / 2 - 28,
     'ПРОДОЛЖИТЬ (P)',
     {
       fontFamily: 'Consolas, monospace',
@@ -296,9 +297,9 @@ export function createPauseOverlay(
   // 2. Кнопка инструктажа
   const briefingBtn = scene.add.rectangle(
     width / 2,
-    height / 2 + 55,
+    height / 2 + 18,
     260,
-    38,
+    36,
     0x0f3b25,
     0.9,
   );
@@ -307,7 +308,7 @@ export function createPauseOverlay(
 
   const briefingText = scene.add.text(
     width / 2,
-    height / 2 + 55,
+    height / 2 + 18,
     'ИНСТРУКТАЖ / СПРАВКА',
     {
       fontFamily: 'Consolas, monospace',
@@ -322,7 +323,46 @@ export function createPauseOverlay(
   briefingBtn.on('pointerout', () => briefingBtn.setFillStyle(0x0f3b25, 0.9));
   briefingBtn.on('pointerdown', () => cbs.onOpenBriefing?.());
 
-  container.add([darkBg, modal, title, resumeBtn, resumeText, briefingBtn, briefingText]);
+  // 3. Кнопка перезапуска игры
+  const restartBtn = scene.add.rectangle(
+    width / 2,
+    height / 2 + 64,
+    260,
+    36,
+    0x450a0a,
+    0.9,
+  );
+  restartBtn.setStrokeStyle(1.5, 0xef4444, 0.9);
+  restartBtn.setInteractive({ useHandCursor: true });
+
+  const restartText = scene.add.text(
+    width / 2,
+    height / 2 + 64,
+    'НАЧАТЬ ЗАНОВО (R)',
+    {
+      fontFamily: 'Consolas, monospace',
+      fontSize: '13px',
+      color: '#fca5a5',
+      fontStyle: 'bold',
+    },
+  );
+  restartText.setOrigin(0.5);
+
+  restartBtn.on('pointerover', () => restartBtn.setFillStyle(0x7f1d1d, 1));
+  restartBtn.on('pointerout', () => restartBtn.setFillStyle(0x450a0a, 0.9));
+  restartBtn.on('pointerdown', () => cbs.onRestart?.());
+
+  container.add([
+    darkBg,
+    modal,
+    title,
+    resumeBtn,
+    resumeText,
+    briefingBtn,
+    briefingText,
+    restartBtn,
+    restartText,
+  ]);
 
   return {
     container,
@@ -507,6 +547,7 @@ export interface HudCallbacks {
   onScan: () => void;
   onBuyMissile: () => void;
   onBuyScan: () => void;
+  onTogglePause?: () => void;
 }
 
 export interface ScoreBoardData {
@@ -593,6 +634,24 @@ export function createHud(
     color: '#86efac',
     fontStyle: 'bold',
   });
+
+  if (callbacks.onTogglePause) {
+    const menuBtn = scene.add.rectangle(888, 51, 66, 20, 0x071b0f, 0.95);
+    menuBtn.setStrokeStyle(1, 0x38bdf8, 0.8);
+    menuBtn.setInteractive({ useHandCursor: true });
+
+    const menuText = scene.add.text(888, 51, 'МЕНЮ [P]', {
+      ...monoStyle,
+      fontSize: '10px',
+      color: '#38bdf8',
+      fontStyle: 'bold',
+    });
+    menuText.setOrigin(0.5);
+
+    menuBtn.on('pointerover', () => menuBtn.setFillStyle(0x0284c7, 0.9));
+    menuBtn.on('pointerout', () => menuBtn.setFillStyle(0x071b0f, 0.95));
+    menuBtn.on('pointerdown', () => callbacks.onTogglePause?.());
+  }
 
   const healthText = scene.add.text(660, 68, 'ЦЕЛОСТНОСТЬ БАЗЫ: 100%', {
     ...monoStyle,

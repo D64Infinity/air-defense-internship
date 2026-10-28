@@ -89,8 +89,8 @@ export function setupGameInputs(
     });
   };
 
-  // Тактическая пауза (P)
-  scene.input.keyboard.on('keydown-P', () => {
+  // Тактическая пауза / меню (P / Esc)
+  const handleTogglePause = () => {
     if (actions.isBriefingOpen?.()) {
       if (actions.isPaused()) {
         actions.onCloseBriefing?.();
@@ -98,7 +98,10 @@ export function setupGameInputs(
     } else {
       actions.onTogglePause();
     }
-  });
+  };
+
+  scene.input.keyboard.on('keydown-P', handleTogglePause);
+  scene.input.keyboard.on('keydown-ESC', handleTogglePause);
 
   // Классификация целей (1, 2, 3)
   bindActiveKey('keydown-ONE', () => actions.onDecision('friend'));
@@ -119,6 +122,13 @@ export function setupGameInputs(
     if (actions.isBriefingOpen?.()) {
       actions.onCloseBriefing?.();
     } else if (actions.isGameOver()) {
+      actions.onRestart();
+    }
+  });
+
+  // Клавиша R: быстрый перезапуск из меню паузы или после поражения
+  scene.input.keyboard.on('keydown-R', () => {
+    if (actions.isPaused() || actions.isGameOver()) {
       actions.onRestart();
     }
   });
