@@ -412,7 +412,12 @@ export class GameScene extends Phaser.Scene {
     // Эффект взрыва: для техники - с ударной волной, для ловушки - только вспышка
     const hasShockwave = target.type !== 'decoy';
     this.explosions.push(createExplosion(target.x, target.y, hasShockwave));
-    this.soundSystem.playExplosion(target.type);
+    const pan = Phaser.Math.Clamp(
+      (target.x - GAME_CONFIG.radarX) / GAME_CONFIG.radarRadius,
+      -1,
+      1,
+    );
+    this.soundSystem.playExplosion(target.type, pan);
 
     if (target.type === 'missile' || target.type === 'bomber') {
       const distToBase = getDistToBase(target.x, target.y);
