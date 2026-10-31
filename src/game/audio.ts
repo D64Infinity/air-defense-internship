@@ -412,6 +412,33 @@ export function createSoundSystem(): SoundSystem {
   };
 
   /**
+   * Пресеты вариаций подрыва ложных целей (зенитный воздушный хлопок в облаке диполей)
+   */
+  const DECOY_VARIANTS = [
+    { pitch: 0.90 }, // глуховатый рассеянный разрыв
+    { pitch: 1.00 }, // стандартный сбалансированный хлопок
+    { pitch: 1.12 }, // хлёсткий звонкий щелчок
+  ] as const;
+
+  /**
+   * Пресеты вариаций перехвата крылатых ракет (титановый скрежет + громовой раскат)
+   */
+  const MISSILE_VARIANTS = [
+    { pitch: 0.92 }, // попадание в хвостовой отсек (низкий раскат)
+    { pitch: 1.00 }, // стандартный разрыв боевой части
+    { pitch: 1.08 }, // попадание в корпус/сопло (хлёсткий скрежет)
+  ] as const;
+
+  /**
+   * Пресеты вариаций крушения тяжёлого бомбардировщика (огненный шар + победный аккорд)
+   */
+  const BOMBER_VARIANTS = [
+    { pitch: 0.94, chordRoot: 698.5, chordFifth: 1046.5 }, // Тональность Фа (F5 + C6)
+    { pitch: 1.00, chordRoot: 784.0, chordFifth: 1175.0 }, // Тональность Соль (G5 + D6)
+    { pitch: 1.06, chordRoot: 880.0, chordFifth: 1318.5 }, // Тональность Ля (A5 + E6)
+  ] as const;
+
+  /**
    * 1. ЛОЖНАЯ ЦЕЛЬ: Зенитный воздушный подрыв БЧ в облаке диполей (Airburst Flak Snap, 0.48 сек).
    * Ракета перехватчика детонирует на высоте: сверхзвуковая ударная волна Фридлендера малой БЧ
    * + быстрое рассеяние в атмосфере + шуршащее облако распыляемой металлической фольги (диполей).
@@ -437,7 +464,8 @@ export function createSoundSystem(): SoundSystem {
     }
 
     // Слой 2: Воздушная каверна разрыва в атмосфере (Air Cavity Pop)
-    const v = 0.96 + Math.random() * 0.08; // Микродисперсия частот для живого нецифрового звука
+    const variant = DECOY_VARIANTS[Math.floor(Math.random() * DECOY_VARIANTS.length)];
+    const v = variant.pitch;
     const popNoise = audioCtx.createBufferSource();
     popNoise.buffer = getBrownNoiseBuffer(audioCtx);
 
@@ -508,7 +536,8 @@ export function createSoundSystem(): SoundSystem {
     now: number,
   ): void => {
     const duration = 0.80;
-    const v = 0.96 + Math.random() * 0.08; // Органическая микродисперсия (±4%)
+    const variant = MISSILE_VARIANTS[Math.floor(Math.random() * MISSILE_VARIANTS.length)];
+    const v = variant.pitch;
 
     // Слой 1: Физическая ударная волна детонации Фридлендера (Friedlander Shock Front)
     // Устраняет эффект лопнувшего шара за счёт фазы глубокого вакуумного разрежения (-P)
@@ -599,7 +628,8 @@ export function createSoundSystem(): SoundSystem {
   ): void => {
     const duration = 1.40;
     const secondaryTime = now + 0.065; // Вторичная детонация топлива через 65 мс
-    const v = 0.96 + Math.random() * 0.08; // Органическая микродисперсия (±4%)
+    const variant = BOMBER_VARIANTS[Math.floor(Math.random() * BOMBER_VARIANTS.length)];
+    const v = variant.pitch;
 
     // Фаза 1: Начальный удар ракеты по фюзеляжу (t = now)
     const strikeShock = audioCtx.createBufferSource();
@@ -676,14 +706,14 @@ export function createSoundSystem(): SoundSystem {
     subFilter.connect(subGain);
     subGain.connect(route.destination);
 
-    // Фаза 5: Тонкий мажорный аккорд стратегической победы (G5 784 Гц + D6 1175 Гц)
+    // Фаза 5: Тонкий мажорный аккорд стратегической победы (варьируемый победный перезвон)
     const chordRoot = audioCtx.createOscillator();
     const chordFifth = audioCtx.createOscillator();
     const chordGain = audioCtx.createGain();
     chordRoot.type = 'sine';
     chordFifth.type = 'sine';
-    chordRoot.frequency.setValueAtTime(784, secondaryTime + 0.02);
-    chordFifth.frequency.setValueAtTime(1175, secondaryTime + 0.02);
+    chordRoot.frequency.setValueAtTime(variant.chordRoot, secondaryTime + 0.02);
+    chordFifth.frequency.setValueAtTime(variant.chordFifth, secondaryTime + 0.02);
 
     chordGain.gain.setValueAtTime(0.0001, now);
     chordGain.gain.setValueAtTime(0.0001, secondaryTime + 0.02);
