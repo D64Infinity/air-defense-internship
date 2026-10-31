@@ -545,7 +545,7 @@ export function createBriefingOverlay(
     { text: '  ДЕЙСТВИЕ: ', color: '#94a3b8' },
     { text: 'ПРОПУСТИТЬ [1]', color: '#4ade80', bold: true },
     { text: ' (огонь по своим карается ', color: '#94a3b8' },
-    { text: 'ШТРАФОМ 150 CR', color: '#f87171', bold: true },
+    { text: `ШТРАФОМ ${GAME_CONFIG.creditsFriendlyFirePenalty} CR`, color: '#f87171', bold: true },
     { text: '!)', color: '#94a3b8' },
   ]);
 
@@ -571,9 +571,9 @@ export function createBriefingOverlay(
     { text: '• СНАБЖЕНИЕ: ', color: '#2dd4bf', bold: true },
     { text: 'Докупка ракет ', color: '#e2e8f0' },
     { text: '[5]', color: '#facc15', bold: true },
-    { text: ' (150 CR)   |   Докупка сканов ', color: '#e2e8f0' },
+    { text: ` (${GAME_CONFIG.interceptorCost} CR)   |   Докупка сканов `, color: '#e2e8f0' },
     { text: '[6]', color: '#facc15', bold: true },
-    { text: ' (75 CR)', color: '#e2e8f0' },
+    { text: ` (${GAME_CONFIG.scanCost} CR)`, color: '#e2e8f0' },
   ]);
 
   // 5. Панель быстрого управления (жёлтый акцент)
@@ -754,7 +754,7 @@ export function createHud(
     color: '#4ade80',
   };
 
-  const healthText = scene.add.text(660, 68, 'ЦЕЛОСТНОСТЬ БАЗЫ: 100%', {
+  const healthText = scene.add.text(660, 68, `ЦЕЛОСТНОСТЬ БАЗЫ: ${GAME_CONFIG.maxBaseHealth}%`, {
     ...monoStyle,
     fontSize: '12px',
     color: '#22c55e',
@@ -774,7 +774,7 @@ export function createHud(
     color: '#cbd5e1',
   });
 
-  const creditsText = scene.add.text(660, 120, 'КРЕДИТЫ: 200 CR', {
+  const creditsText = scene.add.text(660, 120, `КРЕДИТЫ: ${GAME_CONFIG.startCredits} CR`, {
     ...monoStyle,
     fontSize: '12px',
     color: '#38bdf8',
@@ -794,19 +794,31 @@ export function createHud(
     color: '#86efac',
   });
 
-  const interceptorsText = scene.add.text(660, 154, 'РАКЕТЫ: [|||||] 5/6', {
-    ...monoStyle,
-    fontSize: '11px',
-    color: '#facc15',
-    fontStyle: 'bold',
-  });
+  const startAmmoBars = '|'.repeat(GAME_CONFIG.startInterceptors).padEnd(GAME_CONFIG.maxInterceptors, ' ');
+  const interceptorsText = scene.add.text(
+    660,
+    154,
+    `РАКЕТЫ: [${startAmmoBars}] ${GAME_CONFIG.startInterceptors}/${GAME_CONFIG.maxInterceptors}`,
+    {
+      ...monoStyle,
+      fontSize: '11px',
+      color: '#facc15',
+      fontStyle: 'bold',
+    },
+  );
 
-  const scansText = scene.add.text(785, 154, 'СКАН: [***] 3/3', {
-    ...monoStyle,
-    fontSize: '11px',
-    color: '#38bdf8',
-    fontStyle: 'bold',
-  });
+  const startScanStars = '*'.repeat(GAME_CONFIG.maxScansPerWave);
+  const scansText = scene.add.text(
+    785,
+    154,
+    `СКАН:   [${startScanStars}] ${GAME_CONFIG.maxScansPerWave}/${GAME_CONFIG.maxScansPerWave}`,
+    {
+      ...monoStyle,
+      fontSize: '11px',
+      color: '#38bdf8',
+      fontStyle: 'bold',
+    },
+  );
 
   const targetTelemetryTitle = scene.add.text(660, 178, 'ОБЪЕКТ СЛЕЖЕНИЯ: НЕТ', {
     ...monoStyle,

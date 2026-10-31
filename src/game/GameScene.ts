@@ -59,7 +59,7 @@ export class GameScene extends Phaser.Scene {
   // Состояние игры
   private baseHealth = GAME_CONFIG.maxBaseHealth;
   private wave = 1;
-  private waveTargetsToSpawn = 7;
+  private waveTargetsToSpawn = GAME_CONFIG.waveTargetsBase;
   private waveHadFlaws = false;
   private isGameOver = false;
   private highScore = 0;
@@ -80,7 +80,7 @@ export class GameScene extends Phaser.Scene {
     this.armory.reset();
     this.stats.reset();
     this.wave = 1;
-    this.waveTargetsToSpawn = 7;
+    this.waveTargetsToSpawn = GAME_CONFIG.waveTargetsBase;
     this.waveHadFlaws = false;
     this.targets = [];
     this.selectedTarget = null;
@@ -654,7 +654,8 @@ export class GameScene extends Phaser.Scene {
   private checkWaveProgress(): void {
     if (this.waveTargetsToSpawn <= 0 && this.targets.length === 0 && !this.isGameOver) {
       this.wave++;
-      this.waveTargetsToSpawn = 7 + this.wave * 2;
+      this.waveTargetsToSpawn =
+        GAME_CONFIG.waveTargetsBase + this.wave * GAME_CONFIG.waveTargetsIncrement;
 
       // Луч ускоряется с каждой волной
       this.radarRender.setWaveSpeed(this.wave);
@@ -671,7 +672,7 @@ export class GameScene extends Phaser.Scene {
 
       this.updateScoreBoard();
       this.showWaveBanner(
-        `ВОЛНА ${this.wave}\nСНАБЖЕНИЕ: +${addedAmmo} РАКЕТЫ | +${waveCredits} CR | СКАНЫ 3/3${cleanBonusText}`,
+        `ВОЛНА ${this.wave}\nСНАБЖЕНИЕ: +${addedAmmo} РАКЕТЫ | +${waveCredits} CR | СКАНЫ ${GAME_CONFIG.maxScansPerWave}/${GAME_CONFIG.maxScansPerWave}${cleanBonusText}`,
       );
     }
   }

@@ -22,9 +22,12 @@ export const GAME_CONFIG = {
   spawnIntervalMinBase: 2.8,
   spawnIntervalMaxBase: 4.8,
   maxActiveTargetsBase: 7,
+  waveTargetsBase: 7, // количество целей в 1-й волне
+  waveTargetsIncrement: 2, // прирост целей с каждой следующей волной
 
   // Здоровье базы и урон
   maxBaseHealth: 100,
+  baseRadius: 18, // радиус центра базы для детекции попаданий и посадки
   damageMissile: 30,
   damageBomber: 20,
 

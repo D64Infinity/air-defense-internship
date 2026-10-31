@@ -153,7 +153,7 @@ export function updateTargetsSimulation(
 ): SimulationStepResult {
   const events: TargetSimulationEvent[] = [];
   const targetsToRemove: GameTarget[] = [];
-  const baseRadius = 18;
+  const baseRadius = GAME_CONFIG.baseRadius;
   const exitRadius = GAME_CONFIG.radarRadius * 1.05;
 
   for (let i = targets.length - 1; i >= 0; i--) {
