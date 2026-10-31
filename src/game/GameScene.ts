@@ -27,6 +27,7 @@ import { createScoreTracker, type ScoreTracker } from './scoring';
 import { createArmory, type ArmoryTracker } from './armory';
 import { createStatsTracker, type StatsTracker } from './stats';
 import { createSoundSystem, type SoundSystem } from './audio';
+import { AmbientBackground } from './background';
 import {
   getDistToBase,
   findTargetNear,
@@ -38,6 +39,7 @@ import {
 export class GameScene extends Phaser.Scene {
   private static hasSeenBriefing = true; /* !!! ВРЕМЕННО TRUE !!! */
 
+  private ambientBg!: AmbientBackground;
   private radarRender!: RadarRender;
   private hud!: HudManager;
   private alerts!: AlertManager;
@@ -89,6 +91,9 @@ export class GameScene extends Phaser.Scene {
     // Загрузка рекорда из localStorage
     const savedRecord = localStorage.getItem('radar_station_record');
     this.highScore = savedRecord ? parseInt(savedRecord, 10) || 0 : 0;
+
+    // 0. Амбиентный фон и корпус консоли
+    this.ambientBg = new AmbientBackground(this);
 
     // 1. Рендер экрана радара (статическая сетка, луч и динамические слои)
     this.radarRender = createRadarRender(this, {
@@ -147,6 +152,8 @@ export class GameScene extends Phaser.Scene {
     const dt = Math.min(delta / 1000, 0.1);
 
     if (!this.isGameStarted) {
+      this.ambientBg.update(dt * 0.5);
+      this.ambientBg.render(this.radarRender.beamAngle);
       this.radarRender.updateBeam(dt * 0.5);
       this.radarRender.renderDynamic({
         baseFlashTimer: 0,
@@ -164,6 +171,8 @@ export class GameScene extends Phaser.Scene {
 
     this.stats.updateTime(dt);
 
+    this.ambientBg.update(dt);
+    this.ambientBg.render(this.radarRender.beamAngle);
     this.radarRender.updateBeam(dt, this.targets);
     this.updateTargets(dt);
     const newTarget = this.spawner.update(
@@ -297,6 +306,7 @@ export class GameScene extends Phaser.Scene {
   private restartGame(): void {
     this.isPaused = false;
     this.explosions = [];
+    this.ambientBg.reset();
     this.pauseOverlay.hide();
     this.briefingOverlay.hide();
     this.gameOverOverlay.hide();
@@ -412,6 +422,7 @@ export class GameScene extends Phaser.Scene {
     // Эффект взрыва: для техники - с ударной волной, для ловушки - только вспышка
     const hasShockwave = target.type !== 'decoy';
     this.explosions.push(createExplosion(target.x, target.y, hasShockwave));
+    this.ambientBg.triggerExplosionFlash(target.type);
     const pan = Phaser.Math.Clamp(
       (target.x - GAME_CONFIG.radarX) / GAME_CONFIG.radarRadius,
       -1,
@@ -644,6 +655,7 @@ export class GameScene extends Phaser.Scene {
   private applyBaseDamage(damage: number, feedback: string): void {
     this.baseHealth = Math.max(0, this.baseHealth - damage);
     this.baseFlashTimer = 0.6;
+    this.ambientBg.triggerBaseDamageFlash();
     this.soundSystem.playBaseDamage();
     this.showFeedback(feedback, '#ef4444');
     this.drawHealthBar();
