@@ -566,7 +566,7 @@ export function createBriefingOverlay(
     { text: '• СЕНСОРЫ: ', color: '#38bdf8', bold: true },
     { text: 'Клавиша ', color: '#e2e8f0' },
     { text: '[4] СКАН', color: '#38bdf8', bold: true },
-    { text: ' раскрывает тип цели за 1 с (расходует заряд).', color: '#e2e8f0' },
+    { text: ` раскрывает тип цели за ${GAME_CONFIG.scanDuration} с (расходует заряд).`, color: '#e2e8f0' },
   ]);
   addRow(startX, cy + 26, [
     { text: '• СНАБЖЕНИЕ: ', color: '#2dd4bf', bold: true },
@@ -585,7 +585,7 @@ export function createBriefingOverlay(
   const cmdText = scene.add.text(
     width / 2,
     cy + 74,
-    'УПРАВЛЕНИЕ:  [1] СВОЙ   [2] УГРОЗА   [3] ИГНОР   [4] СКАН   [P] ПАУЗА',
+    'УПРАВЛЕНИЕ:  [1] СВОЙ   [2] УГРОЗА   [3] ЛОЖНАЯ ЦЕЛЬ   [4] СКАН   [P] ПАУЗА',
     {
       fontFamily: 'Consolas, monospace',
       fontSize: '11px',
@@ -680,6 +680,19 @@ export interface InterceptAlertData {
 }
 
 /**
+ * Данные оперативного оповещения о снабжении (покупка ракет/сканов)
+ */
+export interface SupplyAlertData {
+  type: 'missile' | 'scan';
+  success: boolean;
+  current: number;
+  max: number;
+  cost: number;
+  credits: number;
+  reason?: 'max_capacity' | 'no_credits';
+}
+
+/**
  * Интерфейс управления консолью оператора (HUD)
  */
 export interface HudManager {
@@ -694,6 +707,7 @@ export interface HudManager {
   showNotification: (text: string, duration?: number) => void;
   updateNotification: (dt: number) => void;
   showInterceptAlert: (data: InterceptAlertData) => void;
+  showSupplyAlert: (data: SupplyAlertData) => void;
   updateAlert: (dt: number) => void;
 }
 
@@ -830,7 +844,14 @@ export function createHud(
     fontStyle: 'bold',
   });
 
-  const targetTelemetryText = scene.add.text(660, 198, '', {
+  const targetTelemetryType = scene.add.text(660, 198, '', {
+    ...monoStyle,
+    fontSize: '12px',
+    color: '#94a3b8',
+    fontStyle: 'bold',
+  });
+
+  const targetTelemetryText = scene.add.text(660, 216, '', {
     ...monoStyle,
     fontSize: '12px',
     color: '#cbd5e1',
@@ -999,7 +1020,7 @@ export function createHud(
       startY + (btnH + gap) * 3,
       btnW,
       btnH,
-      '[4] СКАН СИГНАТУРЫ (1 сек.)',
+      `[4] СКАН СИГНАТУРЫ (${GAME_CONFIG.scanDuration} сек.)`,
       GAME_CONFIG.colors.btnScan,
       () => callbacks.onScan(),
     ),
@@ -1107,6 +1128,7 @@ export function createHud(
     if (!isSelected) {
       targetTelemetryTitle.setText('ОБЪЕКТ СЛЕЖЕНИЯ: НЕТ');
       targetTelemetryTitle.setColor('#94a3b8');
+      targetTelemetryType.setText('');
       targetTelemetryText.setText(
         'Кликните по вспыхнувшей\n' +
           'зелёной точке на радаре,\n' +
@@ -1141,6 +1163,8 @@ export function createHud(
     );
 
     let typeStr = 'ТИП:        [ НЕОПОЗНАН ]';
+    let typeColor = '#94a3b8';
+
     if (t.isScanned) {
       const cfg = GAME_CONFIG.targetTypes[t.type];
       const catTag =
@@ -1150,17 +1174,26 @@ export function createHud(
             ? 'СОЮЗНИК'
             : 'ЛОВУШКА';
       typeStr = `ТИП:        ${cfg.label.toUpperCase()} (${catTag})`;
+      typeColor =
+        cfg.category === 'threat'
+          ? '#ef4444'
+          : cfg.category === 'friend'
+            ? '#4ade80'
+            : '#fbbf24';
     } else if (data.isScanning && data.scanningTarget === t) {
       const pct = Math.min(
         100,
         Math.round((data.scanProgress / GAME_CONFIG.scanDuration) * 100),
       );
       typeStr = `АНАЛИЗ:     [${'#'.repeat(Math.floor(pct / 10))}${'.'.repeat(10 - Math.floor(pct / 10))}] ${pct}%`;
+      typeColor = '#38bdf8';
     }
 
+    targetTelemetryType.setText(typeStr);
+    targetTelemetryType.setColor(typeColor);
+
     targetTelemetryText.setText(
-      `${typeStr}\n` +
-        `СКОРОСТЬ:   ${t.speed} км/ч\n` +
+      `СКОРОСТЬ:   ${t.speed} км/ч\n` +
         `КУРС:       ${t.headingDeg}°\n` +
         `СИГНАЛ ЭПР: ${t.signal}%\n` +
         `ДИСТАНЦИЯ:  ${dist} км`,
@@ -1368,7 +1401,19 @@ export function createHud(
       pipColor = 0xf59e0b;
     }
 
-    const boxW = 360;
+    renderAlert(title, outcome, titleColor, outcomeColor, bgColor, borderColor, pipColor, 380);
+  };
+
+  const renderAlert = (
+    title: string,
+    outcome: string,
+    titleColor: string,
+    outcomeColor: string,
+    bgColor: number,
+    borderColor: number,
+    pipColor: number,
+    boxW = 380,
+  ) => {
     const boxH = 64;
     const halfW = boxW / 2;
     const halfH = boxH / 2;
@@ -1421,6 +1466,77 @@ export function createHud(
     alertContainer.setVisible(true);
   };
 
+  const showSupplyAlert = (data: SupplyAlertData) => {
+    let title = '';
+    let outcome = '';
+    let titleColor = '#ffffff';
+    let outcomeColor = '#86efac';
+    let bgColor = 0x021622;
+    let borderColor = 0x38bdf8;
+    let pipColor = 0x38bdf8;
+
+    if (data.type === 'missile') {
+      if (data.success) {
+        title = '[ СНАБЖЕНИЕ ] РАКЕТА-ПЕРЕХВАТЧИК';
+        const ammoBars = '|'.repeat(data.current).padEnd(data.max, ' ');
+        outcome = `-${data.cost} CR  |  БОЕКОМПЛЕКТ: [${ammoBars}] ${data.current}/${data.max}`;
+        titleColor = '#facc15';
+        outcomeColor = '#86efac';
+        bgColor = 0x171204;
+        borderColor = 0xca8a04;
+        pipColor = 0xfacc15;
+      } else if (data.reason === 'max_capacity') {
+        title = '[ СКЛАД ] БОЕКОМПЛЕКТ УЖЕ ПОЛОН';
+        outcome = `МАКСИМУМ НА СКЛАДЕ: ${data.current}/${data.max} РАКЕТ`;
+        titleColor = '#fbbf24';
+        outcomeColor = '#fcd34d';
+        bgColor = 0x191103;
+        borderColor = 0xb45309;
+        pipColor = 0xd97706;
+      } else {
+        // no_credits
+        title = '[ ОТКАЗ ] НЕДОСТАТОЧНО КРЕДИТОВ';
+        outcome = `ТРЕБУЕТСЯ: ${data.cost} CR  |  В НАЛИЧИИ: ${data.credits} CR`;
+        titleColor = '#f87171';
+        outcomeColor = '#fca5a5';
+        bgColor = 0x1f0707;
+        borderColor = 0xdc2626;
+        pipColor = 0xef4444;
+      }
+    } else {
+      // scan
+      if (data.success) {
+        title = '[ СНАБЖЕНИЕ ] ЗАРЯД СКАНИРОВАНИЯ';
+        const scanStars = '*'.repeat(data.current).padEnd(data.max, ' ');
+        outcome = `-${data.cost} CR  |  СКАНЕРЫ: [${scanStars}] ${data.current}/${data.max}`;
+        titleColor = '#38bdf8';
+        outcomeColor = '#7dd3fc';
+        bgColor = 0x021622;
+        borderColor = 0x0284c7;
+        pipColor = 0x38bdf8;
+      } else if (data.reason === 'max_capacity') {
+        title = '[ СЕНСОРЫ ] СИСТЕМА СКАНИРОВАНИЯ ПОЛНА';
+        outcome = `МАКСИМУМ В СИСТЕМЕ: ${data.current}/${data.max} ЗАРЯДОВ`;
+        titleColor = '#38bdf8';
+        outcomeColor = '#93c5fd';
+        bgColor = 0x061424;
+        borderColor = 0x0369a1;
+        pipColor = 0x38bdf8;
+      } else {
+        // no_credits
+        title = '[ ОТКАЗ ] НЕДОСТАТОЧНО КРЕДИТОВ';
+        outcome = `ТРЕБУЕТСЯ: ${data.cost} CR  |  В НАЛИЧИИ: ${data.credits} CR`;
+        titleColor = '#f87171';
+        outcomeColor = '#fca5a5';
+        bgColor = 0x1f0707;
+        borderColor = 0xdc2626;
+        pipColor = 0xef4444;
+      }
+    }
+
+    renderAlert(title, outcome, titleColor, outcomeColor, bgColor, borderColor, pipColor, 380);
+  };
+
   const updateAlert = (dt: number) => {
     if (alertTimer > 0) {
       alertTimer -= dt;
@@ -1463,6 +1579,7 @@ export function createHud(
     showNotification,
     updateNotification,
     showInterceptAlert,
+    showSupplyAlert,
     updateAlert,
   };
 }

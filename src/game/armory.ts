@@ -4,6 +4,7 @@ export interface BuyResult {
   success: boolean;
   message: string;
   color: string;
+  reason?: 'max_capacity' | 'no_credits';
 }
 
 export interface ScanStartResult {
@@ -65,13 +66,14 @@ export function createArmory(config = GAME_CONFIG): ArmoryTracker {
     onSuccess: () => void,
   ): BuyResult => {
     if (current >= max) {
-      return { success: false, message: maxFeedback, color: maxColor };
+      return { success: false, message: maxFeedback, color: maxColor, reason: 'max_capacity' };
     }
     if (credits < cost) {
       return {
         success: false,
         message: `[БЮДЖЕТ] НЕ ХВАТАЕТ КРЕДИТОВ (НУЖНО ${cost} CR)!`,
         color: '#ef4444',
+        reason: 'no_credits',
       };
     }
     credits -= cost;
@@ -172,7 +174,7 @@ export function createArmory(config = GAME_CONFIG): ArmoryTracker {
       scanProgress = 0;
       return {
         success: true,
-        message: '[СИСТЕМА] АНАЛИЗ СИГНАТУРЫ... (1.5 СЕК)',
+        message: `[СИСТЕМА] АНАЛИЗ СИГНАТУРЫ... (${GAME_CONFIG.scanDuration} СЕК)`,
         color: '#38bdf8',
       };
     },

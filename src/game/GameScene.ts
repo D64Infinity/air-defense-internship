@@ -317,7 +317,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Запуск глубокого сканирования сигнатуры цели (1.5 сек)
+   * Запуск сканирования сигнатуры цели
    */
   private startScanning(): void {
     if (!this.selectedTarget || this.isGameOver || this.armory.isScanning) return;
@@ -337,6 +337,15 @@ export class GameScene extends Phaser.Scene {
       this.updateScoreBoard();
       this.updateTargetSelectionUI();
     }
+    this.hud.showSupplyAlert({
+      type: 'missile',
+      success: res.success,
+      current: this.armory.interceptors,
+      max: GAME_CONFIG.maxInterceptors,
+      cost: GAME_CONFIG.interceptorCost,
+      credits: this.armory.credits,
+      reason: res.reason,
+    });
   }
 
   private buyScan(): void {
@@ -347,6 +356,15 @@ export class GameScene extends Phaser.Scene {
       this.updateScoreBoard();
       this.updateTargetSelectionUI();
     }
+    this.hud.showSupplyAlert({
+      type: 'scan',
+      success: res.success,
+      current: this.armory.scansAvailable,
+      max: GAME_CONFIG.maxScansPerWave,
+      cost: GAME_CONFIG.scanCost,
+      credits: this.armory.credits,
+      reason: res.reason,
+    });
   }
 
   /**
