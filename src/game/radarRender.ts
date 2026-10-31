@@ -152,23 +152,6 @@ export function createRadarRender(
     staticGraphics.fillStyle(colors.radarBg, 0.88);
     staticGraphics.fillCircle(radarX, radarY, radarRadius);
 
-    // Растр строк кинескопа (CRT Scanlines)
-    const scanlineStep = GAME_CONFIG.crtNoise.scanlineStep;
-    const scanlineAlpha = GAME_CONFIG.crtNoise.scanlineAlpha;
-    staticGraphics.lineStyle(1, 0x000000, scanlineAlpha);
-    for (
-      let y = radarY - radarRadius + scanlineStep;
-      y < radarY + radarRadius;
-      y += scanlineStep
-    ) {
-      const dy = y - radarY;
-      const halfW = Math.sqrt(radarRadius * radarRadius - dy * dy);
-      staticGraphics.beginPath();
-      staticGraphics.moveTo(radarX - halfW, y);
-      staticGraphics.lineTo(radarX + halfW, y);
-      staticGraphics.strokePath();
-    }
-
     // Кольца дальности (25%, 50%, 75%, 100%)
     const ringSteps = [0.25, 0.5, 0.75, 1.0];
     ringSteps.forEach((fraction, index) => {
@@ -221,6 +204,51 @@ export function createRadarRender(
       GAME_CONFIG;
 
     dynamicGraphics.clear();
+
+    // 0. Динамическая рябь строк кинескопа (CRT Scanline Drift)
+    const {
+      scanlineStep,
+      scanlineAlpha,
+      scanlineSpeed,
+      humBarSpeed,
+      humBarHeight,
+    } = GAME_CONFIG.crtNoise;
+
+    const timeSec = data.timeNow * 0.001;
+    const scanlineOffset = (timeSec * scanlineSpeed) % scanlineStep;
+    const minY = radarY - radarRadius;
+    const maxY = radarY + radarRadius;
+
+    // Плавно скользящие микро-строки ЭЛТ
+    dynamicGraphics.lineStyle(1, 0x000000, scanlineAlpha);
+    dynamicGraphics.beginPath();
+    for (let y = minY + scanlineOffset; y < maxY; y += scanlineStep) {
+      const dy = y - radarY;
+      if (Math.abs(dy) >= radarRadius) continue;
+      const halfW = Math.sqrt(radarRadius * radarRadius - dy * dy);
+      dynamicGraphics.moveTo(radarX - halfW, y);
+      dynamicGraphics.lineTo(radarX + halfW, y);
+    }
+    dynamicGraphics.strokePath();
+
+    // 0.1. Мягкая волна вертикальной развёртки (CRT Hum Bar)
+    const cycleDistance = radarRadius * 2 + humBarHeight;
+    const humBarCenterY =
+      minY + ((timeSec * humBarSpeed) % cycleDistance) - humBarHeight * 0.5;
+    const humBarTop = humBarCenterY - humBarHeight * 0.5;
+    const humBarBottom = humBarCenterY + humBarHeight * 0.5;
+
+    dynamicGraphics.lineStyle(2, colors.trail, 0.045);
+    dynamicGraphics.beginPath();
+    for (let y = humBarTop; y <= humBarBottom; y += scanlineStep * 2) {
+      if (y < minY || y > maxY) continue;
+      const dy = y - radarY;
+      if (Math.abs(dy) >= radarRadius) continue;
+      const halfW = Math.sqrt(radarRadius * radarRadius - dy * dy);
+      dynamicGraphics.moveTo(radarX - halfW, y);
+      dynamicGraphics.lineTo(radarX + halfW, y);
+    }
+    dynamicGraphics.strokePath();
 
     // 1. Шлейф луча
     for (let i = 0; i < trailSteps; i++) {
