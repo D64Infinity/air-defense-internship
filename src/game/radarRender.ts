@@ -70,10 +70,32 @@ export function createRadarRender(
   let beamAngle = 0;
   let currentBeamSpeed = GAME_CONFIG.beamSpeedBase;
   const crtSpecks: CrtNoiseSpeck[] = [];
+  const twoPi = Math.PI * 2;
 
-  const isAngleBetween = (target: number, from: number, to: number): boolean => {
-    if (to >= from) return target >= from && target <= to;
-    return target >= from || target <= to;
+  /**
+   * Кратчайшая угловая разность a - b в диапазоне [-PI, PI]
+   */
+  const angleDiff = (a: number, b: number): number => {
+    let diff = (a - b) % twoPi;
+    if (diff > Math.PI) diff -= twoPi;
+    if (diff < -Math.PI) diff += twoPi;
+    return diff;
+  };
+
+  /**
+   * Проверка пересечения сектора прохода луча [from, to] (по часовой стрелке)
+   * с диском цели с учётом её физического углового радиуса на текущей дистанции
+   */
+  const beamIntersectsTarget = (
+    from: number,
+    to: number,
+    targetAngle: number,
+    angularRadius: number,
+  ): boolean => {
+    const sweepSpan = (to - from + twoPi) % twoPi;
+    const midAngle = (from + sweepSpan * 0.5) % twoPi;
+    const dAngle = Math.abs(angleDiff(targetAngle, midAngle));
+    return dAngle <= sweepSpan * 0.5 + angularRadius;
   };
 
   /**
@@ -81,7 +103,6 @@ export function createRadarRender(
    */
   const updateBeam = (dt: number, targets: GameTarget[] = []): void => {
     const prevAngle = beamAngle;
-    const twoPi = Math.PI * 2;
     beamAngle = (beamAngle + currentBeamSpeed * dt) % twoPi;
 
     for (const target of targets) {
@@ -89,13 +110,23 @@ export function createRadarRender(
       const dy = target.y - GAME_CONFIG.radarY;
       const dist = Math.hypot(dx, dy);
 
-      if (dist <= GAME_CONFIG.radarRadius) {
+      // Цель в пределах экрана радара (с запасом на физический радиус метки)
+      if (dist <= GAME_CONFIG.radarRadius + GAME_CONFIG.blipRadius) {
         let targetAngle = Math.atan2(dy, dx);
         if (targetAngle < 0) targetAngle += twoPi;
 
-        if (isAngleBetween(targetAngle, prevAngle, beamAngle)) {
+        // Физический угловой полурадиус метки цели на текущей дистанции от центра (с допуском на скорость)
+        const angularRadius = Math.asin(
+          Math.min(1.0, (GAME_CONFIG.blipRadius + 2) / Math.max(10, dist)),
+        );
+
+        if (beamIntersectsTarget(prevAngle, beamAngle, targetAngle, angularRadius)) {
+          // Защита от дублирования звука: пинг только при свежем проходе луча
+          const isFreshSweep = target.alpha < 0.90;
           target.alpha = 1.0;
-          options?.onTargetSwept?.(target);
+          if (isFreshSweep) {
+            options?.onTargetSwept?.(target);
+          }
         }
       }
     }

@@ -178,9 +178,7 @@ export class GameScene extends Phaser.Scene {
 
     this.stats.updateTime(dt);
 
-    this.ambientBg.update(dt);
-    this.ambientBg.render(this.radarRender.beamAngle);
-    this.radarRender.updateBeam(dt, this.targets);
+    // 1. Физика целей и спавн новых бортов до расчёта луча радара
     this.updateTargets(dt);
     const newTarget = this.spawner.update(
       dt,
@@ -192,6 +190,11 @@ export class GameScene extends Phaser.Scene {
       this.targets.push(newTarget);
       this.waveTargetsToSpawn--;
     }
+
+    // 2. Движение луча радара и детекция (включая свежезаспавненные цели текущего кадра)
+    this.ambientBg.update(dt);
+    this.ambientBg.render(this.radarRender.beamAngle);
+    this.radarRender.updateBeam(dt, this.targets);
     this.updateScanning(dt);
     this.interceptorManager.update(dt);
     updateExplosions(this.explosions, dt);
