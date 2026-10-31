@@ -214,6 +214,7 @@ export class GameScene extends Phaser.Scene {
     this.isGameStarted = true;
     this.spawner.reset();
     this.targets = [];
+    this.soundSystem.playWaveTransition(false);
     this.showWaveBanner('ВОЛНА 1\nБОЕВОЕ ДЕЖУРСТВО');
     this.hud.showNotification(
       '[ ПОДСКАЗКА: ОПЦИИ МОЖНО АКТИВИРОВАТЬ ЦИФРАМИ 1–6 НА КЛАВИАТУРЕ ]',
@@ -681,12 +682,14 @@ export class GameScene extends Phaser.Scene {
       const { addedAmmo, waveCredits } = this.armory.refillForWave(this.wave);
 
       let cleanBonusText = '';
-      if (!this.waveHadFlaws) {
+      const isCleanWave = !this.waveHadFlaws;
+      if (isCleanWave) {
         const bonus = this.scoring.applyCleanWaveBonus();
         cleanBonusText = `\n★ ЧИСТАЯ ВОЛНА! (+${bonus} ОЧК) ★`;
       }
       this.waveHadFlaws = false;
 
+      this.soundSystem.playWaveTransition(isCleanWave);
       this.updateScoreBoard();
       this.showWaveBanner(
         `ВОЛНА ${this.wave}\nСНАБЖЕНИЕ: +${addedAmmo} РАКЕТЫ | +${waveCredits} CR | СКАНЫ ${GAME_CONFIG.maxScansPerWave}/${GAME_CONFIG.maxScansPerWave}${cleanBonusText}`,

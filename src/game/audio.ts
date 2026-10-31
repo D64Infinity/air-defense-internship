@@ -10,6 +10,7 @@ export interface SoundSystem {
   playExplosion: (targetType: TargetType, pan?: number) => void;
   playBaseDamage: () => void;
   playDenyClick: () => void;
+  playWaveTransition: (isCleanWave?: boolean) => void;
   toggleMute: () => boolean;
   readonly isMuted: boolean;
 }
@@ -926,6 +927,240 @@ export function createSoundSystem(): SoundSystem {
     };
   };
 
+  /**
+   * Секвенция перехода к новой волне (адаптирована под 3.0-3.6с паузы):
+   * 1. 0.00..0.45с: Механическая подача боекомплекта в шахты (пневматика + двойной лязг замка);
+   * 2. 0.45..1.60с: Разгон сервопривода/турбины антенны РЛС (Antenna Spool-Up) + щелчок реле;
+   * 3. 1.68..2.70с: Строгий тактический секторный интервал (Ready Chime F4 -> C5);
+   * 4. 1.95..3.20с: Торжественный мажорный обертон при чистой волне (Clean Wave A5 + F5).
+   */
+  const playWaveTransition = (isCleanWave = false): void => {
+    if (isMuted) return;
+    const audioCtx = getContext();
+    if (!audioCtx) return;
+
+    const now = audioCtx.currentTime;
+    const masterDest = getMasterIn(audioCtx);
+    const skyEcho = getSkyEchoIn();
+
+    // -----------------------------------------------------------------
+    // ФАЗА 1: Снабжение шахт (пневмо-сброс воздуха + фиксация обоймы)
+    // -----------------------------------------------------------------
+    // 1.1 Пневматический сброс давления (0.00 - 0.20с)
+    const ventNoise = audioCtx.createBufferSource();
+    ventNoise.buffer = getWhiteNoiseBuffer(audioCtx);
+
+    const ventFilter = audioCtx.createBiquadFilter();
+    ventFilter.type = 'bandpass';
+    ventFilter.frequency.setValueAtTime(1400, now);
+    ventFilter.Q.value = 1.8;
+
+    const ventGain = audioCtx.createGain();
+    ventGain.gain.setValueAtTime(0.0001, now);
+    ventGain.gain.linearRampToValueAtTime(0.18, now + 0.008);
+    ventGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+
+    ventNoise.connect(ventFilter);
+    ventFilter.connect(ventGain);
+    ventGain.connect(masterDest);
+
+    // 1.2 Механические двойные щелчки направляющих ракет (clack-clack)
+    // Щелчок 1 (t = 0.10c)
+    const clack1 = audioCtx.createOscillator();
+    const clackGain1 = audioCtx.createGain();
+    clack1.type = 'triangle';
+    clack1.frequency.setValueAtTime(380, now + 0.10);
+    clack1.frequency.exponentialRampToValueAtTime(110, now + 0.14);
+
+    clackGain1.gain.setValueAtTime(0.0001, now);
+    clackGain1.gain.setValueAtTime(0.0001, now + 0.10);
+    clackGain1.gain.linearRampToValueAtTime(0.18, now + 0.103);
+    clackGain1.gain.exponentialRampToValueAtTime(0.0001, now + 0.14);
+
+    clack1.connect(clackGain1);
+    clackGain1.connect(masterDest);
+
+    // Щелчок 2 (t = 0.22c - тяжелый замок)
+    const clack2 = audioCtx.createOscillator();
+    const clackGain2 = audioCtx.createGain();
+    clack2.type = 'triangle';
+    clack2.frequency.setValueAtTime(440, now + 0.22);
+    clack2.frequency.exponentialRampToValueAtTime(130, now + 0.27);
+
+    clackGain2.gain.setValueAtTime(0.0001, now);
+    clackGain2.gain.setValueAtTime(0.0001, now + 0.22);
+    clackGain2.gain.linearRampToValueAtTime(0.22, now + 0.223);
+    clackGain2.gain.exponentialRampToValueAtTime(0.0001, now + 0.27);
+
+    clack2.connect(clackGain2);
+    clackGain2.connect(masterDest);
+
+    // -----------------------------------------------------------------
+    // ФАЗА 2: Разгон привода антенны РЛС (0.45 - 1.60с)
+    // -----------------------------------------------------------------
+    // Свист/гул набора оборотов турбины локатора
+    const spoolOsc = audioCtx.createOscillator();
+    const spoolFilter = audioCtx.createBiquadFilter();
+    const spoolGain = audioCtx.createGain();
+
+    spoolOsc.type = 'sawtooth';
+    spoolFilter.type = 'lowpass';
+    spoolFilter.Q.value = 3.5;
+
+    spoolOsc.frequency.setValueAtTime(95, now + 0.45);
+    spoolOsc.frequency.exponentialRampToValueAtTime(480, now + 1.55);
+
+    spoolFilter.frequency.setValueAtTime(220, now + 0.45);
+    spoolFilter.frequency.exponentialRampToValueAtTime(1150, now + 1.55);
+
+    spoolGain.gain.setValueAtTime(0.0001, now);
+    spoolGain.gain.setValueAtTime(0.0001, now + 0.45);
+    spoolGain.gain.linearRampToValueAtTime(0.14, now + 1.35);
+    spoolGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.60);
+
+    spoolOsc.connect(spoolFilter);
+    spoolFilter.connect(spoolGain);
+    spoolGain.connect(masterDest);
+
+    // Щелчок высоковольтного реле питания (t = 1.55c)
+    const relayOsc = audioCtx.createOscillator();
+    const relayFilter = audioCtx.createBiquadFilter();
+    const relayGain = audioCtx.createGain();
+
+    relayOsc.type = 'square';
+    relayFilter.type = 'lowpass';
+    relayFilter.frequency.value = 650;
+
+    relayOsc.frequency.setValueAtTime(180, now + 1.55);
+    relayOsc.frequency.exponentialRampToValueAtTime(45, now + 1.60);
+
+    relayGain.gain.setValueAtTime(0.0001, now);
+    relayGain.gain.setValueAtTime(0.0001, now + 1.55);
+    relayGain.gain.linearRampToValueAtTime(0.20, now + 1.553);
+    relayGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.61);
+
+    relayOsc.connect(relayFilter);
+    relayFilter.connect(relayGain);
+    relayGain.connect(masterDest);
+
+    // -----------------------------------------------------------------
+    // ФАЗА 3: Строгий тактический секторный интервал (1.68 - 2.70с)
+    // -----------------------------------------------------------------
+    const chime1 = audioCtx.createOscillator();
+    const chimeGain1 = audioCtx.createGain();
+    chime1.type = 'sine';
+    chime1.frequency.setValueAtTime(349.2, now + 1.68); // Нота F4
+
+    chimeGain1.gain.setValueAtTime(0.0001, now);
+    chimeGain1.gain.setValueAtTime(0.0001, now + 1.68);
+    chimeGain1.gain.linearRampToValueAtTime(0.18, now + 1.69);
+    chimeGain1.gain.exponentialRampToValueAtTime(0.0001, now + 1.96);
+
+    chime1.connect(chimeGain1);
+    chimeGain1.connect(masterDest);
+
+    const chime2 = audioCtx.createOscillator();
+    const chimeGain2 = audioCtx.createGain();
+    chime2.type = 'sine';
+    chime2.frequency.setValueAtTime(523.3, now + 1.95); // Нота C5
+
+    chimeGain2.gain.setValueAtTime(0.0001, now);
+    chimeGain2.gain.setValueAtTime(0.0001, now + 1.95);
+    chimeGain2.gain.linearRampToValueAtTime(0.22, now + 1.96);
+    chimeGain2.gain.exponentialRampToValueAtTime(0.0001, now + 2.70);
+
+    chime2.connect(chimeGain2);
+    chimeGain2.connect(masterDest);
+    if (skyEcho) {
+      chimeGain2.connect(skyEcho);
+    }
+
+    // -----------------------------------------------------------------
+    // ФАЗА 4: Торжественный мажорный аккорд чистой волны (1.95 - 3.20с)
+    // -----------------------------------------------------------------
+    let bonusRoot: OscillatorNode | null = null;
+    let bonusFifth: OscillatorNode | null = null;
+    let bonusGain: GainNode | null = null;
+
+    if (isCleanWave) {
+      bonusRoot = audioCtx.createOscillator();
+      bonusFifth = audioCtx.createOscillator();
+      bonusGain = audioCtx.createGain();
+
+      bonusRoot.type = 'sine';
+      bonusFifth.type = 'sine';
+      bonusRoot.frequency.setValueAtTime(698.5, now + 1.95); // F5
+      bonusFifth.frequency.setValueAtTime(880.0, now + 1.95); // A5
+
+      bonusGain.gain.setValueAtTime(0.0001, now);
+      bonusGain.gain.setValueAtTime(0.0001, now + 1.95);
+      bonusGain.gain.linearRampToValueAtTime(0.14, now + 1.97);
+      bonusGain.gain.exponentialRampToValueAtTime(0.0001, now + 3.20);
+
+      bonusRoot.connect(bonusGain);
+      bonusFifth.connect(bonusGain);
+      bonusGain.connect(masterDest);
+      if (skyEcho) {
+        bonusGain.connect(skyEcho);
+      }
+    }
+
+    // Запуск узлов
+    ventNoise.start(now);
+    ventNoise.stop(now + 0.20);
+
+    clack1.start(now + 0.10);
+    clack1.stop(now + 0.15);
+
+    clack2.start(now + 0.22);
+    clack2.stop(now + 0.28);
+
+    spoolOsc.start(now + 0.45);
+    spoolOsc.stop(now + 1.62);
+
+    relayOsc.start(now + 1.55);
+    relayOsc.stop(now + 1.62);
+
+    chime1.start(now + 1.68);
+    chime1.stop(now + 1.98);
+
+    const endMarker = bonusRoot || chime2;
+    chime2.start(now + 1.95);
+    chime2.stop(now + 2.72);
+
+    if (bonusRoot && bonusFifth) {
+      bonusRoot.start(now + 1.95);
+      bonusFifth.start(now + 1.95);
+      bonusRoot.stop(now + 3.22);
+      bonusFifth.stop(now + 3.22);
+    }
+
+    endMarker.onended = () => {
+      ventNoise.disconnect();
+      ventFilter.disconnect();
+      ventGain.disconnect();
+      clack1.disconnect();
+      clackGain1.disconnect();
+      clack2.disconnect();
+      clackGain2.disconnect();
+      spoolOsc.disconnect();
+      spoolFilter.disconnect();
+      spoolGain.disconnect();
+      relayOsc.disconnect();
+      relayFilter.disconnect();
+      relayGain.disconnect();
+      chime1.disconnect();
+      chimeGain1.disconnect();
+      chime2.disconnect();
+      chimeGain2.disconnect();
+      if (bonusRoot && bonusFifth && bonusGain) {
+        bonusRoot.disconnect();
+        bonusFifth.disconnect();
+        bonusGain.disconnect();
+      }
+    };
+  };
+
   const toggleMute = (): boolean => {
     isMuted = !isMuted;
     if (masterGain && ctx) {
@@ -940,6 +1175,7 @@ export function createSoundSystem(): SoundSystem {
     playExplosion,
     playBaseDamage,
     playDenyClick,
+    playWaveTransition,
     toggleMute,
     get isMuted() {
       return isMuted;
