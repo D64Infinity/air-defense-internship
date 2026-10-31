@@ -197,8 +197,8 @@ export function createRadarRender(
         dynamicGraphics.fillCircle(target.x, target.y, blipRadius);
       }
 
-      // Индикатор опознанной цели (сканирование)
-      if (target.isScanned) {
+      // Индикатор опознанной цели (сканирование) в виде ромбика с воздушным зазором до метки юнита
+      if (target.isScanned && target.alpha > 0.02) {
         const typeCfg = GAME_CONFIG.targetTypes[target.type];
         const tagColor =
           typeCfg.category === 'threat'
@@ -206,15 +206,23 @@ export function createRadarRender(
             : typeCfg.category === 'friend'
               ? 0x22c55e
               : 0x94a3b8;
-        dynamicGraphics.lineStyle(1.2, tagColor, 0.85);
-        dynamicGraphics.strokeCircle(target.x, target.y, blipRadius * 2.6);
+        const size = 18;
+        dynamicGraphics.lineStyle(2, tagColor, target.alpha * 0.95);
+        dynamicGraphics.beginPath();
+        dynamicGraphics.moveTo(target.x, target.y - size);
+        dynamicGraphics.lineTo(target.x + size, target.y);
+        dynamicGraphics.lineTo(target.x, target.y + size);
+        dynamicGraphics.lineTo(target.x - size, target.y);
+        dynamicGraphics.closePath();
+        dynamicGraphics.strokePath();
       }
 
-      // Тактическая окантовка оператора (союзник / помеха) с угасанием люминофора
+      // Тактическая окантовка оператора (союзник / помеха) в виде квадрата с угасанием люминофора
       if (target.markedAs && target.alpha > 0.02) {
         const markColor = target.markedAs === 'friend' ? 0x22c55e : 0x94a3b8;
-        dynamicGraphics.lineStyle(1.4, markColor, target.alpha * 0.9);
-        dynamicGraphics.strokeCircle(target.x, target.y, blipRadius * 3.4);
+        const b = 21;
+        dynamicGraphics.lineStyle(1.5, markColor, target.alpha * 0.9);
+        dynamicGraphics.strokeRect(target.x - b, target.y - b, b * 2, b * 2);
       }
     }
 
@@ -244,22 +252,22 @@ export function createRadarRender(
     // 6. Маркер захвата выбранной цели [ · ]
     if (data.selectedTarget) {
       const { x, y } = data.selectedTarget;
-      const s = 11;
+      const s = 15;
       dynamicGraphics.lineStyle(1.5, colors.selectedBox, 0.95);
 
       dynamicGraphics.beginPath();
-      dynamicGraphics.moveTo(x - s, y - s + 4);
+      dynamicGraphics.moveTo(x - s, y - s + 5);
       dynamicGraphics.lineTo(x - s, y - s);
-      dynamicGraphics.lineTo(x - s + 4, y - s);
-      dynamicGraphics.moveTo(x + s - 4, y - s);
+      dynamicGraphics.lineTo(x - s + 5, y - s);
+      dynamicGraphics.moveTo(x + s - 5, y - s);
       dynamicGraphics.lineTo(x + s, y - s);
-      dynamicGraphics.lineTo(x + s, y - s + 4);
-      dynamicGraphics.moveTo(x - s, y + s - 4);
+      dynamicGraphics.lineTo(x + s, y - s + 5);
+      dynamicGraphics.moveTo(x - s, y + s - 5);
       dynamicGraphics.lineTo(x - s, y + s);
-      dynamicGraphics.lineTo(x - s + 4, y + s);
-      dynamicGraphics.moveTo(x + s - 4, y + s);
+      dynamicGraphics.lineTo(x - s + 5, y + s);
+      dynamicGraphics.moveTo(x + s - 5, y + s);
       dynamicGraphics.lineTo(x + s, y + s);
-      dynamicGraphics.lineTo(x + s, y + s - 4);
+      dynamicGraphics.lineTo(x + s, y + s - 5);
       dynamicGraphics.strokePath();
     }
 

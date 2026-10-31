@@ -19,6 +19,7 @@ import {
   type BriefingOverlay,
   type HudManager,
 } from './ui';
+import { createAlertManager, type AlertManager } from './alerts';
 import { setupGameInputs } from './input';
 import { createRadarRender, type RadarRender } from './radarRender';
 import { createSpawner, type TargetSpawner } from './spawner';
@@ -39,6 +40,7 @@ export class GameScene extends Phaser.Scene {
 
   private radarRender!: RadarRender;
   private hud!: HudManager;
+  private alerts!: AlertManager;
   private gameOverOverlay!: GameOverOverlay;
   private pauseOverlay!: PauseOverlay;
   private briefingOverlay!: BriefingOverlay;
@@ -98,7 +100,7 @@ export class GameScene extends Phaser.Scene {
     this.input.on('pointerdown', () => this.soundSystem.resume());
     this.input.keyboard?.on('keydown', () => this.soundSystem.resume());
 
-    // 3. Панель консоли оператора
+    // 3. Панель консоли оператора и система оперативных оповещений
     this.hud = createHud(this, {
       onDecision: (choice) => this.resolveDecision(choice),
       onScan: () => this.startScanning(),
@@ -106,6 +108,7 @@ export class GameScene extends Phaser.Scene {
       onBuyScan: () => this.buyScan(),
       onTogglePause: () => this.togglePause(),
     });
+    this.alerts = createAlertManager(this);
     this.pauseOverlay = createPauseOverlay(this, {
       onResume: () => this.togglePause(),
       onOpenBriefing: () => this.openBriefing(),
@@ -188,7 +191,7 @@ export class GameScene extends Phaser.Scene {
     this.updateTelemetry();
     this.hud.updateWaveBanner(dt);
     this.hud.updateNotification(dt);
-    this.hud.updateAlert(dt);
+    this.alerts.update(dt);
 
     if (this.baseFlashTimer > 0) {
       this.baseFlashTimer -= dt;
@@ -337,7 +340,7 @@ export class GameScene extends Phaser.Scene {
       this.updateScoreBoard();
       this.updateTargetSelectionUI();
     }
-    this.hud.showSupplyAlert({
+    this.alerts.showSupplyAlert({
       type: 'missile',
       success: res.success,
       current: this.armory.interceptors,
@@ -356,7 +359,7 @@ export class GameScene extends Phaser.Scene {
       this.updateScoreBoard();
       this.updateTargetSelectionUI();
     }
-    this.hud.showSupplyAlert({
+    this.alerts.showSupplyAlert({
       type: 'scan',
       success: res.success,
       current: this.armory.scansAvailable,
@@ -426,7 +429,7 @@ export class GameScene extends Phaser.Scene {
           `[ВЕРНО!] РАКЕТА СБИТА (+${points}, +${GAME_CONFIG.creditsPerMissile} CR)${rangeTag}`,
           '#4ade80',
         );
-        this.hud.showInterceptAlert({
+        this.alerts.showInterceptAlert({
           unitType: 'missile',
           points,
           credits: GAME_CONFIG.creditsPerMissile,
@@ -439,7 +442,7 @@ export class GameScene extends Phaser.Scene {
           `[ВЕРНО!] БОМБАРДИРОВЩИК СБИТ (+${points}, +${GAME_CONFIG.creditsPerBomber} CR)${rangeTag}`,
           '#4ade80',
         );
-        this.hud.showInterceptAlert({
+        this.alerts.showInterceptAlert({
           unitType: 'bomber',
           points,
           credits: GAME_CONFIG.creditsPerBomber,
@@ -456,7 +459,7 @@ export class GameScene extends Phaser.Scene {
         `[ОШИБКА!] СБИТ СВОЙ БОРТ! (-${penalty} очк, -${GAME_CONFIG.creditsFriendlyFirePenalty} CR)`,
         '#f87171',
       );
-      this.hud.showInterceptAlert({
+      this.alerts.showInterceptAlert({
         unitType: 'friend',
         points: -penalty,
         credits: -GAME_CONFIG.creditsFriendlyFirePenalty,
@@ -470,7 +473,7 @@ export class GameScene extends Phaser.Scene {
         `[ПРОМАХ!] ПЕРЕХВАТЧИК ВПУСТУЮ НА ЛОВУШКУ! (Ост: ${this.armory.interceptors})`,
         '#fbbf24',
       );
-      this.hud.showInterceptAlert({
+      this.alerts.showInterceptAlert({
         unitType: 'decoy',
         points: 0,
         credits: 0,
