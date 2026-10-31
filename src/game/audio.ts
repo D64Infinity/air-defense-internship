@@ -10,6 +10,7 @@ export interface SoundSystem {
   playExplosion: (targetType: TargetType, pan?: number) => void;
   playBaseDamage: () => void;
   playDenyClick: () => void;
+  playLaunch: () => void;
   playWaveTransition: (isCleanWave?: boolean) => void;
   toggleMute: () => boolean;
   readonly isMuted: boolean;
@@ -308,6 +309,64 @@ export function createSoundSystem(): SoundSystem {
     osc.onended = () => {
       osc.disconnect();
       gain.disconnect();
+    };
+  };
+
+  /**
+   * Звуковой эффект старта ракеты-перехватчика из шахты (пневматический толчок + форсаж твердотопливного ускорителя)
+   */
+  const playLaunch = (): void => {
+    if (isMuted) return;
+    const audioCtx = getContext();
+    if (!audioCtx) return;
+
+    const now = audioCtx.currentTime;
+    const masterDest = getMasterIn(audioCtx);
+
+    // 1. Кинетический пневмо-толчок катапульты шахты (Pneumatic Ejection Thump)
+    const thumpOsc = audioCtx.createOscillator();
+    const thumpGain = audioCtx.createGain();
+    thumpOsc.type = 'sine';
+    thumpOsc.frequency.setValueAtTime(155, now);
+    thumpOsc.frequency.exponentialRampToValueAtTime(42, now + 0.08);
+
+    thumpGain.gain.setValueAtTime(0.0001, now);
+    thumpGain.gain.linearRampToValueAtTime(0.30, now + 0.004);
+    thumpGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
+
+    thumpOsc.connect(thumpGain);
+    thumpGain.connect(masterDest);
+
+    // 2. Свистящий форсаж твердотопливного ускорителя (Booster Ignition Whoosh)
+    const boostNoise = audioCtx.createBufferSource();
+    boostNoise.buffer = getWhiteNoiseBuffer(audioCtx);
+
+    const boostFilter = audioCtx.createBiquadFilter();
+    boostFilter.type = 'bandpass';
+    boostFilter.frequency.setValueAtTime(950, now);
+    boostFilter.frequency.exponentialRampToValueAtTime(2400, now + 0.16);
+    boostFilter.Q.value = 2.0;
+
+    const boostGain = audioCtx.createGain();
+    boostGain.gain.setValueAtTime(0.0001, now);
+    boostGain.gain.linearRampToValueAtTime(0.25, now + 0.008);
+    boostGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+
+    boostNoise.connect(boostFilter);
+    boostFilter.connect(boostGain);
+    boostGain.connect(masterDest);
+
+    thumpOsc.start(now);
+    thumpOsc.stop(now + 0.09);
+    boostNoise.start(now);
+    boostNoise.stop(now + 0.19);
+
+    boostNoise.onended = () => {
+      thumpOsc.disconnect();
+      thumpGain.disconnect();
+      boostNoise.disconnect();
+      boostFilter.disconnect();
+      boostGain.disconnect();
     };
   };
 
@@ -1175,6 +1234,7 @@ export function createSoundSystem(): SoundSystem {
     playExplosion,
     playBaseDamage,
     playDenyClick,
+    playLaunch,
     playWaveTransition,
     toggleMute,
     get isMuted() {

@@ -1,6 +1,13 @@
 import Phaser from 'phaser';
 import { GAME_CONFIG, type GameTarget } from './gameConfig';
-import { renderExplosions, type ExplosionEffect } from './effects';
+import {
+  renderExplosions,
+  type ExplosionEffect,
+} from './effects';
+import {
+  renderInterceptors,
+  type InterceptorUnit,
+} from './interceptor';
 
 /**
  * Данные текущего кадра для отрисовки динамических объектов радара
@@ -12,6 +19,7 @@ export interface RadarRenderData {
   isScanning: boolean;
   scanningTarget: GameTarget | null;
   timeNow: number;
+  interceptors: readonly InterceptorUnit[];
   explosions: ExplosionEffect[];
 }
 
@@ -158,7 +166,7 @@ export function createRadarRender(
       const isOuter = index === ringSteps.length - 1;
       staticGraphics.lineStyle(
         isOuter ? 2 : 1,
-        colors.gridRing,
+        isOuter ? colors.radarBorder : colors.gridRing,
         isOuter ? 0.9 : 0.2,
       );
       staticGraphics.strokeCircle(radarX, radarY, radarRadius * fraction);
@@ -334,6 +342,28 @@ export function createRadarRender(
         dynamicGraphics.lineStyle(1.5, markColor, target.alpha * 0.9);
         dynamicGraphics.strokeRect(target.x - b, target.y - b, b * 2, b * 2);
       }
+
+      // Тактический маркер цели в захвате ПВО (ракета уже летит)
+      if (target.isTargeted && target.alpha > 0.02) {
+        const lockColor = 0xf59e0b; // янтарный цвет активного перехвата
+        const s = 14;
+        dynamicGraphics.lineStyle(1.5, lockColor, target.alpha * 0.95);
+        dynamicGraphics.beginPath();
+        // Угловые скобки захвата
+        dynamicGraphics.moveTo(target.x - s, target.y - s + 4);
+        dynamicGraphics.lineTo(target.x - s, target.y - s);
+        dynamicGraphics.lineTo(target.x - s + 4, target.y - s);
+        dynamicGraphics.moveTo(target.x + s - 4, target.y - s);
+        dynamicGraphics.lineTo(target.x + s, target.y - s);
+        dynamicGraphics.lineTo(target.x + s, target.y - s + 4);
+        dynamicGraphics.moveTo(target.x - s, target.y + s - 4);
+        dynamicGraphics.lineTo(target.x - s, target.y + s);
+        dynamicGraphics.lineTo(target.x - s + 4, target.y + s);
+        dynamicGraphics.moveTo(target.x + s - 4, target.y + s);
+        dynamicGraphics.lineTo(target.x + s, target.y + s);
+        dynamicGraphics.lineTo(target.x + s, target.y + s - 4);
+        dynamicGraphics.strokePath();
+      }
     }
 
     // 5. Анимация сканирования сигнатуры
@@ -380,6 +410,9 @@ export function createRadarRender(
       dynamicGraphics.lineTo(x + s, y + s - 5);
       dynamicGraphics.strokePath();
     }
+
+    // 6.5. Ракеты-перехватчики ПВО и инверсионные следы
+    renderInterceptors(dynamicGraphics, data.interceptors);
 
     // 7. Эффекты взрывов и ударных волн
     renderExplosions(dynamicGraphics, data.explosions);

@@ -10,6 +10,10 @@ import {
   type ExplosionEffect,
 } from './effects';
 import {
+  createInterceptorManager,
+  type InterceptorManager,
+} from './interceptor';
+import {
   createGameOverOverlay,
   createPauseOverlay,
   createBriefingOverlay,
@@ -57,6 +61,7 @@ export class GameScene extends Phaser.Scene {
   private targets: GameTarget[] = [];
   private selectedTarget: GameTarget | null = null;
   private explosions: ExplosionEffect[] = [];
+  private interceptorManager: InterceptorManager = createInterceptorManager();
 
   // Состояние игры
   private baseHealth = GAME_CONFIG.maxBaseHealth;
@@ -87,6 +92,7 @@ export class GameScene extends Phaser.Scene {
     this.targets = [];
     this.selectedTarget = null;
     this.explosions = [];
+    this.interceptorManager.reset();
 
     // Загрузка рекорда из localStorage
     const savedRecord = localStorage.getItem('radar_station_record');
@@ -162,6 +168,7 @@ export class GameScene extends Phaser.Scene {
         isScanning: false,
         scanningTarget: null,
         timeNow: this.time.now,
+        interceptors: [],
         explosions: [],
       });
       return;
@@ -186,6 +193,7 @@ export class GameScene extends Phaser.Scene {
       this.waveTargetsToSpawn--;
     }
     this.updateScanning(dt);
+    this.interceptorManager.update(dt);
     updateExplosions(this.explosions, dt);
     this.radarRender.renderDynamic({
       baseFlashTimer: this.baseFlashTimer,
@@ -194,6 +202,7 @@ export class GameScene extends Phaser.Scene {
       isScanning: this.armory.isScanning,
       scanningTarget: this.armory.scanningTarget,
       timeNow: this.time.now,
+      interceptors: this.interceptorManager.activeUnits,
       explosions: this.explosions,
     });
     this.hud.updateFeedback(dt);
@@ -307,6 +316,7 @@ export class GameScene extends Phaser.Scene {
   private restartGame(): void {
     this.isPaused = false;
     this.explosions = [];
+    this.interceptorManager.reset();
     this.ambientBg.reset();
     this.pauseOverlay.hide();
     this.briefingOverlay.hide();
@@ -413,12 +423,40 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    // 2. Боевой перехват (Угроза) — немедленный пуск ракеты
+    // 2. Боевой перехват (Угроза) — пуск ракеты-перехватчика
+    if (target.isTargeted) {
+      this.soundSystem.playDenyClick();
+      this.showFeedback('[СУО] ЦЕЛЬ УЖЕ В ЗАХВАТЕ! РАКЕТА В ВОЗДУХЕ', '#fbbf24');
+      return;
+    }
+
     if (!this.armory.consumeInterceptor()) {
       this.soundSystem.playDenyClick();
       this.showFeedback('[ОТКАЗ!] БОЕКОМПЛЕКТ ПУСТ! ОЖИДАЙТЕ СНАБЖЕНИЯ', '#ef4444');
       return;
     }
+
+    target.isTargeted = true;
+    this.soundSystem.playLaunch();
+    this.showFeedback('[ПУСК] ПЕРЕХВАТЧИК В ВОЗДУХЕ!', '#38bdf8');
+
+    // Мгновенный сброс захвата цели для игрока (свобода переключения)
+    this.selectedTarget = null;
+    this.armory.cancelScanIfTarget(target);
+    this.updateTargetSelectionUI();
+    this.updateScoreBoard();
+
+    // Запуск полёта ракеты-перехватчика
+    this.interceptorManager.launch(target, (impactTarget) => {
+      this.handleInterceptorImpact(impactTarget);
+    });
+  }
+
+  /**
+   * Обработка достижения цели ракетой-перехватчиком и детонация БЧ
+   */
+  private handleInterceptorImpact(target: GameTarget): void {
+    if (!this.targets.includes(target)) return;
 
     // Эффект взрыва: для техники - с ударной волной, для ловушки - только вспышка
     const hasShockwave = target.type !== 'decoy';
@@ -456,7 +494,7 @@ export class GameScene extends Phaser.Scene {
         this.stats.recordBomberIntercept();
         this.armory.addCredits(GAME_CONFIG.creditsPerBomber);
         this.showFeedback(
-          `[ВЕРНО!] БОМБАРДИРОВЩИК СБИТ (+${points}, +${GAME_CONFIG.creditsPerBomber} CR)${rangeTag}`,
+          `[ВЕРНО!] БОМБАРДИРОВЩИК УНИЧТОЖЕН (+${points}, +${GAME_CONFIG.creditsPerBomber} CR)${rangeTag}`,
           '#4ade80',
         );
         this.alerts.showInterceptAlert({

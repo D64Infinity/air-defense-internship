@@ -150,6 +150,7 @@ export interface GameTarget {
   alpha: number; // 0..1 (яркость люминофора)
   isScanned?: boolean; // Раскрыт ли точный тип цели
   markedAs?: 'friend' | 'ignore' | null; // Пользовательская тактическая метка цели
+  isTargeted?: boolean; // Флаг: цель уже атакована летящей ракетой ПВО
   decoyPassesThroughBase?: boolean; // Пролетает ли ловушка сквозь базу
   hasPassedBase?: boolean; // Флаг фиксации пролёта через базу
   hasBombedBase?: boolean; // Флаг: бомбардировщик уже сбросил бомбы на базу

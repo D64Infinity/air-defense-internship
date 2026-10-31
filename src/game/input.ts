@@ -104,13 +104,17 @@ export function setupGameInputs(
   scene.input.keyboard.on('keydown-P', handleTogglePause);
   scene.input.keyboard.on('keydown-ESC', handleTogglePause);
 
-  // Классификация целей (1, 2, 3)
+  // Классификация целей (1, 2, 3 / NumPad 1, 2, 3)
   bindActiveKey('keydown-ONE', () => actions.onDecision('friend'));
+  bindActiveKey('keydown-NUMPAD_ONE', () => actions.onDecision('friend'));
   bindActiveKey('keydown-TWO', () => actions.onDecision('threat'));
+  bindActiveKey('keydown-NUMPAD_TWO', () => actions.onDecision('threat'));
   bindActiveKey('keydown-THREE', () => actions.onDecision('ignore'));
+  bindActiveKey('keydown-NUMPAD_THREE', () => actions.onDecision('ignore'));
 
-  // Сканирование сигнатуры (4)
+  // Сканирование сигнатуры (4 / NumPad 4)
   bindActiveKey('keydown-FOUR', () => actions.onScan());
+  bindActiveKey('keydown-NUMPAD_FOUR', () => actions.onScan());
 
   // Снабжение: дозакупка ракет (5 / NumPad 5) и сканов (6 / NumPad 6)
   bindActiveKey('keydown-FIVE', () => actions.onBuyMissile());
