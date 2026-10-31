@@ -220,6 +220,11 @@ export function createRadarRender(
       scanlineSpeed,
       humBarSpeed,
       humBarHeight,
+      humBarWaveInterval,
+      humBarWaveDuration,
+      humBarWaveWidth,
+      humBarWaveAmplitude,
+      humBarWaveSpatialFreq,
     } = GAME_CONFIG.crtNoise;
 
     const timeSec = data.timeNow * 0.001;
@@ -239,24 +244,116 @@ export function createRadarRender(
     }
     dynamicGraphics.strokePath();
 
-    // 0.1. Мягкая волна вертикальной развёртки (CRT Hum Bar)
+    // 0.1. Мягкая волна вертикальной развёртки (CRT Hum Bar) + бегущая синусоидальная волна колебания линий
     const cycleDistance = radarRadius * 2 + humBarHeight;
     const humBarCenterY =
       minY + ((timeSec * humBarSpeed) % cycleDistance) - humBarHeight * 0.5;
     const humBarTop = humBarCenterY - humBarHeight * 0.5;
     const humBarBottom = humBarCenterY + humBarHeight * 0.5;
 
-    dynamicGraphics.lineStyle(2, colors.trail, 0.045);
-    dynamicGraphics.beginPath();
+    // Параметры бегущей слева направо волны
+    const waveCycleTime = timeSec % humBarWaveInterval;
+    const isWaveActive = waveCycleTime < humBarWaveDuration;
+    let waveCenterX = -9999;
+    if (isWaveActive) {
+      const progress = waveCycleTime / humBarWaveDuration;
+      const waveStartX = radarX - radarRadius - humBarWaveWidth;
+      const waveEndX = radarX + radarRadius + humBarWaveWidth;
+      waveCenterX = waveStartX + (waveEndX - waveStartX) * progress;
+    }
+
     for (let y = humBarTop; y <= humBarBottom; y += scanlineStep * 2) {
       if (y < minY || y > maxY) continue;
       const dy = y - radarY;
       if (Math.abs(dy) >= radarRadius) continue;
       const halfW = Math.sqrt(radarRadius * radarRadius - dy * dy);
-      dynamicGraphics.moveTo(radarX - halfW, y);
-      dynamicGraphics.lineTo(radarX + halfW, y);
+      const xLeft = radarX - halfW;
+      const xRight = radarX + halfW;
+
+      // Колоколообразный профиль яркости пачки по вертикали (мягкие края)
+      const normY = (y - humBarCenterY) / (humBarHeight * 0.5);
+      const vertAlpha = 0.055 * Math.cos(normY * (Math.PI * 0.44));
+
+      // Проверяем, пересекает ли бегущий волновой цуг текущую линию
+      const segStart = isWaveActive
+        ? Math.max(xLeft, waveCenterX - humBarWaveWidth)
+        : 0;
+      const segEnd = isWaveActive
+        ? Math.min(xRight, waveCenterX + humBarWaveWidth)
+        : 0;
+      const hasActiveWaveOnLine = isWaveActive && segStart < segEnd;
+
+      // 1. Отрисовка непрерывной физической линии развёртки (с синусоидальным волновым изгибом)
+      dynamicGraphics.lineStyle(2, colors.trail, vertAlpha);
+      dynamicGraphics.beginPath();
+      dynamicGraphics.moveTo(xLeft, y);
+
+      if (!hasActiveWaveOnLine) {
+        // Линия в покое — прямая струна
+        dynamicGraphics.lineTo(xRight, y);
+      } else {
+        // Линия сама по себе физически колеблется синусоидальной волной, бегущей слева направо
+        if (segStart > xLeft) {
+          dynamicGraphics.lineTo(segStart, y);
+        }
+
+        const stepX = 6;
+        for (let x = segStart; x <= segEnd; x += stepX) {
+          const dx = x - waveCenterX;
+          const w = Math.cos((dx / humBarWaveWidth) * (Math.PI * 0.5));
+          const wProfile = w * w;
+          const waveOffset =
+            Math.sin(dx * humBarWaveSpatialFreq) *
+            (humBarWaveAmplitude * wProfile);
+          dynamicGraphics.lineTo(x, y + waveOffset);
+        }
+
+        if (segEnd < xRight) {
+          dynamicGraphics.lineTo(segEnd, y);
+          dynamicGraphics.lineTo(xRight, y);
+        }
+      }
+      dynamicGraphics.strokePath();
+
+      // 2. Мягкое градиентное усиление яркости люминофора в центре волны (без резких границ)
+      if (hasActiveWaveOnLine) {
+        const glowStepX = 14;
+        for (let x = segStart; x < segEnd; x += glowStepX) {
+          const nextX = Math.min(segEnd, x + glowStepX);
+          const midDx = x + (nextX - x) * 0.5 - waveCenterX;
+          const w = Math.max(
+            0,
+            Math.cos((midDx / humBarWaveWidth) * (Math.PI * 0.5)),
+          );
+          // Кубический спад гарантирует абсолютно бесшовный сход в 0 на краях пакета
+          const glowAlpha = 0.024 * (w * w * w);
+
+          if (glowAlpha > 0.002) {
+            // Тот же родной зелёный цвет люминофора (colors.trail), без чужеродной белизны
+            dynamicGraphics.lineStyle(2, colors.trail, glowAlpha);
+            dynamicGraphics.beginPath();
+
+            const dx1 = x - waveCenterX;
+            const w1 = Math.cos((dx1 / humBarWaveWidth) * (Math.PI * 0.5));
+            const y1 =
+              y +
+              Math.sin(dx1 * humBarWaveSpatialFreq) *
+                (humBarWaveAmplitude * w1 * w1);
+
+            const dx2 = nextX - waveCenterX;
+            const w2 = Math.cos((dx2 / humBarWaveWidth) * (Math.PI * 0.5));
+            const y2 =
+              y +
+              Math.sin(dx2 * humBarWaveSpatialFreq) *
+                (humBarWaveAmplitude * w2 * w2);
+
+            dynamicGraphics.moveTo(x, y1);
+            dynamicGraphics.lineTo(nextX, y2);
+            dynamicGraphics.strokePath();
+          }
+        }
+      }
     }
-    dynamicGraphics.strokePath();
 
     // 1. Шлейф луча
     for (let i = 0; i < trailSteps; i++) {
