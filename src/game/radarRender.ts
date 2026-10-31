@@ -38,6 +38,18 @@ export interface RadarRenderOptions {
 }
 
 /**
+ * Описание микро-помехи / тепловой засветки люминофора ЭЛТ
+ */
+interface CrtNoiseSpeck {
+  x: number;
+  y: number;
+  age: number;
+  maxLife: number;
+  size: number;
+  maxAlpha: number;
+}
+
+/**
  * Фабрика рендера экрана радара (статическая сетка, луч и динамические слои)
  */
 export function createRadarRender(
@@ -49,6 +61,7 @@ export function createRadarRender(
 
   let beamAngle = 0;
   let currentBeamSpeed = GAME_CONFIG.beamSpeedBase;
+  const crtSpecks: CrtNoiseSpeck[] = [];
 
   const isAngleBetween = (target: number, from: number, to: number): boolean => {
     if (to >= from) return target >= from && target <= to;
@@ -56,7 +69,7 @@ export function createRadarRender(
   };
 
   /**
-   * Обновление угла развёртки луча и фосфорная засветка целей в секторе
+   * Обновление угла развёртки луча, фосфорная засветка целей и микро-помехи ЭЛТ
    */
   const updateBeam = (dt: number, targets: GameTarget[] = []): void => {
     const prevAngle = beamAngle;
@@ -78,6 +91,41 @@ export function createRadarRender(
         }
       }
     }
+
+    // Обновление и затухание активных микро-помех люминофора
+    for (let i = crtSpecks.length - 1; i >= 0; i--) {
+      const s = crtSpecks[i];
+      s.age += dt;
+      if (s.age >= s.maxLife) {
+        crtSpecks.splice(i, 1);
+      }
+    }
+
+    // Генерация микро-помех в шлейфе проходящего луча
+    const noiseCfg = GAME_CONFIG.crtNoise;
+    if (crtSpecks.length < noiseCfg.maxSpecks && Math.random() < noiseCfg.spawnChancePerFrame) {
+      const count = 1 + (Math.random() < 0.45 ? 1 : 0);
+      for (let k = 0; k < count; k++) {
+        if (crtSpecks.length >= noiseCfg.maxSpecks) break;
+        const angle = beamAngle - Math.random() * (GAME_CONFIG.trailAngle * 0.85);
+        // Смещение плотности к внешним кольцам экрана (где уровень сигнала слабее)
+        const radiusNorm =
+          noiseCfg.minRadiusFraction +
+          (1 - noiseCfg.minRadiusFraction) * Math.sqrt(Math.random());
+        const r = radiusNorm * (GAME_CONFIG.radarRadius - 6);
+        const x = GAME_CONFIG.radarX + Math.cos(angle) * r;
+        const y = GAME_CONFIG.radarY + Math.sin(angle) * r;
+        const maxLife =
+          noiseCfg.speckLifeMin +
+          Math.random() * (noiseCfg.speckLifeMax - noiseCfg.speckLifeMin);
+        const size = 1.2 + Math.random() * 0.9; // Тонкое зерно 1.2 - 2.1 px
+        const maxAlpha =
+          noiseCfg.minAlpha +
+          Math.random() * (noiseCfg.maxAlpha - noiseCfg.minAlpha);
+
+        crtSpecks.push({ x, y, age: 0, maxLife, size, maxAlpha });
+      }
+    }
   };
 
   /**
@@ -91,6 +139,7 @@ export function createRadarRender(
   const reset = (): void => {
     beamAngle = 0;
     currentBeamSpeed = GAME_CONFIG.beamSpeedBase;
+    crtSpecks.length = 0;
   };
 
   /**
@@ -102,6 +151,23 @@ export function createRadarRender(
     staticGraphics.clear();
     staticGraphics.fillStyle(colors.radarBg, 0.88);
     staticGraphics.fillCircle(radarX, radarY, radarRadius);
+
+    // Растр строк кинескопа (CRT Scanlines)
+    const scanlineStep = GAME_CONFIG.crtNoise.scanlineStep;
+    const scanlineAlpha = GAME_CONFIG.crtNoise.scanlineAlpha;
+    staticGraphics.lineStyle(1, 0x000000, scanlineAlpha);
+    for (
+      let y = radarY - radarRadius + scanlineStep;
+      y < radarY + radarRadius;
+      y += scanlineStep
+    ) {
+      const dy = y - radarY;
+      const halfW = Math.sqrt(radarRadius * radarRadius - dy * dy);
+      staticGraphics.beginPath();
+      staticGraphics.moveTo(radarX - halfW, y);
+      staticGraphics.lineTo(radarX + halfW, y);
+      staticGraphics.strokePath();
+    }
 
     // Кольца дальности (25%, 50%, 75%, 100%)
     const ringSteps = [0.25, 0.5, 0.75, 1.0];
@@ -179,6 +245,22 @@ export function createRadarRender(
     dynamicGraphics.moveTo(radarX, radarY);
     dynamicGraphics.lineTo(beamEndX, beamEndY);
     dynamicGraphics.strokePath();
+
+    // 2.1. Микро-помехи и тепловой шум люминофора ЭЛТ (CRT Phosphor Noise)
+    for (const speck of crtSpecks) {
+      const progress = speck.age / speck.maxLife;
+      // Быстрое угасание микро-искры люминофора
+      const alpha = speck.maxAlpha * Math.pow(1 - progress, 2.2);
+      if (alpha > 0.015) {
+        dynamicGraphics.fillStyle(colors.trail, alpha);
+        dynamicGraphics.fillRect(
+          speck.x - speck.size * 0.5,
+          speck.y - speck.size * 0.5,
+          speck.size,
+          speck.size,
+        );
+      }
+    }
 
     // 3. Маркер базы в центре (вспыхивает красным при уроне)
     const baseColor = data.baseFlashTimer > 0 ? 0xef4444 : colors.gridRing;

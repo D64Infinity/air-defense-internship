@@ -18,6 +18,19 @@ export const GAME_CONFIG = {
   blipRadius: 4, // размер точки цели
   selectionHitRadius: 26, // радиус клика по цели на радаре
 
+  // Эффект люминофора и радиошума ЭЛТ (CRT Phosphor Noise)
+  crtNoise: {
+    maxSpecks: 24, // максимальное количество одновременных микро-помех на экране
+    spawnChancePerFrame: 0.70, // умеренная вероятность генерации микро-помехи в кадре
+    minRadiusFraction: 0.35, // сосредоточены ближе к периферии (где SNR ниже)
+    speckLifeMin: 0.16, // быстрое таяние микро-вспышки (сек)
+    speckLifeMax: 0.32,
+    minAlpha: 0.18, // мягкая начальная яркость без ослепления
+    maxAlpha: 0.34, // деликатный пик яркости
+    scanlineStep: 3, // шаг строк кинескопа (px)
+    scanlineAlpha: 0.22, // глубина затемнения строк кинескопа
+  },
+
   // Спавн целей (скорректированы для удобной реакции на ноутбуках)
   spawnIntervalMinBase: 2.8,
   spawnIntervalMaxBase: 4.8,
