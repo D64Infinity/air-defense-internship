@@ -49,14 +49,14 @@ export function createAlertManager(scene: Phaser.Scene): AlertManager {
   const alertTitleText = scene.add.text(0, -9, '', {
     fontFamily: 'Consolas, monospace',
     fontSize: '15px',
-    color: '#ffffff',
+    color: GAME_CONFIG.colors.text.white,
     fontStyle: 'bold',
   }).setOrigin(0.5);
 
   const alertOutcomeText = scene.add.text(0, 13, '', {
     fontFamily: 'Consolas, monospace',
     fontSize: '13px',
-    color: '#86efac',
+    color: GAME_CONFIG.colors.text.friendlyBonus,
     fontStyle: 'bold',
   }).setOrigin(0.5);
 
@@ -128,91 +128,93 @@ export function createAlertManager(scene: Phaser.Scene): AlertManager {
   };
 
   const showInterceptAlert = (data: InterceptAlertData) => {
+    const { alerts, text } = GAME_CONFIG.colors;
     let title = '';
     let outcome = '';
-    let titleColor = '#ffffff';
-    let outcomeColor = '#86efac';
-    let bgColor = 0x021622;
-    let borderColor = 0x38bdf8;
-    let pipColor = 0x38bdf8;
+    let titleColor = text.white;
+    let outcomeColor = text.friendlyBonus;
+    let bgColor = alerts.bgInfo;
+    let borderColor = alerts.borderInfo;
+    let pipColor = alerts.pipInfo;
 
     if (data.unitType === 'bomber') {
       title = '[ ПЕРЕХВАТ ] ТЯЖЁЛЫЙ БОМБАРДИРОВЩИК';
       const rangeTag = data.isLongRange ? ' | ДАЛЬНИЙ РУБЕЖ' : '';
       outcome = `+${data.points} ОЧК  |  +${data.credits} CR${rangeTag}`;
-      titleColor = '#4ade80';
-      outcomeColor = '#86efac';
-      bgColor = 0x02170f;
-      borderColor = 0x22c55e;
-      pipColor = 0x4ade80;
+      titleColor = text.success;
+      outcomeColor = text.friendlyBonus;
+      bgColor = alerts.bgSuccess;
+      borderColor = alerts.borderSuccess;
+      pipColor = alerts.pipSuccess;
     } else if (data.unitType === 'missile') {
       title = '[ ПЕРЕХВАТ ] КРЫЛАТАЯ РАКЕТА';
       const rangeTag = data.isLongRange ? ' | ДАЛЬНИЙ РУБЕЖ' : '';
       outcome = `+${data.points} ОЧК  |  +${data.credits} CR${rangeTag}`;
-      titleColor = '#38bdf8';
-      outcomeColor = '#7dd3fc';
-      bgColor = 0x021622;
-      borderColor = 0x0284c7;
-      pipColor = 0x38bdf8;
+      titleColor = text.info;
+      outcomeColor = text.cyanLight;
+      bgColor = alerts.bgInfo;
+      borderColor = alerts.borderInfo;
+      pipColor = alerts.pipInfo;
     } else if (data.unitType === 'friend') {
       title = '[ ТРЕВОГА ] ОГОНЬ ПО СВОИМ: СОЮЗНИК!';
       outcome = `${data.points} ОЧК  |  ${data.credits} CR  |  СЕРИЯ СБРОШЕНА`;
-      titleColor = '#f87171';
-      outcomeColor = '#fca5a5';
-      bgColor = 0x1f0707;
-      borderColor = 0xdc2626;
-      pipColor = 0xef4444;
+      titleColor = text.criticalPenalty;
+      outcomeColor = text.redLight;
+      bgColor = alerts.bgDanger;
+      borderColor = alerts.borderDanger;
+      pipColor = alerts.pipDanger;
     } else {
       // decoy
       title = '[ ЛОЖНАЯ ЦЕЛЬ ] ПЕРЕХВАТ ВПУСТУЮ';
       const ammoStr = data.ammoLeft !== undefined ? `  |  РАКЕТ: ${data.ammoLeft}` : '';
       outcome = `0 ОЧК  |  СЕРИЯ СБРОШЕНА${ammoStr}`;
-      titleColor = '#fbbf24';
-      outcomeColor = '#fcd34d';
-      bgColor = 0x1a1203;
-      borderColor = 0xd97706;
-      pipColor = 0xf59e0b;
+      titleColor = text.warning;
+      outcomeColor = text.amberLight;
+      bgColor = alerts.bgWarning;
+      borderColor = alerts.borderWarning;
+      pipColor = alerts.pipWarning;
     }
 
     renderAlert(title, outcome, titleColor, outcomeColor, bgColor, borderColor, pipColor, 380);
   };
 
   const showSupplyAlert = (data: SupplyAlertData) => {
+    const { alerts, text } = GAME_CONFIG.colors;
     let title = '';
     let outcome = '';
-    let titleColor = '#ffffff';
-    let outcomeColor = '#86efac';
-    let bgColor = 0x021622;
-    let borderColor = 0x38bdf8;
-    let pipColor = 0x38bdf8;
+    let titleColor = text.white;
+    let outcomeColor = text.friendlyBonus;
+    let bgColor = alerts.bgInfo;
+    let borderColor = alerts.borderInfo;
+    let pipColor = alerts.pipInfo;
 
     if (data.type === 'missile') {
       if (data.success) {
         title = '[ СНАБЖЕНИЕ ] РАКЕТА-ПЕРЕХВАТЧИК';
         const ammoBars = '|'.repeat(data.current).padEnd(data.max, ' ');
         outcome = `-${data.cost} CR  |  БОЕКОМПЛЕКТ: [${ammoBars}] ${data.current}/${data.max}`;
-        titleColor = '#facc15';
-        outcomeColor = '#86efac';
-        bgColor = 0x171204;
-        borderColor = 0xca8a04;
-        pipColor = 0xfacc15;
+        titleColor = text.gold;
+        outcomeColor = text.friendlyBonus;
+        bgColor = alerts.bgGold;
+        borderColor = alerts.borderGold;
+        pipColor = alerts.pipGold;
       } else if (data.reason === 'max_capacity') {
         title = '[ СКЛАД ] БОЕКОМПЛЕКТ УЖЕ ПОЛОН';
         outcome = `МАКСИМУМ НА СКЛАДЕ: ${data.current}/${data.max} РАКЕТ`;
-        titleColor = '#fbbf24';
-        outcomeColor = '#fcd34d';
-        bgColor = 0x191103;
-        borderColor = 0xb45309;
-        pipColor = 0xd97706;
+        titleColor = text.warning;
+        outcomeColor = text.amberLight;
+        bgColor = alerts.bgWarningWarm;
+        borderColor = alerts.borderWarningWarm;
+        pipColor = alerts.pipWarning;
       } else {
         // no_credits
         title = '[ ОТКАЗ ] НЕДОСТАТОЧНО КРЕДИТОВ';
         outcome = `ТРЕБУЕТСЯ: ${data.cost} CR  |  В НАЛИЧИИ: ${data.credits} CR`;
-        titleColor = '#f87171';
-        outcomeColor = '#fca5a5';
-        bgColor = 0x1f0707;
-        borderColor = 0xdc2626;
-        pipColor = 0xef4444;
+        titleColor = text.criticalPenalty;
+        outcomeColor = text.redLight;
+        bgColor = alerts.bgDanger;
+        borderColor = alerts.borderDanger;
+        pipColor = alerts.pipDanger;
       }
     } else {
       // scan
@@ -220,28 +222,28 @@ export function createAlertManager(scene: Phaser.Scene): AlertManager {
         title = '[ СНАБЖЕНИЕ ] ЗАРЯД СКАНИРОВАНИЯ';
         const scanStars = '*'.repeat(data.current).padEnd(data.max, ' ');
         outcome = `-${data.cost} CR  |  СКАНЕРЫ: [${scanStars}] ${data.current}/${data.max}`;
-        titleColor = '#38bdf8';
-        outcomeColor = '#7dd3fc';
-        bgColor = 0x021622;
-        borderColor = 0x0284c7;
-        pipColor = 0x38bdf8;
+        titleColor = text.info;
+        outcomeColor = text.cyanLight;
+        bgColor = alerts.bgInfo;
+        borderColor = alerts.borderInfo;
+        pipColor = alerts.pipInfo;
       } else if (data.reason === 'max_capacity') {
         title = '[ СЕНСОРЫ ] СИСТЕМА СКАНИРОВАНИЯ ПОЛНА';
         outcome = `МАКСИМУМ В СИСТЕМЕ: ${data.current}/${data.max} ЗАРЯДОВ`;
-        titleColor = '#38bdf8';
-        outcomeColor = '#93c5fd';
-        bgColor = 0x061424;
-        borderColor = 0x0369a1;
-        pipColor = 0x38bdf8;
+        titleColor = text.info;
+        outcomeColor = text.blueLight;
+        bgColor = alerts.bgSupplyDeep;
+        borderColor = alerts.borderSupplyDeep;
+        pipColor = alerts.pipInfo;
       } else {
         // no_credits
         title = '[ ОТКАЗ ] НЕДОСТАТОЧНО КРЕДИТОВ';
         outcome = `ТРЕБУЕТСЯ: ${data.cost} CR  |  В НАЛИЧИИ: ${data.credits} CR`;
-        titleColor = '#f87171';
-        outcomeColor = '#fca5a5';
-        bgColor = 0x1f0707;
-        borderColor = 0xdc2626;
-        pipColor = 0xef4444;
+        titleColor = text.criticalPenalty;
+        outcomeColor = text.redLight;
+        bgColor = alerts.bgDanger;
+        borderColor = alerts.borderDanger;
+        pipColor = alerts.pipDanger;
       }
     }
 

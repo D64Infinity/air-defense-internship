@@ -152,6 +152,8 @@ export function renderInterceptors(
   graphics: Phaser.GameObjects.Graphics,
   units: readonly InterceptorUnit[],
 ): void {
+  const { colors } = GAME_CONFIG;
+
   for (const flight of units) {
     // 1. Отрисовка инверсионного следа
     if (flight.trail.length > 1) {
@@ -160,7 +162,7 @@ export function renderInterceptors(
         const p2 = flight.trail[k];
         const alpha = Math.max(0, 1 - p2.age / p2.maxLife) * 0.75;
         if (alpha > 0.02) {
-          graphics.lineStyle(1.8, 0x38bdf8, alpha);
+          graphics.lineStyle(1.8, colors.interceptorTrail, alpha);
           graphics.beginPath();
           graphics.moveTo(p1.x, p1.y);
           graphics.lineTo(p2.x, p2.y);
@@ -172,11 +174,11 @@ export function renderInterceptors(
     // 2. Головная часть противоракеты (боевой блок)
     if (!flight.isImpacted) {
       // Мягкий бирюзовый ореол
-      graphics.fillStyle(0x38bdf8, 0.55);
+      graphics.fillStyle(colors.interceptorHalo, 0.55);
       graphics.fillCircle(flight.currentX, flight.currentY, 4.5);
 
       // Яркое белое ядро
-      graphics.fillStyle(0xd4ffea, 0.95);
+      graphics.fillStyle(colors.interceptorCore, 0.95);
       graphics.fillCircle(flight.currentX, flight.currentY, 2.2);
     }
   }

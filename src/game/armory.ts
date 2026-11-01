@@ -72,13 +72,17 @@ export function createArmory(config = GAME_CONFIG): ArmoryTracker {
       return {
         success: false,
         message: `[БЮДЖЕТ] НЕ ХВАТАЕТ КРЕДИТОВ (НУЖНО ${cost} CR)!`,
-        color: '#ef4444',
+        color: config.colors.text.danger,
         reason: 'no_credits',
       };
     }
     credits -= cost;
     onSuccess();
-    return { success: true, message: successFeedback, color: '#22c55e' };
+    return {
+      success: true,
+      message: successFeedback,
+      color: config.colors.text.success,
+    };
   };
 
   return {
@@ -130,7 +134,7 @@ export function createArmory(config = GAME_CONFIG): ArmoryTracker {
         config.maxInterceptors,
         config.interceptorCost,
         `[СКЛАД] МАКСИМУМ РАКЕТ (${config.maxInterceptors}/${config.maxInterceptors})!`,
-        '#facc15',
+        config.colors.text.gold,
         `[СНАБЖЕНИЕ] +1 РАКЕТА (-${config.interceptorCost} CR)`,
         () => {
           interceptors++;
@@ -144,7 +148,7 @@ export function createArmory(config = GAME_CONFIG): ArmoryTracker {
         config.maxScansPerWave,
         config.scanCost,
         `[СЕНСОРЫ] МАКСИМУМ СКАНОВ (${config.maxScansPerWave}/${config.maxScansPerWave})!`,
-        '#38bdf8',
+        config.colors.text.info,
         `[СНАБЖЕНИЕ] +1 СКАН (-${config.scanCost} CR)`,
         () => {
           scansAvailable++;
@@ -157,14 +161,14 @@ export function createArmory(config = GAME_CONFIG): ArmoryTracker {
         return {
           success: false,
           message: '[СКАН] ЦЕЛЬ УЖЕ ОПОЗНАНА',
-          color: '#38bdf8',
+          color: config.colors.text.info,
         };
       }
       if (scansAvailable <= 0) {
         return {
           success: false,
           message: '[ОТКАЗ] НЕТ ЗАРЯДОВ СКАНИРОВАНИЯ (0 шт.)!',
-          color: '#ef4444',
+          color: config.colors.text.danger,
         };
       }
 
@@ -175,7 +179,7 @@ export function createArmory(config = GAME_CONFIG): ArmoryTracker {
       return {
         success: true,
         message: `[СИСТЕМА] АНАЛИЗ СИГНАТУРЫ... (${GAME_CONFIG.scanDuration} СЕК)`,
-        color: '#38bdf8',
+        color: config.colors.text.info,
       };
     },
 
@@ -219,7 +223,7 @@ export function createArmory(config = GAME_CONFIG): ArmoryTracker {
           completed: true,
           target,
           message: `[ОПОЗНАНО!] СИГНАТУРА: ${typeCfg.label.toUpperCase()}`,
-          color: '#38bdf8',
+          color: config.colors.text.info,
         };
       }
 

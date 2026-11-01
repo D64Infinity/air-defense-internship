@@ -131,6 +131,100 @@ export const GAME_CONFIG = {
     healthGreen: 0x22c55e,
     healthYellow: 0xeab308,
     healthRed: 0xef4444,
+
+    // ЭЛТ-строки кинескопа
+    scanline: 0x000000,
+
+    // Ракеты-перехватчики ПВО
+    interceptorTrail: 0x38bdf8,
+    interceptorHalo: 0x38bdf8,
+    interceptorCore: 0xd4ffea,
+
+    // Тактические маркеры захвата, идентификации и окантовки целей
+    targetLocked: 0xf59e0b,
+    tagThreat: 0xef4444,
+    tagFriend: 0x22c55e,
+    tagNeutral: 0x94a3b8,
+    markFriend: 0x22c55e,
+    markIgnore: 0x94a3b8,
+
+    // Холст и фон страницы
+    canvasBg: '#051209',
+
+    // Текстовая палитра оперативных сообщений и телеметрии (CSS-строки)
+    text: {
+      success: '#4ade80', // успешный перехват, союзник
+      danger: '#ef4444', // тревога, критический урон базе
+      warning: '#fbbf24', // предупреждение СУО, ловушка
+      info: '#38bdf8', // пуск ракеты, глубокое сканирование
+      friendlyBonus: '#86efac', // посадка/транзит союзника
+      criticalPenalty: '#f87171', // огонь по своим, штрафы
+      muted: '#94a3b8', // фильтрация ложной цели, помеха
+      subtle: '#64748b', // нейтральное рассеивание сигнала
+      white: '#ffffff', // стандартный светлый текст
+      gold: '#facc15', // золотистый акцент боекомплекта
+      cyanLight: '#7dd3fc', // светлый бирюзовый акцент
+      blueLight: '#93c5fd', // светлый синий акцент
+      amberLight: '#fcd34d', // светлый янтарный акцент
+      redLight: '#fca5a5', // светлый красный акцент
+    },
+
+    // Модальные окна терминала (Game Over, Меню паузы, Инструктаж)
+    modal: {
+      overlay: 0x020a05,
+      bgDark: 0x06130c,
+      bgTerminal: 0x071b0f,
+      borderAlert: 0xef4444,
+      borderAlertCorner: 0xf87171,
+      borderAlertSubtle: 0x7f1d1d,
+      borderInfo: 0x38bdf8,
+      borderSuccess: 0x4ade80,
+      dividerGreen: 0x14532d,
+      panelDark: 0x081f14,
+      panelBorderGold: 0xca8a04,
+      btnRestartBg: 0x16a34a,
+      btnRestartHover: 0x22c55e,
+      btnRestartBorder: 0x4ade80,
+      btnResumeBg: 0x0284c7,
+      btnResumeHover: 0x0369a1,
+      btnResumeBorder: 0x38bdf8,
+      btnBriefingBg: 0x0f3b25,
+      btnBriefingHover: 0x166534,
+      btnBriefingBorder: 0x4ade80,
+      btnDangerBg: 0x450a0a,
+      btnDangerHover: 0x7f1d1d,
+      btnDangerBorder: 0xef4444,
+    },
+
+    // Всплывающие карточки оперативных оповещений (Alerts)
+    alerts: {
+      bgSuccess: 0x02170f,
+      borderSuccess: 0x22c55e,
+      pipSuccess: 0x4ade80,
+
+      bgInfo: 0x021622,
+      borderInfo: 0x0284c7,
+      pipInfo: 0x38bdf8,
+
+      bgDanger: 0x1f0707,
+      borderDanger: 0xdc2626,
+      pipDanger: 0xef4444,
+
+      bgWarning: 0x1a1203,
+      borderWarning: 0xd97706,
+      pipWarning: 0xf59e0b,
+
+      bgWarningWarm: 0x191103,
+      borderWarningWarm: 0xb45309,
+      pipWarningWarm: 0xd97706,
+
+      bgGold: 0x171204,
+      borderGold: 0xca8a04,
+      pipGold: 0xfacc15,
+
+      bgSupplyDeep: 0x061424,
+      borderSupplyDeep: 0x0369a1,
+    },
   },
 };
 

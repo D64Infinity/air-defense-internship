@@ -264,7 +264,7 @@ export function createRadarRender(
     const maxY = radarY + radarRadius;
 
     // Плавно скользящие микро-строки ЭЛТ
-    dynamicGraphics.lineStyle(1, 0x000000, scanlineAlpha);
+    dynamicGraphics.lineStyle(1, colors.scanline, scanlineAlpha);
     dynamicGraphics.beginPath();
     for (let y = minY + scanlineOffset; y < maxY; y += scanlineStep) {
       const dy = y - radarY;
@@ -427,7 +427,7 @@ export function createRadarRender(
     }
 
     // 3. Маркер базы в центре (вспыхивает красным при уроне)
-    const baseColor = data.baseFlashTimer > 0 ? 0xef4444 : colors.gridRing;
+    const baseColor = data.baseFlashTimer > 0 ? colors.dangerRing : colors.gridRing;
     dynamicGraphics.lineStyle(1.8, baseColor, 0.95);
     dynamicGraphics.strokeCircle(radarX, radarY, 8);
     dynamicGraphics.fillStyle(baseColor, 0.95);
@@ -448,10 +448,10 @@ export function createRadarRender(
         const typeCfg = GAME_CONFIG.targetTypes[target.type];
         const tagColor =
           typeCfg.category === 'threat'
-            ? 0xef4444
+            ? colors.tagThreat
             : typeCfg.category === 'friend'
-              ? 0x22c55e
-              : 0x94a3b8;
+              ? colors.tagFriend
+              : colors.tagNeutral;
         const size = 18;
         dynamicGraphics.lineStyle(2, tagColor, target.alpha * 0.95);
         dynamicGraphics.beginPath();
@@ -465,7 +465,8 @@ export function createRadarRender(
 
       // Тактическая окантовка оператора (союзник / помеха) в виде квадрата с угасанием люминофора
       if (target.markedAs && target.alpha > 0.02) {
-        const markColor = target.markedAs === 'friend' ? 0x22c55e : 0x94a3b8;
+        const markColor =
+          target.markedAs === 'friend' ? colors.markFriend : colors.markIgnore;
         const b = 21;
         dynamicGraphics.lineStyle(1.5, markColor, target.alpha * 0.9);
         dynamicGraphics.strokeRect(target.x - b, target.y - b, b * 2, b * 2);
@@ -473,7 +474,7 @@ export function createRadarRender(
 
       // Тактический маркер цели в захвате ПВО (ракета уже летит)
       if (target.isTargeted && target.alpha > 0.02) {
-        const lockColor = 0xf59e0b; // янтарный цвет активного перехвата
+        const lockColor = colors.targetLocked; // янтарный цвет активного перехвата
         const s = 14;
         dynamicGraphics.lineStyle(1.5, lockColor, target.alpha * 0.95);
         dynamicGraphics.beginPath();

@@ -122,10 +122,12 @@ export class AmbientBackground {
    * Срабатывание амбиентного светового отсвета при уничтожении цели
    */
   triggerExplosionFlash(targetType: TargetType): void {
+    const { colors } = GAME_CONFIG;
+
     switch (targetType) {
       case 'missile':
         this.activeFlash = {
-          color: 0x22c55e, // изумрудный отблеск
+          color: colors.tagFriend, // изумрудный отблеск
           maxAlpha: 0.28,
           duration: 0.38,
           age: 0,
@@ -133,7 +135,7 @@ export class AmbientBackground {
         break;
       case 'bomber':
         this.activeFlash = {
-          color: 0xf59e0b, // глубокий огненный янтарь от детонации керосина
+          color: colors.targetLocked, // глубокий огненный янтарь от детонации керосина
           maxAlpha: 0.42,
           duration: 0.55,
           age: 0,
@@ -141,7 +143,7 @@ export class AmbientBackground {
         break;
       case 'friend':
         this.activeFlash = {
-          color: 0xef4444, // тревожный красный отсвет катастрофы
+          color: colors.tagThreat, // тревожный красный отсвет катастрофы
           maxAlpha: 0.36,
           duration: 0.45,
           age: 0,
@@ -149,7 +151,7 @@ export class AmbientBackground {
         break;
       case 'decoy':
         this.activeFlash = {
-          color: 0x94a3b8, // нейтральный серебристый отсвет фольги
+          color: colors.tagNeutral, // нейтральный серебристый отсвет фольги
           maxAlpha: 0.16,
           duration: 0.24,
           age: 0,
@@ -163,7 +165,7 @@ export class AmbientBackground {
    */
   triggerBaseDamageFlash(): void {
     this.activeFlash = {
-      color: 0xef4444,
+      color: GAME_CONFIG.colors.dangerRing,
       maxAlpha: 0.50,
       duration: 0.60,
       age: 0,

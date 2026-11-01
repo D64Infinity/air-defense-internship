@@ -63,7 +63,7 @@ export function createGameOverOverlay(
     height / 2,
     width,
     height,
-    0x020a05,
+    GAME_CONFIG.colors.modal.overlay,
     0.88,
   );
   darkBg.setInteractive();
@@ -80,15 +80,15 @@ export function createGameOverOverlay(
   const modalGraphics = scene.add.graphics();
 
   // Тёмный тактический фон с высокой непрозрачностью
-  modalGraphics.fillStyle(0x06130c, 0.97);
+  modalGraphics.fillStyle(GAME_CONFIG.colors.modal.bgDark, 0.97);
   modalGraphics.fillRoundedRect(cx - halfW, cy - halfH, boxW, boxH, 6);
 
   // Контур терминала (красная тревожная рамка)
-  modalGraphics.lineStyle(1.5, 0xef4444, 0.85);
+  modalGraphics.lineStyle(1.5, GAME_CONFIG.colors.modal.borderAlert, 0.85);
   modalGraphics.strokeRoundedRect(cx - halfW, cy - halfH, boxW, boxH, 6);
 
   // Верхняя сигнальная полоса тревоги
-  modalGraphics.lineStyle(3, 0xef4444, 1);
+  modalGraphics.lineStyle(3, GAME_CONFIG.colors.modal.borderAlert, 1);
   modalGraphics.beginPath();
   modalGraphics.moveTo(cx - halfW + 20, cy - halfH);
   modalGraphics.lineTo(cx + halfW - 20, cy - halfH);
@@ -96,7 +96,7 @@ export function createGameOverOverlay(
 
   // Тактические угловые скобки (Corner Reticles)
   const corner = 14;
-  modalGraphics.lineStyle(2.5, 0xf87171, 0.95);
+  modalGraphics.lineStyle(2.5, GAME_CONFIG.colors.modal.borderAlertCorner, 0.95);
   modalGraphics.beginPath();
   // Top-left
   modalGraphics.moveTo(cx - halfW, cy - halfH + corner);
@@ -117,7 +117,7 @@ export function createGameOverOverlay(
   modalGraphics.strokePath();
 
   // Разделительные линии разделов сводки
-  modalGraphics.lineStyle(1, 0x7f1d1d, 0.55);
+  modalGraphics.lineStyle(1, GAME_CONFIG.colors.modal.borderAlertSubtle, 0.55);
   modalGraphics.beginPath();
   // Разделитель 1: под заголовком
   modalGraphics.moveTo(cx - halfW + 36, cy - 135);
@@ -235,10 +235,10 @@ export function createGameOverOverlay(
     cy + 185,
     300,
     46,
-    0x16a34a,
+    GAME_CONFIG.colors.modal.btnRestartBg,
     0.92,
   );
-  restartBtn.setStrokeStyle(1.5, 0x4ade80, 1);
+  restartBtn.setStrokeStyle(1.5, GAME_CONFIG.colors.modal.btnRestartBorder, 1);
   restartBtn.setInteractive({ useHandCursor: true });
 
   const restartText = scene.add.text(
@@ -253,8 +253,8 @@ export function createGameOverOverlay(
     },
   ).setOrigin(0.5);
 
-  restartBtn.on('pointerover', () => restartBtn.setFillStyle(0x22c55e, 1));
-  restartBtn.on('pointerout', () => restartBtn.setFillStyle(0x16a34a, 0.92));
+  restartBtn.on('pointerover', () => restartBtn.setFillStyle(GAME_CONFIG.colors.modal.btnRestartHover, 1));
+  restartBtn.on('pointerout', () => restartBtn.setFillStyle(GAME_CONFIG.colors.modal.btnRestartBg, 0.92));
   restartBtn.on('pointerdown', () => onRestart());
 
   container.add([
@@ -290,7 +290,7 @@ export function createGameOverOverlay(
 
       statsText.setText(
         `УНИЧТОЖЕНО: ${stats.missilesShot} РАКЕТ  |  ${stats.bombersShot} БОМБАРДИРОВЩИКОВ  |  ${stats.friendlyFireCount} СВОИХ\n` +
-        `СОЮЗНИКИ: ${stats.friendsSaved} СПАСЕНО  |  ${stats.decoysFiltered} ЛОВУШЕК ОТФИЛЬТРОВАНО  |  ${stats.threatsMissed} ПРОПУЩЕНО\n` +
+        `${stats.friendsSaved} СВОИХ СПАСЕНО  |  ${stats.decoysFiltered} ЛОВУШЕК ОТФИЛЬТРОВАНО  |  ${stats.threatsMissed} УГРОЗ ПРОПУЩЕНО\n` +
         `ЭФФЕКТИВНОСТЬ: ${acc}% ТОЧНОСТЬ  |  ВРЕМЯ ДЕЖУРСТВА: ${timeStr}`,
       );
       container.setVisible(true);
@@ -328,7 +328,7 @@ export function createPauseOverlay(
     height / 2,
     width,
     height,
-    0x020a05,
+    GAME_CONFIG.colors.modal.overlay,
     0.82,
   );
   darkBg.setInteractive();
@@ -339,10 +339,10 @@ export function createPauseOverlay(
     height / 2,
     400,
     270,
-    0x071b0f,
+    GAME_CONFIG.colors.modal.bgTerminal,
     0.96,
   );
-  modal.setStrokeStyle(2, 0x38bdf8, 0.9);
+  modal.setStrokeStyle(2, GAME_CONFIG.colors.modal.borderInfo, 0.9);
 
   const title = scene.add.text(
     width / 2,
@@ -363,10 +363,10 @@ export function createPauseOverlay(
     height / 2 - 28,
     260,
     36,
-    0x0284c7,
+    GAME_CONFIG.colors.modal.btnResumeBg,
     0.9,
   );
-  resumeBtn.setStrokeStyle(1.5, 0x38bdf8, 1);
+  resumeBtn.setStrokeStyle(1.5, GAME_CONFIG.colors.modal.btnResumeBorder, 1);
   resumeBtn.setInteractive({ useHandCursor: true });
 
   const resumeText = scene.add.text(
@@ -382,8 +382,8 @@ export function createPauseOverlay(
   );
   resumeText.setOrigin(0.5);
 
-  resumeBtn.on('pointerover', () => resumeBtn.setFillStyle(0x0369a1, 1));
-  resumeBtn.on('pointerout', () => resumeBtn.setFillStyle(0x0284c7, 0.9));
+  resumeBtn.on('pointerover', () => resumeBtn.setFillStyle(GAME_CONFIG.colors.modal.btnResumeHover, 1));
+  resumeBtn.on('pointerout', () => resumeBtn.setFillStyle(GAME_CONFIG.colors.modal.btnResumeBg, 0.9));
   resumeBtn.on('pointerdown', () => cbs.onResume());
 
   // 2. Кнопка инструктажа
@@ -392,10 +392,10 @@ export function createPauseOverlay(
     height / 2 + 18,
     260,
     36,
-    0x0f3b25,
+    GAME_CONFIG.colors.modal.btnBriefingBg,
     0.9,
   );
-  briefingBtn.setStrokeStyle(1.5, 0x4ade80, 0.9);
+  briefingBtn.setStrokeStyle(1.5, GAME_CONFIG.colors.modal.btnBriefingBorder, 0.9);
   briefingBtn.setInteractive({ useHandCursor: true });
 
   const briefingText = scene.add.text(
@@ -411,8 +411,8 @@ export function createPauseOverlay(
   );
   briefingText.setOrigin(0.5);
 
-  briefingBtn.on('pointerover', () => briefingBtn.setFillStyle(0x166534, 1));
-  briefingBtn.on('pointerout', () => briefingBtn.setFillStyle(0x0f3b25, 0.9));
+  briefingBtn.on('pointerover', () => briefingBtn.setFillStyle(GAME_CONFIG.colors.modal.btnBriefingHover, 1));
+  briefingBtn.on('pointerout', () => briefingBtn.setFillStyle(GAME_CONFIG.colors.modal.btnBriefingBg, 0.9));
   briefingBtn.on('pointerdown', () => cbs.onOpenBriefing?.());
 
   // 3. Кнопка перезапуска игры
@@ -421,10 +421,10 @@ export function createPauseOverlay(
     height / 2 + 64,
     260,
     36,
-    0x450a0a,
+    GAME_CONFIG.colors.modal.btnDangerBg,
     0.9,
   );
-  restartBtn.setStrokeStyle(1.5, 0xef4444, 0.9);
+  restartBtn.setStrokeStyle(1.5, GAME_CONFIG.colors.modal.btnDangerBorder, 0.9);
   restartBtn.setInteractive({ useHandCursor: true });
 
   const restartText = scene.add.text(
@@ -440,8 +440,8 @@ export function createPauseOverlay(
   );
   restartText.setOrigin(0.5);
 
-  restartBtn.on('pointerover', () => restartBtn.setFillStyle(0x7f1d1d, 1));
-  restartBtn.on('pointerout', () => restartBtn.setFillStyle(0x450a0a, 0.9));
+  restartBtn.on('pointerover', () => restartBtn.setFillStyle(GAME_CONFIG.colors.modal.btnDangerHover, 1));
+  restartBtn.on('pointerout', () => restartBtn.setFillStyle(GAME_CONFIG.colors.modal.btnDangerBg, 0.9));
   restartBtn.on('pointerdown', () => cbs.onRestart?.());
 
   container.add([
@@ -477,12 +477,12 @@ export function createBriefingOverlay(
   container.setVisible(false);
 
   // Полупрозрачный фон-затемнение
-  const darkBg = scene.add.rectangle(width / 2, height / 2, width, height, 0x020a05, 0.92);
+  const darkBg = scene.add.rectangle(width / 2, height / 2, width, height, GAME_CONFIG.colors.modal.overlay, 0.92);
   darkBg.setInteractive();
 
   // Модальное окно
-  const modal = scene.add.rectangle(width / 2, height / 2, 560, 420, 0x071b0f, 0.98);
-  modal.setStrokeStyle(2, 0x4ade80, 0.9);
+  const modal = scene.add.rectangle(width / 2, height / 2, 560, 420, GAME_CONFIG.colors.modal.bgTerminal, 0.98);
+  modal.setStrokeStyle(2, GAME_CONFIG.colors.modal.borderSuccess, 0.9);
 
   const title = scene.add.text(
     width / 2,
@@ -522,7 +522,7 @@ export function createBriefingOverlay(
   const cy = height / 2;
 
   // Разделитель под заголовком
-  const dividerTop = scene.add.rectangle(width / 2, cy - 150, 500, 1, 0x14532d, 0.9);
+  const dividerTop = scene.add.rectangle(width / 2, cy - 150, 500, 1, GAME_CONFIG.colors.modal.dividerGreen, 0.9);
   contentObjects.push(dividerTop);
 
   // 1. Угрозы (красный акцент)
@@ -577,8 +577,8 @@ export function createBriefingOverlay(
   ]);
 
   // 5. Панель быстрого управления (жёлтый акцент)
-  const cmdPanel = scene.add.rectangle(width / 2, cy + 74, 500, 32, 0x081f14, 0.95);
-  cmdPanel.setStrokeStyle(1.5, 0xca8a04, 0.7);
+  const cmdPanel = scene.add.rectangle(width / 2, cy + 74, 500, 32, GAME_CONFIG.colors.modal.panelDark, 0.95);
+  cmdPanel.setStrokeStyle(1.5, GAME_CONFIG.colors.modal.panelBorderGold, 0.7);
   contentObjects.push(cmdPanel);
 
   const cmdText = scene.add.text(
@@ -594,8 +594,8 @@ export function createBriefingOverlay(
   ).setOrigin(0.5);
   contentObjects.push(cmdText);
 
-  const actionBtn = scene.add.rectangle(width / 2, cy + 155, 300, 42, 0x16a34a, 0.9);
-  actionBtn.setStrokeStyle(1.5, 0x4ade80, 1);
+  const actionBtn = scene.add.rectangle(width / 2, cy + 155, 300, 42, GAME_CONFIG.colors.modal.btnRestartBg, 0.9);
+  actionBtn.setStrokeStyle(1.5, GAME_CONFIG.colors.modal.btnRestartBorder, 1);
   actionBtn.setInteractive({ useHandCursor: true });
 
   const actionText = scene.add.text(width / 2, cy + 155, 'ЗАСТУПИТЬ НА СМЕНУ (ПРОБЕЛ)', {
@@ -605,8 +605,8 @@ export function createBriefingOverlay(
     fontStyle: 'bold',
   }).setOrigin(0.5);
 
-  actionBtn.on('pointerover', () => actionBtn.setFillStyle(0x22c55e, 1));
-  actionBtn.on('pointerout', () => actionBtn.setFillStyle(0x16a34a, 0.9));
+  actionBtn.on('pointerover', () => actionBtn.setFillStyle(GAME_CONFIG.colors.modal.btnRestartHover, 1));
+  actionBtn.on('pointerout', () => actionBtn.setFillStyle(GAME_CONFIG.colors.modal.btnRestartBg, 0.9));
   actionBtn.on('pointerdown', () => onClose());
 
   container.add([darkBg, modal, title, ...contentObjects, actionBtn, actionText]);

@@ -417,9 +417,15 @@ export class GameScene extends Phaser.Scene {
     if (choice === 'friend' || choice === 'ignore') {
       target.markedAs = choice;
       if (choice === 'friend') {
-        this.showFeedback('[МЕТКА] ЦЕЛЬ ПРИНЯТА КАК СОЮЗНИК', '#4ade80');
+        this.showFeedback(
+          '[МЕТКА] ЦЕЛЬ ПРИНЯТА КАК СОЮЗНИК',
+          GAME_CONFIG.colors.text.success,
+        );
       } else {
-        this.showFeedback('[МЕТКА] ЦЕЛЬ ОТМЕЧЕНА КАК ПОМЕХА', '#94a3b8');
+        this.showFeedback(
+          '[МЕТКА] ЦЕЛЬ ОТМЕЧЕНА КАК ПОМЕХА',
+          GAME_CONFIG.colors.text.muted,
+        );
       }
       this.updateTelemetry();
       this.updateTargetSelectionUI();
@@ -429,19 +435,28 @@ export class GameScene extends Phaser.Scene {
     // 2. Боевой перехват (Угроза) — пуск ракеты-перехватчика
     if (target.isTargeted) {
       this.soundSystem.playDenyClick();
-      this.showFeedback('[СУО] ЦЕЛЬ УЖЕ В ЗАХВАТЕ! РАКЕТА В ВОЗДУХЕ', '#fbbf24');
+      this.showFeedback(
+        '[СУО] ЦЕЛЬ УЖЕ В ЗАХВАТЕ! РАКЕТА В ВОЗДУХЕ',
+        GAME_CONFIG.colors.text.warning,
+      );
       return;
     }
 
     if (!this.armory.consumeInterceptor()) {
       this.soundSystem.playDenyClick();
-      this.showFeedback('[ОТКАЗ!] БОЕКОМПЛЕКТ ПУСТ! ОЖИДАЙТЕ СНАБЖЕНИЯ', '#ef4444');
+      this.showFeedback(
+        '[ОТКАЗ!] БОЕКОМПЛЕКТ ПУСТ! ОЖИДАЙТЕ СНАБЖЕНИЯ',
+        GAME_CONFIG.colors.text.danger,
+      );
       return;
     }
 
     target.isTargeted = true;
     this.soundSystem.playLaunch();
-    this.showFeedback('[ПУСК] ПЕРЕХВАТЧИК В ВОЗДУХЕ!', '#38bdf8');
+    this.showFeedback(
+      '[ПУСК] ПЕРЕХВАТЧИК В ВОЗДУХЕ!',
+      GAME_CONFIG.colors.text.info,
+    );
 
     // Мгновенный сброс захвата цели для игрока (свобода переключения)
     this.selectedTarget = null;
@@ -485,7 +500,7 @@ export class GameScene extends Phaser.Scene {
         this.armory.addCredits(GAME_CONFIG.creditsPerMissile);
         this.showFeedback(
           `[ВЕРНО!] РАКЕТА СБИТА (+${points}, +${GAME_CONFIG.creditsPerMissile} CR)${rangeTag}`,
-          '#4ade80',
+          GAME_CONFIG.colors.text.success,
         );
         this.alerts.showInterceptAlert({
           unitType: 'missile',
@@ -498,7 +513,7 @@ export class GameScene extends Phaser.Scene {
         this.armory.addCredits(GAME_CONFIG.creditsPerBomber);
         this.showFeedback(
           `[ВЕРНО!] БОМБАРДИРОВЩИК УНИЧТОЖЕН (+${points}, +${GAME_CONFIG.creditsPerBomber} CR)${rangeTag}`,
-          '#4ade80',
+          GAME_CONFIG.colors.text.success,
         );
         this.alerts.showInterceptAlert({
           unitType: 'bomber',
@@ -515,7 +530,7 @@ export class GameScene extends Phaser.Scene {
       this.armory.deductCredits(GAME_CONFIG.creditsFriendlyFirePenalty);
       this.showFeedback(
         `[ОШИБКА!] СБИТ СВОЙ БОРТ! (-${penalty} очк, -${GAME_CONFIG.creditsFriendlyFirePenalty} CR)`,
-        '#f87171',
+        GAME_CONFIG.colors.text.criticalPenalty,
       );
       this.alerts.showInterceptAlert({
         unitType: 'friend',
@@ -529,7 +544,7 @@ export class GameScene extends Phaser.Scene {
       this.scoring.resetStreak();
       this.showFeedback(
         `[ПРОМАХ!] ПЕРЕХВАТЧИК ВПУСТУЮ НА ЛОВУШКУ! (Ост: ${this.armory.interceptors})`,
-        '#fbbf24',
+        GAME_CONFIG.colors.text.warning,
       );
       this.alerts.showInterceptAlert({
         unitType: 'decoy',
@@ -554,7 +569,10 @@ export class GameScene extends Phaser.Scene {
 
       const action = isLanding ? 'БЕЗОПАСНО СЕЛ НА БАЗУ' : 'БЕЗОПАСНО ПОКИНУЛ СЕКТОР';
       const tag = isLanding ? '[ПОСАДКА]' : '[ТРАНЗИТ]';
-      this.showFeedback(`${tag} СОЮЗНИК ${action} (+${points}, СЕРИЯ +1)`, '#86efac');
+      this.showFeedback(
+        `${tag} СОЮЗНИК ${action} (+${points}, СЕРИЯ +1)`,
+        GAME_CONFIG.colors.text.friendlyBonus,
+      );
     } else {
       this.stats.recordFriendMissed();
       this.scoring.resetStreak();
@@ -563,7 +581,10 @@ export class GameScene extends Phaser.Scene {
       this.armory.deductCredits(penalty);
 
       const cause = target.markedAs === 'ignore' ? 'ПРИНЯТ ЗА ПОМЕХУ' : 'ПРОПУЩЕН БЕЗ ОПОЗНАНИЯ';
-      this.showFeedback(`[ОШИБКА!] СОЮЗНИК ${cause} (-${penalty} CR, СЕРИЯ СБРОШЕНА)`, '#f87171');
+      this.showFeedback(
+        `[ОШИБКА!] СОЮЗНИК ${cause} (-${penalty} CR, СЕРИЯ СБРОШЕНА)`,
+        GAME_CONFIG.colors.text.criticalPenalty,
+      );
     }
 
     this.updateScoreBoard();
@@ -577,14 +598,23 @@ export class GameScene extends Phaser.Scene {
       this.stats.recordDecoyFiltered();
       this.scoring.addDecoySuccess();
       const reason = isDissipated ? 'СИГНАЛ РАССЕЯЛСЯ' : 'ПОКИНУЛА СЕКТОР';
-      this.showFeedback(`[ФИЛЬТР] ЛОЖНАЯ ЦЕЛЬ (${reason}) (СЕРИЯ +1)`, '#94a3b8');
+      this.showFeedback(
+        `[ФИЛЬТР] ЛОЖНАЯ ЦЕЛЬ (${reason}) (СЕРИЯ +1)`,
+        GAME_CONFIG.colors.text.muted,
+      );
     } else if (target.markedAs === 'friend') {
       this.stats.recordDecoyMistake();
       this.scoring.resetStreak();
       this.waveHadFlaws = true;
-      this.showFeedback(`[ОШИБКА!] ЛОЖНАЯ ЦЕЛЬ БЫЛА ПРИНЯТА ЗА СОЮЗНИКА!`, '#f87171');
+      this.showFeedback(
+        `[ОШИБКА!] ЛОЖНАЯ ЦЕЛЬ БЫЛА ПРИНЯТА ЗА СОЮЗНИКА!`,
+        GAME_CONFIG.colors.text.criticalPenalty,
+      );
     } else if (isDissipated) {
-      this.showFeedback(`[БАЗА] ЛОЖНЫЙ СИГНАЛ РАССЕЯЛСЯ (0 УРОНА)`, '#64748b');
+      this.showFeedback(
+        `[БАЗА] ЛОЖНЫЙ СИГНАЛ РАССЕЯЛСЯ (0 УРОНА)`,
+        GAME_CONFIG.colors.text.subtle,
+      );
     }
 
     this.updateScoreBoard();
@@ -674,7 +704,10 @@ export class GameScene extends Phaser.Scene {
         break;
 
       case 'decoy_passed_base':
-        this.showFeedback('[БАЗА] ЛОЖНАЯ ЦЕЛЬ ПРОШЛА НАВЫЛЕТ (-0 HP)', '#64748b');
+        this.showFeedback(
+          '[БАЗА] ЛОЖНАЯ ЦЕЛЬ ПРОШЛА НАВЫЛЕТ (-0 HP)',
+          GAME_CONFIG.colors.text.subtle,
+        );
         break;
 
       case 'decoy_dissipated':
@@ -699,7 +732,7 @@ export class GameScene extends Phaser.Scene {
     this.baseFlashTimer = 0.6;
     this.ambientBg.triggerBaseDamageFlash();
     this.soundSystem.playBaseDamage();
-    this.showFeedback(feedback, '#ef4444');
+    this.showFeedback(feedback, GAME_CONFIG.colors.text.danger);
     this.drawHealthBar();
 
     if (this.baseHealth <= 0 && !this.isGameOver) {
