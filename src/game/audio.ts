@@ -248,38 +248,86 @@ export function createSoundSystem(): SoundSystem {
   };
 
   /**
-   * Воспроизведение аутентичного радиолокационного "пилика" при засветке метки лучом
+   * Воспроизведение аутентичного радиолокационного отклика при засветке метки лучом:
+   * 1. Тактильный щелчок приёмного тракта в момент фиксации метки (3 мс);
+   * 2. Основной плотный тон радиолокатора (920 -> 755 Гц);
+   * 3. Благородный стеклянно-металлический обертон колбы ЭЛТ (октава pitch * 2.0 с колокольным хвостом 110 мс);
+   * 4. Мягкий отклик в атмосферный стереодиффузор skyEcho для ощущения объёма операторской рубки.
    */
-  const playRadarPing = (pitch = 1200): void => {
+  const playRadarPing = (pitch = 920): void => {
     if (isMuted) return;
     const audioCtx = getContext();
     if (!audioCtx) return;
 
     const now = audioCtx.currentTime;
+    const masterDest = getMasterIn(audioCtx);
+    const skyEcho = getSkyEchoIn();
 
     const startTime = Math.max(now, lastPingTime + 0.035);
     lastPingTime = startTime;
 
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
+    // Слой 1: Тактильный щелчок поляризации луча на датчике (2.5 мс)
+    const clickOsc = audioCtx.createOscillator();
+    const clickGain = audioCtx.createGain();
+    clickOsc.type = 'triangle';
+    clickOsc.frequency.setValueAtTime(1600, startTime);
+    clickOsc.frequency.exponentialRampToValueAtTime(320, startTime + 0.007);
 
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(pitch, startTime);
-    osc.frequency.exponentialRampToValueAtTime(pitch * 0.8, startTime + 0.08);
+    clickGain.gain.setValueAtTime(0.0001, startTime);
+    clickGain.gain.linearRampToValueAtTime(0.08, startTime + 0.001);
+    clickGain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.007);
 
-    gain.gain.setValueAtTime(0.0001, startTime);
-    gain.gain.linearRampToValueAtTime(0.12, startTime + 0.004);
-    gain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.08);
+    clickOsc.connect(clickGain);
+    clickGain.connect(masterDest);
 
-    osc.connect(gain);
-    gain.connect(getMasterIn(audioCtx));
+    // Слой 2: Основной фундаментный тон радиолокатора
+    const osc1 = audioCtx.createOscillator();
+    const gain1 = audioCtx.createGain();
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(pitch, startTime);
+    osc1.frequency.exponentialRampToValueAtTime(pitch * 0.82, startTime + 0.075);
 
-    osc.start(startTime);
-    osc.stop(startTime + 0.09);
+    gain1.gain.setValueAtTime(0.0001, startTime);
+    gain1.gain.linearRampToValueAtTime(0.10, startTime + 0.003);
+    gain1.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.075);
 
-    osc.onended = () => {
-      osc.disconnect();
-      gain.disconnect();
+    osc1.connect(gain1);
+    gain1.connect(masterDest);
+
+    // Слой 3: Стеклянно-металлический резонансный обертон колбы ЭЛТ (октава + мягкий колокольный спад)
+    const osc2 = audioCtx.createOscillator();
+    const gain2 = audioCtx.createGain();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(pitch * 2.0, startTime);
+    osc2.frequency.exponentialRampToValueAtTime(pitch * 1.95, startTime + 0.11);
+
+    gain2.gain.setValueAtTime(0.0001, startTime);
+    gain2.gain.linearRampToValueAtTime(0.045, startTime + 0.004);
+    gain2.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.11);
+
+    osc2.connect(gain2);
+    gain2.connect(masterDest);
+    if (skyEcho) {
+      gain2.connect(skyEcho);
+    }
+
+    // Запуск узлов
+    clickOsc.start(startTime);
+    clickOsc.stop(startTime + 0.009);
+
+    osc1.start(startTime);
+    osc1.stop(startTime + 0.08);
+
+    osc2.start(startTime);
+    osc2.stop(startTime + 0.12);
+
+    osc2.onended = () => {
+      clickOsc.disconnect();
+      clickGain.disconnect();
+      osc1.disconnect();
+      gain1.disconnect();
+      osc2.disconnect();
+      gain2.disconnect();
     };
   };
 
