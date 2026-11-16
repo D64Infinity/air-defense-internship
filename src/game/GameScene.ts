@@ -108,8 +108,8 @@ export class GameScene extends Phaser.Scene {
     this.radarRender.reset();
 
     // Разблокировка Web Audio по первому клику или клавише (требование браузеров)
-    this.input.on('pointerdown', () => this.soundSystem.resume());
-    this.input.keyboard?.on('keydown', () => this.soundSystem.resume());
+    this.input.once('pointerdown', () => this.soundSystem.resume());
+    this.input.keyboard?.once('keydown', () => this.soundSystem.resume());
 
     // 3. Панель консоли оператора и система оперативных оповещений
     this.hud = createHud(this, {

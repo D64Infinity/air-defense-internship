@@ -39,4 +39,5 @@ body {
 
 canvas {
   display: block;
+  image-rendering: -webkit-optimize-contrast;
 }

@@ -130,13 +130,20 @@ export function createGameOverOverlay(
   modalGraphics.lineTo(cx + halfW - 36, cy + 128);
   modalGraphics.strokePath();
 
+  // Базовый стиль шрифта для модального окна поражения
+  const modalTextStyle = {
+    fontFamily: '"Cascadia Mono", Consolas, monospace',
+    padding: { left: 2, right: 2, top: 1, bottom: 1 },
+    resolution: GAME_CONFIG.textResolution,
+  };
+
   // Тактические маркеры в углах окна
   const tagText = scene.add.text(
     cx - halfW + 24,
     cy - halfH + 16,
     '[ ТРЕВОГА ]',
     {
-      fontFamily: 'Consolas, monospace',
+      ...modalTextStyle,
       fontSize: '11px',
       color: '#f87171',
       fontStyle: 'bold',
@@ -148,7 +155,7 @@ export function createGameOverOverlay(
     cy - halfH + 16,
     'КОД: 0xDEFEAT',
     {
-      fontFamily: 'Consolas, monospace',
+      ...modalTextStyle,
       fontSize: '11px',
       color: '#7f1d1d',
       fontStyle: 'bold',
@@ -160,7 +167,7 @@ export function createGameOverOverlay(
     cy - 180,
     'СИСТЕМА ОБОРОНЫ ПРОРВАНА\n[ БАЗА УНИЧТОЖЕНА ]',
     {
-      fontFamily: 'Consolas, monospace',
+      ...modalTextStyle,
       fontSize: '22px',
       color: '#ef4444',
       fontStyle: 'bold',
@@ -174,7 +181,7 @@ export function createGameOverOverlay(
     cy - 105,
     'ИТОГОВЫЙ СЧЁТ: 0',
     {
-      fontFamily: 'Consolas, monospace',
+      ...modalTextStyle,
       fontSize: '22px',
       color: '#facc15',
       fontStyle: 'bold',
@@ -186,7 +193,7 @@ export function createGameOverOverlay(
     cy - 72,
     'ЛУЧШИЙ РЕКОРД: 0',
     {
-      fontFamily: 'Consolas, monospace',
+      ...modalTextStyle,
       fontSize: '15px',
       color: '#86efac',
       fontStyle: 'bold',
@@ -198,7 +205,7 @@ export function createGameOverOverlay(
     cy - 44,
     'ПРОЙДЕНО ВОЛН: 1  |  МАКС. СЕРИЯ: 0',
     {
-      fontFamily: 'Consolas, monospace',
+      ...modalTextStyle,
       fontSize: '14px',
       color: '#94a3b8',
     },
@@ -209,7 +216,7 @@ export function createGameOverOverlay(
     cy + 6,
     '// ИТОГОВАЯ БОЕВАЯ СВОДКА ДЕЖУРСТВА //',
     {
-      fontFamily: 'Consolas, monospace',
+      ...modalTextStyle,
       fontSize: '11px',
       color: '#64748b',
       fontStyle: 'bold',
@@ -221,7 +228,7 @@ export function createGameOverOverlay(
     cy + 64,
     '',
     {
-      fontFamily: 'Consolas, monospace',
+      ...modalTextStyle,
       fontSize: '13px',
       color: '#cbd5e1',
       align: 'center',
@@ -246,7 +253,7 @@ export function createGameOverOverlay(
     cy + 185,
     'НАЧАТЬ ЗАНОВО (ПРОБЕЛ / R)',
     {
-      fontFamily: 'Consolas, monospace',
+      ...modalTextStyle,
       fontSize: '15px',
       color: '#ffffff',
       fontStyle: 'bold',
@@ -344,12 +351,18 @@ export function createPauseOverlay(
   );
   modal.setStrokeStyle(2, GAME_CONFIG.colors.modal.borderInfo, 0.9);
 
+  const pauseTextStyle = {
+    fontFamily: '"Cascadia Mono", Consolas, monospace',
+    padding: { left: 2, right: 2, top: 1, bottom: 1 },
+    resolution: GAME_CONFIG.textResolution,
+  };
+
   const title = scene.add.text(
     width / 2,
     height / 2 - 85,
     '// ТАКТИЧЕСКАЯ ПАУЗА //',
     {
-      fontFamily: 'Consolas, monospace',
+      ...pauseTextStyle,
       fontSize: '20px',
       color: '#38bdf8',
       fontStyle: 'bold',
@@ -374,7 +387,7 @@ export function createPauseOverlay(
     height / 2 - 28,
     'ПРОДОЛЖИТЬ (P)',
     {
-      fontFamily: 'Consolas, monospace',
+      ...pauseTextStyle,
       fontSize: '13px',
       color: '#ffffff',
       fontStyle: 'bold',
@@ -403,7 +416,7 @@ export function createPauseOverlay(
     height / 2 + 18,
     'ИНСТРУКТАЖ / СПРАВКА',
     {
-      fontFamily: 'Consolas, monospace',
+      ...pauseTextStyle,
       fontSize: '13px',
       color: '#86efac',
       fontStyle: 'bold',
@@ -432,7 +445,7 @@ export function createPauseOverlay(
     height / 2 + 64,
     'НАЧАТЬ ЗАНОВО (R)',
     {
-      fontFamily: 'Consolas, monospace',
+      ...pauseTextStyle,
       fontSize: '13px',
       color: '#fca5a5',
       fontStyle: 'bold',
@@ -484,12 +497,18 @@ export function createBriefingOverlay(
   const modal = scene.add.rectangle(width / 2, height / 2, 560, 420, GAME_CONFIG.colors.modal.bgTerminal, 0.98);
   modal.setStrokeStyle(2, GAME_CONFIG.colors.modal.borderSuccess, 0.9);
 
+  const briefingTextStyle = {
+    fontFamily: '"Cascadia Mono", Consolas, monospace',
+    padding: { left: 2, right: 2, top: 1, bottom: 1 },
+    resolution: GAME_CONFIG.textResolution,
+  };
+
   const title = scene.add.text(
     width / 2,
     height / 2 - 170,
     '[ БОЕВОЙ ИНСТРУКТАЖ: СЕКТОР «РУБЕЖ» ]',
     {
-      fontFamily: 'Consolas, monospace',
+      ...briefingTextStyle,
       fontSize: '17px',
       color: '#86efac',
       fontStyle: 'bold',
@@ -508,7 +527,7 @@ export function createBriefingOverlay(
     let curX = x;
     for (const seg of segments) {
       const txt = scene.add.text(curX, y, seg.text, {
-        fontFamily: 'Consolas, monospace',
+        ...briefingTextStyle,
         fontSize: '11px',
         color: seg.color,
         fontStyle: seg.bold ? 'bold' : 'normal',
@@ -586,7 +605,7 @@ export function createBriefingOverlay(
     cy + 74,
     'УПРАВЛЕНИЕ:  [1] СВОЙ   [2] УГРОЗА   [3] ЛОЖНАЯ ЦЕЛЬ   [4] СКАН   [P] ПАУЗА',
     {
-      fontFamily: 'Consolas, monospace',
+      ...briefingTextStyle,
       fontSize: '11px',
       color: '#facc15',
       fontStyle: 'bold',
@@ -599,7 +618,7 @@ export function createBriefingOverlay(
   actionBtn.setInteractive({ useHandCursor: true });
 
   const actionText = scene.add.text(width / 2, cy + 155, 'ЗАСТУПИТЬ НА СМЕНУ (ПРОБЕЛ)', {
-    fontFamily: 'Consolas, monospace',
+    ...briefingTextStyle,
     fontSize: '13px',
     color: '#ffffff',
     fontStyle: 'bold',
@@ -683,12 +702,78 @@ export interface HudManager {
 }
 
 /**
+ * Процедурная генерация векторных тактических текстур (иконки ракеты и сканера)
+ */
+function ensureHudTextures(scene: Phaser.Scene): void {
+  if (!scene.textures.exists('icon_hud_missile')) {
+    const g = scene.make.graphics({ x: 0, y: 0 });
+    // Боевая ракета: обтекатель и оперение
+    g.fillStyle(0xfacc15, 1);
+    g.beginPath();
+    g.moveTo(11, 2);
+    g.lineTo(14, 7);
+    g.lineTo(14, 15);
+    g.lineTo(18, 18);
+    g.lineTo(14, 17);
+    g.lineTo(13, 19);
+    g.lineTo(9, 19);
+    g.lineTo(8, 17);
+    g.lineTo(4, 18);
+    g.lineTo(8, 15);
+    g.lineTo(8, 7);
+    g.closePath();
+    g.fillPath();
+
+    // Яркий контур
+    g.lineStyle(1, 0xffffff, 0.9);
+    g.strokePath();
+
+    // Сопловое микро-пламя
+    g.fillStyle(0x38bdf8, 0.95);
+    g.fillRect(10, 19, 2, 2);
+
+    g.generateTexture('icon_hud_missile', 22, 22);
+    g.destroy();
+  }
+
+  if (!scene.textures.exists('icon_hud_scan')) {
+    const g = scene.make.graphics({ x: 0, y: 0 });
+    // Радиоволновые дуги
+    g.lineStyle(1.8, 0x38bdf8, 0.95);
+    g.beginPath();
+    g.arc(11, 15, 10, Phaser.Math.DegToRad(-145), Phaser.Math.DegToRad(-35), false);
+    g.strokePath();
+
+    g.lineStyle(1.5, 0x38bdf8, 0.65);
+    g.beginPath();
+    g.arc(11, 15, 6, Phaser.Math.DegToRad(-145), Phaser.Math.DegToRad(-35), false);
+    g.strokePath();
+
+    // Излучатель в центре
+    g.fillStyle(0xd4ffea, 1);
+    g.fillCircle(11, 15, 2.2);
+
+    // Ножка антенны
+    g.lineStyle(1.5, 0x38bdf8, 0.85);
+    g.beginPath();
+    g.moveTo(8, 20);
+    g.lineTo(11, 16);
+    g.lineTo(14, 20);
+    g.strokePath();
+
+    g.generateTexture('icon_hud_scan', 22, 22);
+    g.destroy();
+  }
+}
+
+/**
  * Фабрика консоли оператора и кнопок управления
  */
 export function createHud(
   scene: Phaser.Scene,
   callbacks: HudCallbacks,
 ): HudManager {
+  ensureHudTextures(scene);
   const { colors } = GAME_CONFIG;
   const panelX = 640;
   const panelY = 32;
@@ -707,12 +792,28 @@ export function createHud(
   // Разделительные линии
   hudGraphics.lineStyle(1, colors.hudBorder, 0.5);
   hudGraphics.beginPath();
-  hudGraphics.moveTo(panelX + 16, panelY + 125);
-  hudGraphics.lineTo(panelX + panelW - 16, panelY + 125);
-  hudGraphics.moveTo(panelX + 16, panelY + 284);
-  hudGraphics.lineTo(panelX + panelW - 16, panelY + 284);
-  hudGraphics.moveTo(panelX + 16, panelY + 452);
-  hudGraphics.lineTo(panelX + panelW - 16, panelY + 452);
+  hudGraphics.moveTo(panelX + 16, 168);
+  hudGraphics.lineTo(panelX + panelW - 16, 168);
+  hudGraphics.moveTo(panelX + 16, 294);
+  hudGraphics.lineTo(panelX + panelW - 16, 294);
+  hudGraphics.moveTo(panelX + 16, 558);
+  hudGraphics.lineTo(panelX + panelW - 16, 558);
+  hudGraphics.strokePath();
+
+  // Приборная подложка блока боезапаса и сенсоров под кнопками взаимодействия
+  const ammoCardX = panelX + 16;
+  const ammoCardY = 498;
+  const ammoCardW = panelW - 32;
+  const ammoCardH = 48;
+  hudGraphics.fillStyle(0x061910, 0.75);
+  hudGraphics.fillRoundedRect(ammoCardX, ammoCardY, ammoCardW, ammoCardH, 4);
+  hudGraphics.lineStyle(1, colors.hudBorder, 0.7);
+  hudGraphics.strokeRoundedRect(ammoCardX, ammoCardY, ammoCardW, ammoCardH, 4);
+  // Вертикальный внутренний разделитель между ракетами и сканами
+  hudGraphics.lineStyle(1, colors.hudBorder, 0.5);
+  hudGraphics.beginPath();
+  hudGraphics.moveTo(ammoCardX + ammoCardW / 2, ammoCardY + 4);
+  hudGraphics.lineTo(ammoCardX + ammoCardW / 2, ammoCardY + ammoCardH - 4);
   hudGraphics.strokePath();
 
   // 2. Кнопка меню в левом верхнем углу (на фоне позади радара)
@@ -728,10 +829,12 @@ export function createHud(
     menuBtn.setInteractive({ useHandCursor: true });
 
     const menuText = scene.add.text(btnX, btnY, 'МЕНЮ (P)', {
-      fontFamily: 'Consolas, monospace',
+      fontFamily: '"Cascadia Mono", Consolas, monospace',
       fontSize: '13px',
       color: '#38bdf8',
       fontStyle: 'bold',
+      padding: { left: 2, right: 2, top: 1, bottom: 1 },
+      resolution: GAME_CONFIG.textResolution,
     });
     menuText.setOrigin(0.5);
     menuText.setDepth(21);
@@ -749,102 +852,83 @@ export function createHud(
 
   // 3. Текстовые элементы консоли
   const monoStyle: Phaser.Types.GameObjects.Text.TextStyle = {
-    fontFamily: 'Consolas, monospace',
+    fontFamily: '"Cascadia Mono", Consolas, monospace',
     fontSize: '13px',
     color: '#4ade80',
+    fontStyle: 'bold',
+    padding: { left: 2, right: 2, top: 1, bottom: 1 },
+    resolution: GAME_CONFIG.textResolution,
   };
 
-  const healthText = scene.add.text(660, 68, `ЦЕЛОСТНОСТЬ БАЗЫ: ${GAME_CONFIG.maxBaseHealth}%`, {
+  const healthText = scene.add.text(656, 46, `ЦЕЛОСТНОСТЬ БАЗЫ: ${GAME_CONFIG.maxBaseHealth}%`, {
     ...monoStyle,
-    fontSize: '12px',
+    fontSize: '13px',
     color: '#22c55e',
     fontStyle: 'bold',
   });
 
-  const scoreText = scene.add.text(660, 102, 'СЧЁТ: 0000', {
+  const scoreText = scene.add.text(656, 98, 'СЧЁТ: 0000', {
     ...monoStyle,
-    fontSize: '14px',
+    fontSize: '15px',
     color: '#facc15',
     fontStyle: 'bold',
   });
 
-  const highScoreText = scene.add.text(785, 102, 'РЕКОРД: 0', {
+  const highScoreText = scene.add.text(788, 98, 'РЕКОРД: 0', {
     ...monoStyle,
-    fontSize: '12px',
+    fontSize: '13px',
     color: '#cbd5e1',
+    fontStyle: 'bold',
   });
 
-  const creditsText = scene.add.text(660, 120, `КРЕДИТЫ: ${GAME_CONFIG.startCredits} CR`, {
+  const creditsText = scene.add.text(656, 118, `КРЕДИТЫ: ${GAME_CONFIG.startCredits} CR`, {
     ...monoStyle,
-    fontSize: '12px',
+    fontSize: '13px',
     color: '#38bdf8',
     fontStyle: 'bold',
   });
 
-  const waveText = scene.add.text(785, 120, 'ВОЛНА: 1', {
+  const waveText = scene.add.text(788, 118, 'ВОЛНА: 1', {
     ...monoStyle,
-    fontSize: '12px',
+    fontSize: '13px',
     color: '#38bdf8',
     fontStyle: 'bold',
   });
 
-  const streakText = scene.add.text(660, 137, 'СЕРИЯ: 0 (x1.0)', {
+  const streakText = scene.add.text(656, 138, 'СЕРИЯ: 0 (x1.0)', {
     ...monoStyle,
-    fontSize: '12px',
+    fontSize: '13px',
     color: '#86efac',
+    fontStyle: 'bold',
   });
 
-  const startAmmoBars = '|'.repeat(GAME_CONFIG.startInterceptors).padEnd(GAME_CONFIG.maxInterceptors, ' ');
-  const interceptorsText = scene.add.text(
-    660,
-    154,
-    `РАКЕТЫ: [${startAmmoBars}] ${GAME_CONFIG.startInterceptors}/${GAME_CONFIG.maxInterceptors}`,
-    {
-      ...monoStyle,
-      fontSize: '11px',
-      color: '#facc15',
-      fontStyle: 'bold',
-    },
-  );
-
-  const startScanStars = '*'.repeat(GAME_CONFIG.maxScansPerWave);
-  const scansText = scene.add.text(
-    785,
-    154,
-    `СКАН:   [${startScanStars}] ${GAME_CONFIG.maxScansPerWave}/${GAME_CONFIG.maxScansPerWave}`,
-    {
-      ...monoStyle,
-      fontSize: '11px',
-      color: '#38bdf8',
-      fontStyle: 'bold',
-    },
-  );
-
-  const targetTelemetryTitle = scene.add.text(660, 178, 'ОБЪЕКТ СЛЕЖЕНИЯ: НЕТ', {
+  const targetTelemetryTitle = scene.add.text(656, 175, 'ОБЪЕКТ СЛЕЖЕНИЯ: НЕТ', {
     ...monoStyle,
-    fontSize: '12px',
+    fontSize: '13px',
     color: '#facc15',
     fontStyle: 'bold',
   });
 
-  const targetTelemetryType = scene.add.text(660, 198, '', {
+  const targetTelemetryType = scene.add.text(656, 193, '', {
     ...monoStyle,
-    fontSize: '12px',
+    fontSize: '13px',
     color: '#94a3b8',
     fontStyle: 'bold',
   });
 
-  const targetTelemetryText = scene.add.text(660, 216, '', {
+  const targetTelemetryText = scene.add.text(656, 195, '', {
     ...monoStyle,
-    fontSize: '12px',
+    fontSize: '13px',
     color: '#cbd5e1',
-    lineSpacing: 3,
+    fontStyle: 'bold',
+    lineSpacing: 4,
   });
 
-  const feedbackText = scene.add.text(660, 452, '', {
+  const feedbackText = scene.add.text(656, 570, '', {
     ...monoStyle,
-    fontSize: '11px',
+    fontSize: '12px',
     fontStyle: 'bold',
+    wordWrap: { width: 263 },
   });
 
   // 3. Баннер волны и стартовые подсказки
@@ -860,6 +944,7 @@ export function createHud(
     fontSize: '28px',
     color: '#ffffff',
     fontStyle: 'bold',
+    resolution: GAME_CONFIG.textResolution,
   }).setOrigin(0.5);
 
   const subtitleText = scene.add.text(0, 30, '', {
@@ -867,6 +952,7 @@ export function createHud(
     fontSize: '16px',
     color: '#86efac',
     fontStyle: 'bold',
+    resolution: GAME_CONFIG.textResolution,
   }).setOrigin(0.5);
 
   const bonusText = scene.add.text(0, 46, '', {
@@ -874,6 +960,7 @@ export function createHud(
     fontSize: '16px',
     color: '#facc15',
     fontStyle: 'bold',
+    resolution: GAME_CONFIG.textResolution,
   }).setOrigin(0.5);
 
   waveContainer.add([bgBox, titleText, subtitleText, bonusText]);
@@ -890,6 +977,7 @@ export function createHud(
       padding: { x: 16, y: 7 },
       fontStyle: 'bold',
       align: 'center',
+      resolution: GAME_CONFIG.textResolution,
     },
   );
   notificationText.setOrigin(0.5);
@@ -905,17 +993,19 @@ export function createHud(
     label: string,
     color: number,
     onClick: () => void,
-    fontSize = '12px',
+    fontSize = '13px',
   ): ButtonItem {
     const bg = scene.add.rectangle(x + w / 2, y + h / 2, w, h, color, 0.45);
     bg.setStrokeStyle(1, color, 0.9);
     bg.setInteractive({ useHandCursor: true });
 
     const text = scene.add.text(x + w / 2, y + h / 2, label, {
-      fontFamily: 'Consolas, monospace',
+      fontFamily: '"Cascadia Mono", Consolas, monospace',
       fontSize,
       color: '#f8fafc',
       fontStyle: 'bold',
+      padding: { left: 2, right: 2, top: 1, bottom: 1 },
+      resolution: GAME_CONFIG.textResolution,
     });
     text.setOrigin(0.5);
 
@@ -942,14 +1032,15 @@ export function createHud(
     return { bg, text, setEnabled };
   }
 
-  const startY = 292;
-  const btnW = 255;
-  const btnH = 26;
-  const gap = 6;
+  const startY = 306;
+  const btnX = panelX + 16;
+  const btnW = panelW - 32;
+  const btnH = 30;
+  const gap = 7;
 
   const buttons = {
     friend: createButton(
-      660,
+      btnX,
       startY,
       btnW,
       btnH,
@@ -958,7 +1049,7 @@ export function createHud(
       () => callbacks.onDecision('friend'),
     ),
     threat: createButton(
-      660,
+      btnX,
       startY + (btnH + gap),
       btnW,
       btnH,
@@ -967,7 +1058,7 @@ export function createHud(
       () => callbacks.onDecision('threat'),
     ),
     ignore: createButton(
-      660,
+      btnX,
       startY + (btnH + gap) * 2,
       btnW,
       btnH,
@@ -976,7 +1067,7 @@ export function createHud(
       () => callbacks.onDecision('ignore'),
     ),
     scan: createButton(
-      660,
+      btnX,
       startY + (btnH + gap) * 3,
       btnW,
       btnH,
@@ -985,32 +1076,74 @@ export function createHud(
       () => callbacks.onScan(),
     ),
     buyMissile: createButton(
-      660,
+      btnX,
       startY + (btnH + gap) * 4,
-      132,
+      135,
       btnH,
       `[5] +РАКЕТА (${GAME_CONFIG.interceptorCost} CR)`,
       GAME_CONFIG.colors.btnSupply,
       () => callbacks.onBuyMissile(),
-      '10px',
+      '11px',
     ),
     buyScan: createButton(
-      660 + 132 + gap,
+      btnX + 135 + 8,
       startY + (btnH + gap) * 4,
-      117,
+      120,
       btnH,
       `[6] +СКАН (${GAME_CONFIG.scanCost} CR)`,
       GAME_CONFIG.colors.btnSupply,
       () => callbacks.onBuyScan(),
-      '10px',
+      '11px',
     ),
   };
 
+  // 4.5. Приборный блок наглядного отображения боезапаса и сканеров под кнопками взаимодействия
+  // Левая секция: Ракеты-перехватчики
+  const missileIcon = scene.add.image(ammoCardX + 18, ammoCardY + 24, 'icon_hud_missile');
+  scene.add.text(ammoCardX + 36, ammoCardY + 8, 'БОЕКОМПЛЕКТ', {
+    ...monoStyle,
+    fontSize: '10px',
+    color: '#94a3b8',
+    fontStyle: 'bold',
+  });
+  const ammoCountText = scene.add.text(
+    ammoCardX + 36,
+    ammoCardY + 21,
+    `${GAME_CONFIG.startInterceptors}/${GAME_CONFIG.maxInterceptors}`,
+    {
+      ...monoStyle,
+      fontSize: '17px',
+      color: '#facc15',
+      fontStyle: 'bold',
+    },
+  );
+
+  // Правая секция: Сканеры
+  const scanColX = ammoCardX + ammoCardW / 2 + 6;
+  const scanIcon = scene.add.image(scanColX + 18, ammoCardY + 24, 'icon_hud_scan');
+  scene.add.text(scanColX + 36, ammoCardY + 8, 'СКАНЕРЫ', {
+    ...monoStyle,
+    fontSize: '10px',
+    color: '#94a3b8',
+    fontStyle: 'bold',
+  });
+  const scanCountText = scene.add.text(
+    scanColX + 36,
+    ammoCardY + 21,
+    `${GAME_CONFIG.maxScansPerWave}/${GAME_CONFIG.maxScansPerWave}`,
+    {
+      ...monoStyle,
+      fontSize: '17px',
+      color: '#38bdf8',
+      fontStyle: 'bold',
+    },
+  );
+
   // 5. Отрисовка полосы здоровья
   const drawHealthBar = (baseHealth: number) => {
-    const barX = 660;
-    const barY = 90;
-    const barW = 255;
+    const barX = panelX + 16;
+    const barY = 72;
+    const barW = panelW - 32;
     const barH = 10;
 
     hudGraphics.lineStyle(1, colors.hudBorder, 0.9);
@@ -1051,13 +1184,13 @@ export function createHud(
     waveText.setText(`ВОЛНА: ${data.wave}`);
     highScoreText.setText(`РЕКОРД: ${data.highScore}`);
 
-    const ammoBars = '|'.repeat(data.interceptors).padEnd(GAME_CONFIG.maxInterceptors, ' ');
-    interceptorsText.setText(`РАКЕТЫ: [${ammoBars}] ${data.interceptors}/${GAME_CONFIG.maxInterceptors}`);
-    interceptorsText.setColor(data.interceptors > 1 ? '#facc15' : '#ef4444');
+    ammoCountText.setText(`${data.interceptors}/${GAME_CONFIG.maxInterceptors}`);
+    ammoCountText.setColor(data.interceptors > 1 ? '#facc15' : '#ef4444');
+    missileIcon.setAlpha(data.interceptors > 0 ? 1.0 : 0.4);
 
-    const scanStars = '*'.repeat(data.scansAvailable).padEnd(GAME_CONFIG.maxScansPerWave, ' ');
-    scansText.setText(`СКАН:   [${scanStars}] ${data.scansAvailable}/${GAME_CONFIG.maxScansPerWave}`);
-    scansText.setColor(data.scansAvailable > 0 ? '#38bdf8' : '#64748b');
+    scanCountText.setText(`${data.scansAvailable}/${GAME_CONFIG.maxScansPerWave}`);
+    scanCountText.setColor(data.scansAvailable > 0 ? '#38bdf8' : '#64748b');
+    scanIcon.setAlpha(data.scansAvailable > 0 ? 1.0 : 0.4);
 
     const canBuyMissile =
       data.interceptors < GAME_CONFIG.maxInterceptors &&
@@ -1089,6 +1222,7 @@ export function createHud(
       targetTelemetryTitle.setText('ОБЪЕКТ СЛЕЖЕНИЯ: НЕТ');
       targetTelemetryTitle.setColor('#94a3b8');
       targetTelemetryType.setText('');
+      targetTelemetryText.setY(195);
       targetTelemetryText.setText(
         'Кликните по вспыхнувшей\n' +
           'зелёной точке на радаре,\n' +
@@ -1152,6 +1286,7 @@ export function createHud(
     targetTelemetryType.setText(typeStr);
     targetTelemetryType.setColor(typeColor);
 
+    targetTelemetryText.setY(211);
     targetTelemetryText.setText(
       `СКОРОСТЬ:   ${t.speed} км/ч\n` +
         `КУРС:       ${t.headingDeg}°\n` +

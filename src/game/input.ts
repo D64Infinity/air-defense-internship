@@ -62,9 +62,9 @@ export interface GameInputActions {
 export function setupGameInputs(
   scene: Phaser.Scene,
   actions: GameInputActions,
-): void {
+): () => void {
   // Клик по экрану радара (зона левее консоли x < 640, исключая кнопку меню в левом верхнем углу)
-  scene.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+  const onPointerDown = (pointer: Phaser.Input.Pointer) => {
     if (
       actions.isGameOver() ||
       actions.isPaused() ||
@@ -75,9 +75,17 @@ export function setupGameInputs(
       return;
     }
     actions.onSelectRadarTarget(pointer.x, pointer.y);
-  });
+  };
 
-  if (!scene.input.keyboard) return;
+  scene.input.on('pointerdown', onPointerDown);
+
+  const keyBindings: Array<{ key: string; handler: () => void }> = [];
+
+  const bindKey = (key: string, handler: () => void) => {
+    if (!scene.input.keyboard) return;
+    scene.input.keyboard.on(key, handler);
+    keyBindings.push({ key, handler });
+  };
 
   const canAct = () =>
     !actions.isGameOver() &&
@@ -85,7 +93,7 @@ export function setupGameInputs(
     !actions.isBriefingOpen?.();
 
   const bindActiveKey = (key: string, callback: () => void) => {
-    scene.input.keyboard!.on(key, () => {
+    bindKey(key, () => {
       if (canAct()) callback();
     });
   };
@@ -101,8 +109,8 @@ export function setupGameInputs(
     }
   };
 
-  scene.input.keyboard.on('keydown-P', handleTogglePause);
-  scene.input.keyboard.on('keydown-ESC', handleTogglePause);
+  bindKey('keydown-P', handleTogglePause);
+  bindKey('keydown-ESC', handleTogglePause);
 
   // Классификация целей (1, 2, 3 / NumPad 1, 2, 3)
   bindActiveKey('keydown-ONE', () => actions.onDecision('friend'));
@@ -123,7 +131,7 @@ export function setupGameInputs(
   bindActiveKey('keydown-NUMPAD_SIX', () => actions.onBuyScan());
 
   // Пробел: закрытие инструктажа или перезапуск после поражения
-  scene.input.keyboard.on('keydown-SPACE', () => {
+  bindKey('keydown-SPACE', () => {
     if (actions.isBriefingOpen?.()) {
       actions.onCloseBriefing?.();
     } else if (actions.isGameOver()) {
@@ -132,9 +140,23 @@ export function setupGameInputs(
   });
 
   // Клавиша R: быстрый перезапуск из меню паузы или после поражения
-  scene.input.keyboard.on('keydown-R', () => {
+  bindKey('keydown-R', () => {
     if (actions.isPaused() || actions.isGameOver()) {
       actions.onRestart();
     }
   });
+
+  // Очистка подписок при перезапуске или закрытии сцены (защита от накопления слушателей)
+  const cleanup = () => {
+    scene.input.off('pointerdown', onPointerDown);
+    if (scene.input.keyboard) {
+      for (const { key, handler } of keyBindings) {
+        scene.input.keyboard.off(key, handler);
+      }
+    }
+    keyBindings.length = 0;
+  };
+
+  scene.events.once(Phaser.Scenes.Events.SHUTDOWN, cleanup);
+  return cleanup;
 }

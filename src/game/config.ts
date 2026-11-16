@@ -4,10 +4,11 @@ import { GAME_CONFIG } from './gameConfig';
 
 export function createGame(parent: string): Phaser.Game {
   const config: Phaser.Types.Core.GameConfig = {
-    type: Phaser.CANVAS,
+    type: Phaser.AUTO,
     parent,
     width: 960,
     height: 640,
+    roundPixels: true,
     backgroundColor: GAME_CONFIG.colors.canvasBg,
     scene: [GameScene],
     scale: {

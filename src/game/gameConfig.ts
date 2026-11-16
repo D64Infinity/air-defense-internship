@@ -3,6 +3,9 @@
  * Все ключевые числовые настройки, параметры целей и визуальная палитра.
  */
 export const GAME_CONFIG = {
+  // Разрешение растеризации шрифтов (суперсэмплинг для чёткости текста на мониторах)
+  textResolution: typeof window !== 'undefined' ? Math.max(Math.ceil(window.devicePixelRatio || 1), 2) : 2,
+
   // Геометрия дисплея радара
   radarX: 345,
   radarY: 320,

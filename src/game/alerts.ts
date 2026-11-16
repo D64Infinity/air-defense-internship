@@ -47,17 +47,21 @@ export function createAlertManager(scene: Phaser.Scene): AlertManager {
 
   const alertBg = scene.add.graphics();
   const alertTitleText = scene.add.text(0, -9, '', {
-    fontFamily: 'Consolas, monospace',
+    fontFamily: '"Cascadia Mono", Consolas, monospace',
     fontSize: '15px',
     color: GAME_CONFIG.colors.text.white,
     fontStyle: 'bold',
+    padding: { left: 2, right: 2, top: 1, bottom: 1 },
+    resolution: GAME_CONFIG.textResolution,
   }).setOrigin(0.5);
 
   const alertOutcomeText = scene.add.text(0, 13, '', {
-    fontFamily: 'Consolas, monospace',
+    fontFamily: '"Cascadia Mono", Consolas, monospace',
     fontSize: '13px',
     color: GAME_CONFIG.colors.text.friendlyBonus,
     fontStyle: 'bold',
+    padding: { left: 2, right: 2, top: 1, bottom: 1 },
+    resolution: GAME_CONFIG.textResolution,
   }).setOrigin(0.5);
 
   alertContainer.add([alertBg, alertTitleText, alertOutcomeText]);
