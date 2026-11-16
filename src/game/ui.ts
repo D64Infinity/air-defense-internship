@@ -584,22 +584,22 @@ export function createBriefingOverlay(
   // 1. Угрозы (красный акцент)
   addRow(startX, cy - 156, [
     { text: '• УГРОЗЫ: ', color: '#ef4444', bold: true },
-    { text: 'Крылатые ракеты (прямой курс / доворот) и бомбардировщики.', color: '#e2e8f0' },
+    { text: 'Ракеты (ловкие, средний ЭПР) и бомбардировщики (высокий ЭПР) врага.', color: '#e2e8f0' },
   ]);
   addRow(startX, cy - 132, [
     { text: '  ДЕЙСТВИЕ: ', color: '#94a3b8' },
     { text: 'УНИЧТОЖИТЬ [2]', color: '#f87171', bold: true },
-    { text: ' (требует ракеты-перехватчики)', color: '#94a3b8' },
+    { text: ' (требует боекомплект)', color: '#94a3b8' },
   ]);
 
   // 2. Союзники (зелёный акцент)
   addRow(startX, cy - 102, [
     { text: '• СОЮЗНИКИ: ', color: '#4ade80', bold: true },
-    { text: 'Зелёные метки и юниты с сильным сигналом — свои борта.', color: '#e2e8f0' },
+    { text: 'Борта с плавным курсом и очень высоким ЭПР.', color: '#e2e8f0' },
   ]);
   addRow(startX, cy - 78, [
     { text: '  ДЕЙСТВИЕ: ПОМЕТКА ', color: '#94a3b8' },
-    { text: 'ПРОПУСТИТЬ [1]', color: '#4ade80', bold: true },
+    { text: 'СОЮЗНИК [1]', color: '#4ade80', bold: true },
     { text: ' (огонь по своим карается ', color: '#94a3b8' },
     { text: `ШТРАФОМ ${GAME_CONFIG.creditsFriendlyFirePenalty} CR`, color: '#f87171', bold: true },
     { text: '!)', color: '#94a3b8' },
@@ -612,7 +612,7 @@ export function createBriefingOverlay(
   ]);
   addRow(startX, cy - 24, [
     { text: '  ДЕЙСТВИЕ: ПОМЕТКА ', color: '#94a3b8' },
-    { text: 'ЛОЖНАЯ ЦЕЛЬ [3]', color: '#cbd5e1', bold: true },
+    { text: 'ЛОВУШКА [3]', color: '#cbd5e1', bold: true },
     { text: ' (не упускайте пустышки)', color: '#94a3b8' },
   ]);
 
@@ -621,7 +621,8 @@ export function createBriefingOverlay(
     { text: '• СЕНСОРЫ: ', color: '#38bdf8', bold: true },
     { text: 'Клавиша ', color: '#e2e8f0' },
     { text: '[4] СКАН', color: '#38bdf8', bold: true },
-    { text: ` раскрывает тип цели за ${GAME_CONFIG.scanDuration} с (расходует заряд).`, color: '#e2e8f0' },
+    { text: ` раскрывает тип цели за ${GAME_CONFIG.scanDuration} с `, color: '#e2e8f0' },
+    { text: `(требует сканер).`, color: '#94a3b8' },
   ]);
   addRow(startX, cy + 34, [
     { text: '• СНАБЖЕНИЕ: ', color: '#2dd4bf', bold: true },
@@ -1339,6 +1340,75 @@ export function createHud(
     return { bg, text, setEnabled };
   }
 
+  function createSupplyButton(
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    keyNum: string,
+    iconKey: 'icon_hud_missile' | 'icon_hud_scan',
+    cost: number,
+    color: number,
+    onClick: () => void,
+  ): ButtonItem {
+    const bg = scene.add.rectangle(x + w / 2, y + h / 2, w, h, color, 0.45);
+    bg.setStrokeStyle(1, color, 0.9);
+    bg.setInteractive({ useHandCursor: true });
+
+    const btnTextStyle: Phaser.Types.GameObjects.Text.TextStyle = {
+      fontFamily: '"Cascadia Mono", Consolas, monospace',
+      fontSize: '11px',
+      color: '#f8fafc',
+      fontStyle: 'bold',
+      padding: { left: 1, right: 1, top: 1, bottom: 1 },
+      resolution: GAME_CONFIG.textResolution,
+    };
+
+    const prefix = scene.add.text(0, y + h / 2, `[${keyNum}] +1`, btnTextStyle);
+    prefix.setOrigin(0, 0.5);
+
+    const icon = scene.add.image(0, y + h / 2, iconKey);
+    icon.setScale(0.72);
+    icon.setOrigin(0.5, 0.5);
+
+    const costText = scene.add.text(0, y + h / 2, `(${cost} CR)`, btnTextStyle);
+    costText.setOrigin(0, 0.5);
+
+    const iconEffectiveW = Math.round(22 * 0.72);
+    const itemGap = 3;
+    const totalW = prefix.width + itemGap + iconEffectiveW + itemGap + costText.width;
+    const startX = Math.round(x + (w - totalW) / 2);
+
+    prefix.setX(startX);
+    icon.setX(startX + prefix.width + itemGap + Math.round(iconEffectiveW / 2));
+    costText.setX(startX + prefix.width + itemGap + iconEffectiveW + itemGap);
+
+    let isEnabled = false;
+
+    bg.on('pointerover', () => {
+      if (isEnabled) bg.setFillStyle(color, 0.85);
+    });
+
+    bg.on('pointerout', () => {
+      if (isEnabled) bg.setFillStyle(color, 0.45);
+    });
+
+    bg.on('pointerdown', () => {
+      if (isEnabled) onClick();
+    });
+
+    const setEnabled = (enabled: boolean) => {
+      isEnabled = enabled;
+      const alpha = enabled ? 1.0 : 0.3;
+      bg.setAlpha(alpha);
+      prefix.setAlpha(alpha);
+      icon.setAlpha(alpha);
+      costText.setAlpha(alpha);
+    };
+
+    return { bg, text: prefix, setEnabled };
+  }
+
   const startY = 306;
   const btnX = panelX + 16;
   const btnW = panelW - 32;
@@ -1382,25 +1452,27 @@ export function createHud(
       GAME_CONFIG.colors.btnScan,
       () => callbacks.onScan(),
     ),
-    buyMissile: createButton(
+    buyMissile: createSupplyButton(
       btnX,
       startY + (btnH + gap) * 4,
-      135,
+      128,
       btnH,
-      `[5] +РАКЕТА (${GAME_CONFIG.interceptorCost} CR)`,
+      '5',
+      'icon_hud_missile',
+      GAME_CONFIG.interceptorCost,
       GAME_CONFIG.colors.btnSupply,
       () => callbacks.onBuyMissile(),
-      '11px',
     ),
-    buyScan: createButton(
-      btnX + 135 + 8,
+    buyScan: createSupplyButton(
+      btnX + 128 + gap,
       startY + (btnH + gap) * 4,
-      120,
+      128,
       btnH,
-      `[6] +СКАН (${GAME_CONFIG.scanCost} CR)`,
+      '6',
+      'icon_hud_scan',
+      GAME_CONFIG.scanCost,
       GAME_CONFIG.colors.btnSupply,
       () => callbacks.onBuyScan(),
-      '11px',
     ),
   };
 

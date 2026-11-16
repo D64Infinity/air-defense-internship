@@ -763,15 +763,10 @@ export class GameScene extends Phaser.Scene {
       }
       this.waveHadFlaws = false;
 
-      let threatIntel = '';
-      if (this.wave === 2) {
-        threatIntel = '\nВНИМАНИЕ: ЗАФИКСИРОВАНЫ КРЫЛАТЫЕ РАКЕТЫ С ДОВОРОТОМ!';
-      }
-
       this.soundSystem.playWaveTransition(isCleanWave);
       this.updateScoreBoard();
       this.showWaveBanner(
-        `ВОЛНА ${this.wave}\nСНАБЖЕНИЕ: +${addedAmmo} РАКЕТЫ | +${waveCredits} CR | СКАНЫ ${GAME_CONFIG.maxScansPerWave}/${GAME_CONFIG.maxScansPerWave}${cleanBonusText}${threatIntel}`,
+        `ВОЛНА ${this.wave}\nСНАБЖЕНИЕ: +${addedAmmo} РАКЕТЫ | +${waveCredits} CR | СКАНЫ ${GAME_CONFIG.maxScansPerWave}/${GAME_CONFIG.maxScansPerWave}${cleanBonusText}`,
       );
     }
   }
