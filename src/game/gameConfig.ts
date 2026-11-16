@@ -258,4 +258,5 @@ export interface GameTarget {
   decoyPassesThroughBase?: boolean; // Пролетает ли ловушка сквозь базу
   hasPassedBase?: boolean; // Флаг фиксации пролёта через базу
   hasBombedBase?: boolean; // Флаг: бомбардировщик уже сбросил бомбы на базу
+  isSalvo?: boolean; // Флаг: ракета принадлежит массированному тактическому налёту
 }

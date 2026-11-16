@@ -75,7 +75,6 @@ export class GameScene extends Phaser.Scene {
 
   // Таймеры эффектов
   private baseFlashTimer = 0;
-  private warningSector: { angle: number; timer: number; duration: number } | null = null;
 
   constructor() {
     super('GameScene');
@@ -90,7 +89,6 @@ export class GameScene extends Phaser.Scene {
     this.armory.reset();
     this.stats.reset();
     this.tacticalEvents.reset();
-    this.warningSector = null;
     this.wave = 1;
     this.waveTargetsToSpawn = GAME_CONFIG.waveTargetsBase;
     this.waveHadFlaws = false;
@@ -187,26 +185,13 @@ export class GameScene extends Phaser.Scene {
     // 1. Физика целей и спавн новых бортов до расчёта луча радара
     this.updateTargets(dt);
 
-    if (this.warningSector) {
-      this.warningSector.timer -= dt;
-      if (this.warningSector.timer <= 0) {
-        this.warningSector = null;
-      }
-    }
-
     // Обработка динамических тактических событий (массированные залпы)
     const eventResult = this.tacticalEvents.update(dt, {
       wave: this.wave,
       activeTargetsCount: this.targets.length,
       targetsLeftInWave: this.waveTargetsToSpawn,
+      activeTargets: this.targets,
     });
-    if (eventResult.warningSector) {
-      this.warningSector = {
-        angle: eventResult.warningSector.angle,
-        timer: eventResult.warningSector.duration,
-        duration: eventResult.warningSector.duration,
-      };
-    }
     if (eventResult.playAlarmSound) {
       this.soundSystem.playSalvoAlert();
     }
@@ -242,7 +227,7 @@ export class GameScene extends Phaser.Scene {
       timeNow: this.time.now,
       interceptors: this.interceptorManager.activeUnits,
       explosions: this.explosions,
-      warningSector: this.warningSector,
+      warningArc: eventResult.warningArc,
     });
     this.hud.updateFeedback(dt);
     this.updateTelemetry();

@@ -8,13 +8,13 @@ import type { TargetSpawner } from './spawner';
 export const EVENT_CONFIG = {
   salvo: {
     minWave: 3, // Стартовая волна для появления ивента
-    delayMin: 4.5, // Минимальная задержка от старта волны (сек)
-    delayMax: 7.5, // Максимальная задержка от старта волны (сек)
+    delayMin: 3.5, // Минимальная задержка до включения раннего оповещения (сек)
+    delayMax: 6.5, // Максимальная задержка до включения раннего оповещения (сек)
+    earlyWarningLeadTime: 2.0, // За 2.0 секунды ДО прилёта включается сирена и дуга на границе
     intervalBetweenMissiles: 0.75, // Интервал между ракетами в пачке (сек)
     wave3Count: 2, // 2 ракеты на 3-й волне
     wave4PlusCount: 3, // 3 ракеты на 4+ волнах
     fanSpreadRad: 0.09, // Угловой веерный разброс траекторий (~5 градусов)
-    warningDuration: 2.5, // Длительность красной подсветки сектора угрозы (сек)
     startChanceWave4: 0.10, // 10% вероятность на первой проверке (волна 4)
   },
 } as const;
@@ -26,14 +26,15 @@ export interface TacticalEventContext {
   wave: number;
   activeTargetsCount: number;
   targetsLeftInWave: number;
+  activeTargets: readonly GameTarget[];
 }
 
 /**
- * Описание сектора предупреждения о залпе
+ * Описание дуги предупреждения и сопровождения налёта на границе радара
  */
-export interface SalvoWarningSector {
+export interface SalvoWarningArc {
   angle: number;
-  duration: number;
+  phase: 'warning' | 'active'; // 'warning' = 2 сек до прилёта, 'active' = ракеты в воздухе до уничтожения
 }
 
 /**
@@ -41,7 +42,7 @@ export interface SalvoWarningSector {
  */
 export interface TacticalEventStepResult {
   spawnedTargets: GameTarget[];
-  warningSector?: SalvoWarningSector;
+  warningArc: SalvoWarningArc | null;
   playAlarmSound?: boolean;
 }
 
@@ -82,15 +83,18 @@ export interface TacticalEventManager {
 /**
  * Внутреннее состояние прогрессивного события «Массированный залп» (Salvo Alert)
  */
+type SalvoPhase = 'idle' | 'scheduled' | 'warning' | 'spawning' | 'tracking';
+
 interface SalvoState {
-  scheduled: boolean;
+  phase: SalvoPhase;
   delayTimer: number;
-  active: boolean;
+  warningTimer: number;
   missilesLeftToSpawn: number;
   launchTimer: number;
   baseAngle: number;
   currentSalvoIndex: number;
   totalSalvoSize: number;
+  trackedTargetIds: Set<number>;
 }
 
 /**
@@ -102,20 +106,21 @@ export function createTacticalEventsManager(
   let wavesSinceLastSalvo = 0;
 
   let salvo: SalvoState = {
-    scheduled: false,
+    phase: 'idle',
     delayTimer: 0,
-    active: false,
+    warningTimer: 0,
     missilesLeftToSpawn: 0,
     launchTimer: 0,
     baseAngle: 0,
     currentSalvoIndex: 0,
     totalSalvoSize: 0,
+    trackedTargetIds: new Set<number>(),
   };
 
   const reset = (): void => {
-    salvo.scheduled = false;
-    salvo.active = false;
+    salvo.phase = 'idle';
     salvo.missilesLeftToSpawn = 0;
+    salvo.trackedTargetIds.clear();
     wavesSinceLastSalvo = 0;
   };
 
@@ -123,9 +128,9 @@ export function createTacticalEventsManager(
    * Инициализация событий в начале новой волны
    */
   const startWave = (wave: number, targetsLeftInWave: number): void => {
-    salvo.scheduled = false;
-    salvo.active = false;
+    salvo.phase = 'idle';
     salvo.missilesLeftToSpawn = 0;
+    salvo.trackedTargetIds.clear();
 
     // Оценка запуска события «Массированный залп»
     let shouldTrigger = false;
@@ -144,12 +149,12 @@ export function createTacticalEventsManager(
     }
 
     if (shouldTrigger) {
-      salvo.scheduled = true;
+      salvo.phase = 'scheduled';
       salvo.delayTimer = Phaser.Math.FloatBetween(
         EVENT_CONFIG.salvo.delayMin,
         EVENT_CONFIG.salvo.delayMax,
       );
-      salvo.active = false;
+      salvo.warningTimer = EVENT_CONFIG.salvo.earlyWarningLeadTime;
 
       const requestedCount =
         wave === 3
@@ -165,6 +170,7 @@ export function createTacticalEventsManager(
       salvo.launchTimer = 0;
       salvo.baseAngle = Phaser.Math.FloatBetween(0, Math.PI * 2);
       salvo.currentSalvoIndex = 0;
+      salvo.trackedTargetIds.clear();
     }
   };
 
@@ -176,31 +182,35 @@ export function createTacticalEventsManager(
     context: TacticalEventContext,
   ): TacticalEventStepResult => {
     const spawnedTargets: GameTarget[] = [];
-    let warningSector: SalvoWarningSector | undefined = undefined;
+    let warningArc: SalvoWarningArc | null = null;
     let playAlarmSound: boolean | undefined = undefined;
 
-    // 1. Фаза ожидания запуска запланированного залпа
-    if (salvo.scheduled && !salvo.active) {
+    // 1. Ожидание времени до включения раннего оповещения
+    if (salvo.phase === 'scheduled') {
       salvo.delayTimer -= dt;
       if (
         salvo.delayTimer <= 0 &&
         context.targetsLeftInWave >= salvo.missilesLeftToSpawn
       ) {
-        salvo.scheduled = false;
-        salvo.active = true;
-        salvo.launchTimer = 0; // Первый пуск немедленно
-
-        // Вместо текстового баннера активируем звуковой ревун и визуальную подсветку сектора
-        playAlarmSound = true;
-        warningSector = {
-          angle: salvo.baseAngle,
-          duration: EVENT_CONFIG.salvo.warningDuration,
-        };
+        salvo.phase = 'warning';
+        salvo.warningTimer = EVENT_CONFIG.salvo.earlyWarningLeadTime; // 2.0 секунды до появления ракет
+        playAlarmSound = true; // За 2 секунды раньше звучит сигнал тревоги
       }
     }
 
-    // 2. Фаза активного веерного отстрела ракет пачки
-    if (salvo.active) {
+    // 2. Фаза раннего предупреждения: тревожная дуга на границе радара и сигнал тревоги
+    if (salvo.phase === 'warning') {
+      warningArc = { angle: salvo.baseAngle, phase: 'warning' };
+      salvo.warningTimer -= dt;
+      if (salvo.warningTimer <= 0) {
+        salvo.phase = 'spawning';
+        salvo.launchTimer = 0; // Первый пуск немедленно по истечении 2 секунд
+      }
+    }
+
+    // 3. Фаза активного веерного отстрела ракет пачки
+    if (salvo.phase === 'spawning') {
+      warningArc = { angle: salvo.baseAngle, phase: 'active' };
       salvo.launchTimer -= dt;
 
       if (salvo.launchTimer <= 0 && salvo.missilesLeftToSpawn > 0) {
@@ -223,6 +233,8 @@ export function createTacticalEventsManager(
 
         const missileAngle = salvo.baseAngle + angleOffset;
         const target = spawner.spawnMissileAtAngle(missileAngle, context.wave);
+        target.isSalvo = true;
+        salvo.trackedTargetIds.add(target.id);
         spawnedTargets.push(target);
 
         salvo.currentSalvoIndex++;
@@ -231,14 +243,30 @@ export function createTacticalEventsManager(
         if (salvo.missilesLeftToSpawn > 0) {
           salvo.launchTimer = EVENT_CONFIG.salvo.intervalBetweenMissiles;
         } else {
-          salvo.active = false;
+          salvo.phase = 'tracking'; // Все ракеты вылетели, переходим к отслеживанию налёта
         }
+      }
+    }
+
+    // 4. Фаза сопровождения налёта: мягкая красная дуга на границе сохраняется, пока ракеты не уничтожены
+    if (salvo.phase === 'tracking') {
+      const hasAliveMissiles = context.activeTargets.some((t) =>
+        salvo.trackedTargetIds.has(t.id),
+      );
+
+      if (hasAliveMissiles) {
+        warningArc = { angle: salvo.baseAngle, phase: 'active' };
+      } else {
+        // Все ракеты налёта уничтожены либо нейтрализованы — налёт пройден!
+        salvo.phase = 'idle';
+        salvo.trackedTargetIds.clear();
+        warningArc = null;
       }
     }
 
     return {
       spawnedTargets,
-      warningSector,
+      warningArc,
       playAlarmSound,
     };
   };
