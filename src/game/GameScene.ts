@@ -499,7 +499,7 @@ export class GameScene extends Phaser.Scene {
         this.stats.recordMissileIntercept();
         this.armory.addCredits(GAME_CONFIG.creditsPerMissile);
         this.showFeedback(
-          `[ВЕРНО!] РАКЕТА СБИТА (+${points}, +${GAME_CONFIG.creditsPerMissile} CR)${rangeTag}`,
+          `[ВЕРНО!] КРЫЛАТАЯ РАКЕТА СБИТА (+${points}, +${GAME_CONFIG.creditsPerMissile} CR)${rangeTag}`,
           GAME_CONFIG.colors.text.success,
         );
         this.alerts.showInterceptAlert({
@@ -681,7 +681,7 @@ export class GameScene extends Phaser.Scene {
         this.scoring.resetStreak();
         this.applyBaseDamage(
           GAME_CONFIG.damageMissile,
-          `[УРОН!] ПРОПУЩЕНА РАКЕТА! (-${GAME_CONFIG.damageMissile} HP)`,
+          `[УРОН!] ПРОПУЩЕНА КРЫЛАТАЯ РАКЕТА! (-${GAME_CONFIG.damageMissile} HP)`,
         );
         break;
 
@@ -763,10 +763,15 @@ export class GameScene extends Phaser.Scene {
       }
       this.waveHadFlaws = false;
 
+      let threatIntel = '';
+      if (this.wave === 2) {
+        threatIntel = '\nВНИМАНИЕ: ЗАФИКСИРОВАНЫ КРЫЛАТЫЕ РАКЕТЫ С ДОВОРОТОМ!';
+      }
+
       this.soundSystem.playWaveTransition(isCleanWave);
       this.updateScoreBoard();
       this.showWaveBanner(
-        `ВОЛНА ${this.wave}\nСНАБЖЕНИЕ: +${addedAmmo} РАКЕТЫ | +${waveCredits} CR | СКАНЫ ${GAME_CONFIG.maxScansPerWave}/${GAME_CONFIG.maxScansPerWave}${cleanBonusText}`,
+        `ВОЛНА ${this.wave}\nСНАБЖЕНИЕ: +${addedAmmo} РАКЕТЫ | +${waveCredits} CR | СКАНЫ ${GAME_CONFIG.maxScansPerWave}/${GAME_CONFIG.maxScansPerWave}${cleanBonusText}${threatIntel}`,
       );
     }
   }

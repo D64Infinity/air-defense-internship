@@ -36,8 +36,14 @@ export function findTargetNear(
  * Таблица стратегий поведения ИИ при манёвре для каждого типа цели
  */
 export const TARGET_MANEUVERS: Record<TargetType, (target: GameTarget) => void> = {
-  missile: () => {
-    // Ракеты идут по прямолинейной траектории к базе без манёвров
+  missile: (target) => {
+    if (target.isManeuveringMissile) {
+      // Маневрирующий профиль крылатой ракеты:
+      // Активируем динамическое самонаведение на центр базы и включаем маршевый форсаж
+      target.homingToBase = true;
+      target.turnRate = 1.4; // скорость работы рулей (~80 град/сек)
+      target.speed = Math.round(target.speed * 1.25); // ускорение на рубеже атаки
+    }
   },
   decoy: () => {
     // Ловушки следуют заданной хордовой траектории
@@ -95,6 +101,32 @@ export function updateTargetMotion(target: GameTarget, dt: number): void {
     if (target.maneuverTimer <= 0) {
       target.hasManeuvered = true;
       executeTargetManeuver(target);
+    }
+  }
+
+  // 1.5. Пропорциональное самонаведение на центр базы для маневрирующей крылатой ракеты
+  // Решает проблему пролёта ракеты мимо базы: во время дуги разворота ракета постоянно
+  // корректирует целевой вектор к центру, гарантируя точное попадание
+  if (target.homingToBase) {
+    const currentAngleToBase = Math.atan2(
+      GAME_CONFIG.radarY - target.y,
+      GAME_CONFIG.radarX - target.x,
+    );
+    target.targetHeadingRad = currentAngleToBase;
+
+    // Если угол доворота практически совпал с направлением на базу (погрешность < 2°)
+    const angleDiff = Math.abs(
+      Phaser.Math.Angle.Wrap(target.headingRad - currentAngleToBase),
+    );
+    if (angleDiff < 0.035) {
+      target.headingRad = currentAngleToBase;
+      target.turnRate = 0;
+      target.homingToBase = false;
+      target.vx = Math.cos(target.headingRad) * target.speed;
+      target.vy = Math.sin(target.headingRad) * target.speed;
+      let deg = Math.round(Phaser.Math.RadToDeg(target.headingRad));
+      if (deg < 0) deg += 360;
+      target.headingDeg = deg;
     }
   }
 

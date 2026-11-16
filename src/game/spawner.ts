@@ -60,6 +60,7 @@ export function createSpawner(): TargetSpawner {
     let decoyPassesThroughBase: boolean | undefined = undefined;
     let turnRate = 0;
     let maneuverTimer: number | undefined = undefined;
+    let isManeuveringMissile: boolean | undefined = undefined;
 
     if (type === 'decoy') {
       // Ловушка движется по хордам (включая диаметральные диагонали через базу)
@@ -71,8 +72,23 @@ export function createSpawner(): TargetSpawner {
       heading = Math.atan2(exitY - y, exitX - x);
       decoyPassesThroughBase = Math.random() < 0.5;
     } else if (type === 'missile') {
-      // Ракета летит строго по прямой в центр базы без манёвров
-      heading = Math.atan2(GAME_CONFIG.radarY - y, GAME_CONFIG.radarX - x);
+      // Крылатая ракета имеет 2 профиля полёта:
+      // 1. Стандартный: прямолинейный скоростной заход в центр базы
+      // 2. Маневрирующий (со 2-й волны с шансом 45%): заход по фланговой дуге с последующим резким доворотом
+      const isManeuver = wave >= 2 && Math.random() < 0.45;
+      if (isManeuver) {
+        isManeuveringMissile = true;
+        const angleToCenter = Math.atan2(GAME_CONFIG.radarY - y, GAME_CONFIG.radarX - x);
+        const sign = Math.random() < 0.5 ? 1 : -1;
+        const flankOffset = Phaser.Math.FloatBetween(0.95, 1.3) * sign; // ~55..75 градусов в сторону
+        heading = angleToCenter + flankOffset;
+
+        // Скорость поворота рулей и таймер до выполнения доворота на базу
+        turnRate = 1.4;
+        maneuverTimer = Phaser.Math.FloatBetween(2.2, 3.4);
+      } else {
+        heading = Math.atan2(GAME_CONFIG.radarY - y, GAME_CONFIG.radarX - x);
+      }
     } else {
       // Корабли (бомбардировщик и союзник): начинают под углом и могут довернуть
       const angleToCenter = Math.atan2(GAME_CONFIG.radarY - y, GAME_CONFIG.radarX - x);
@@ -114,6 +130,7 @@ export function createSpawner(): TargetSpawner {
       maneuverTimer,
       signal,
       alpha: 0,
+      isManeuveringMissile,
       decoyPassesThroughBase,
     };
   };

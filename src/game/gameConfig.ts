@@ -78,12 +78,12 @@ export const GAME_CONFIG = {
   // Характеристики типов целей (скорости сбалансированы для честного времени реакции)
   targetTypes: {
     missile: {
-      label: 'Ракета',
+      label: 'Крылатая ракета',
       category: 'threat',
       weight: 35,
-      speedRange: [44, 58], // повышенная скорость: быстрее бомбардировщиков, пересекается с ловушками
+      speedRange: [42, 54], // высокая скорость (на манёвре доворота ускоряется)
       signalRange: [40, 75],
-      headingJitter: 0.0, // летит строго по прямой в центр базы
+      headingJitter: 0.0, // стандартный пуск идёт прямо в центр базы
     },
     bomber: {
       label: 'Бомбардировщик',
@@ -253,6 +253,8 @@ export interface GameTarget {
   isScanned?: boolean; // Раскрыт ли точный тип цели
   markedAs?: 'friend' | 'ignore' | null; // Пользовательская тактическая метка цели
   isTargeted?: boolean; // Флаг: цель уже атакована летящей ракетой ПВО
+  isManeuveringMissile?: boolean; // Ракета с траекторией флангового доворота
+  homingToBase?: boolean; // Активная фаза динамического наведения в центр базы
   decoyPassesThroughBase?: boolean; // Пролетает ли ловушка сквозь базу
   hasPassedBase?: boolean; // Флаг фиксации пролёта через базу
   hasBombedBase?: boolean; // Флаг: бомбардировщик уже сбросил бомбы на базу

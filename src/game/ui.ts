@@ -485,17 +485,58 @@ export function createBriefingOverlay(
   onClose: () => void,
 ): BriefingOverlay {
   const { width, height } = scene.scale;
+  const cx = Math.round(width / 2);
+  const cy = Math.round(height / 2);
+  const halfW = 320;
+  const halfH = 255;
+  const modalW = halfW * 2;
+  const modalH = halfH * 2;
+
   const container = scene.add.container(0, 0);
   container.setDepth(110);
   container.setVisible(false);
 
   // Полупрозрачный фон-затемнение
-  const darkBg = scene.add.rectangle(width / 2, height / 2, width, height, GAME_CONFIG.colors.modal.overlay, 0.92);
+  const darkBg = scene.add.rectangle(cx, cy, width, height, GAME_CONFIG.colors.modal.overlay, 0.92);
   darkBg.setInteractive();
 
-  // Модальное окно
-  const modal = scene.add.rectangle(width / 2, height / 2, 560, 420, GAME_CONFIG.colors.modal.bgTerminal, 0.98);
-  modal.setStrokeStyle(2, GAME_CONFIG.colors.modal.borderSuccess, 0.9);
+  // Графика модального терминального окна с тактическими уголками
+  const modalGraphics = scene.add.graphics();
+  modalGraphics.fillStyle(GAME_CONFIG.colors.modal.bgTerminal, 0.98);
+  modalGraphics.fillRect(cx - halfW, cy - halfH, modalW, modalH);
+
+  // Основной контур окна
+  modalGraphics.lineStyle(1.5, GAME_CONFIG.colors.modal.borderSuccess, 0.85);
+  modalGraphics.strokeRect(cx - halfW, cy - halfH, modalW, modalH);
+
+  // Тактические угловые скобки (Corner Reticles)
+  const corner = 16;
+  modalGraphics.lineStyle(2.5, GAME_CONFIG.colors.modal.borderSuccess, 1);
+  modalGraphics.beginPath();
+  // Top-left
+  modalGraphics.moveTo(cx - halfW, cy - halfH + corner);
+  modalGraphics.lineTo(cx - halfW, cy - halfH);
+  modalGraphics.lineTo(cx - halfW + corner, cy - halfH);
+  // Top-right
+  modalGraphics.moveTo(cx + halfW - corner, cy - halfH);
+  modalGraphics.lineTo(cx + halfW, cy - halfH);
+  modalGraphics.lineTo(cx + halfW, cy - halfH + corner);
+  // Bottom-left
+  modalGraphics.moveTo(cx - halfW, cy + halfH - corner);
+  modalGraphics.lineTo(cx - halfW, cy + halfH);
+  modalGraphics.lineTo(cx - halfW + corner, cy + halfH);
+  // Bottom-right
+  modalGraphics.moveTo(cx + halfW - corner, cy + halfH);
+  modalGraphics.lineTo(cx + halfW, cy + halfH);
+  modalGraphics.lineTo(cx + halfW, cy + halfH - corner);
+  modalGraphics.strokePath();
+
+  // Разделительная линия под заголовком
+  modalGraphics.lineStyle(1, GAME_CONFIG.colors.modal.dividerGreen, 0.9);
+  modalGraphics.beginPath();
+  modalGraphics.moveTo(cx - halfW + 30, cy - 186);
+  modalGraphics.lineTo(cx + halfW - 30, cy - 186);
+  modalGraphics.strokePath();
 
   const briefingTextStyle = {
     fontFamily: '"Cascadia Mono", Consolas, monospace',
@@ -504,12 +545,12 @@ export function createBriefingOverlay(
   };
 
   const title = scene.add.text(
-    width / 2,
-    height / 2 - 170,
+    cx,
+    cy - 210,
     '[ БОЕВОЙ ИНСТРУКТАЖ: СЕКТОР «РУБЕЖ» ]',
     {
       ...briefingTextStyle,
-      fontSize: '17px',
+      fontSize: '18px',
       color: '#86efac',
       fontStyle: 'bold',
     },
@@ -523,45 +564,41 @@ export function createBriefingOverlay(
 
   const contentObjects: Phaser.GameObjects.GameObject[] = [];
 
-  const addRow = (x: number, y: number, segments: TextSegment[]) => {
-    let curX = x;
+  const addRow = (x: number, y: number, segments: TextSegment[], fontSize = '13px') => {
+    let curX = Math.round(x);
+    const roundedY = Math.round(y);
     for (const seg of segments) {
-      const txt = scene.add.text(curX, y, seg.text, {
+      const txt = scene.add.text(curX, roundedY, seg.text, {
         ...briefingTextStyle,
-        fontSize: '11px',
+        fontSize,
         color: seg.color,
         fontStyle: seg.bold ? 'bold' : 'normal',
       });
       contentObjects.push(txt);
-      curX += txt.width;
+      curX = Math.round(curX + txt.width);
     }
   };
 
-  const startX = width / 2 - 250;
-  const cy = height / 2;
-
-  // Разделитель под заголовком
-  const dividerTop = scene.add.rectangle(width / 2, cy - 150, 500, 1, GAME_CONFIG.colors.modal.dividerGreen, 0.9);
-  contentObjects.push(dividerTop);
+  const startX = cx - halfW + 30; // 190px при cx = 480
 
   // 1. Угрозы (красный акцент)
-  addRow(startX, cy - 136, [
+  addRow(startX, cy - 156, [
     { text: '• УГРОЗЫ: ', color: '#ef4444', bold: true },
-    { text: 'Ракеты и бомбардировщики летят к центру базы.', color: '#e2e8f0' },
+    { text: 'Крылатые ракеты (прямой курс / доворот) и бомбардировщики.', color: '#e2e8f0' },
   ]);
-  addRow(startX, cy - 118, [
+  addRow(startX, cy - 132, [
     { text: '  ДЕЙСТВИЕ: ', color: '#94a3b8' },
     { text: 'УНИЧТОЖИТЬ [2]', color: '#f87171', bold: true },
     { text: ' (требует ракеты-перехватчики)', color: '#94a3b8' },
   ]);
 
   // 2. Союзники (зелёный акцент)
-  addRow(startX, cy - 88, [
+  addRow(startX, cy - 102, [
     { text: '• СОЮЗНИКИ: ', color: '#4ade80', bold: true },
-    { text: 'Зелёные метки с курсом в сектор — свои борта.', color: '#e2e8f0' },
+    { text: 'Зелёные метки и юниты с сильным сигналом — свои борта.', color: '#e2e8f0' },
   ]);
-  addRow(startX, cy - 70, [
-    { text: '  ДЕЙСТВИЕ: ', color: '#94a3b8' },
+  addRow(startX, cy - 78, [
+    { text: '  ДЕЙСТВИЕ: ПОМЕТКА ', color: '#94a3b8' },
     { text: 'ПРОПУСТИТЬ [1]', color: '#4ade80', bold: true },
     { text: ' (огонь по своим карается ', color: '#94a3b8' },
     { text: `ШТРАФОМ ${GAME_CONFIG.creditsFriendlyFirePenalty} CR`, color: '#f87171', bold: true },
@@ -569,24 +606,24 @@ export function createBriefingOverlay(
   ]);
 
   // 3. Ловушки (серый/нейтральный акцент)
-  addRow(startX, cy - 40, [
+  addRow(startX, cy - 48, [
     { text: '• ЛОВУШКИ: ', color: '#94a3b8', bold: true },
-    { text: 'Имитаторы идут по хордам мимо базы (нет урона).', color: '#e2e8f0' },
+    { text: 'Имитаторы копируют поведение других юнитов (урон не наносят).', color: '#e2e8f0' },
   ]);
-  addRow(startX, cy - 22, [
-    { text: '  ДЕЙСТВИЕ: ', color: '#94a3b8' },
+  addRow(startX, cy - 24, [
+    { text: '  ДЕЙСТВИЕ: ПОМЕТКА ', color: '#94a3b8' },
     { text: 'ЛОЖНАЯ ЦЕЛЬ [3]', color: '#cbd5e1', bold: true },
-    { text: ' (фильтруйте пустышки, экономя боезапас)', color: '#94a3b8' },
+    { text: ' (не упускайте пустышки)', color: '#94a3b8' },
   ]);
 
   // 4. Сенсоры и снабжение (голубой / бирюзовый акцент)
-  addRow(startX, cy + 8, [
+  addRow(startX, cy + 6, [
     { text: '• СЕНСОРЫ: ', color: '#38bdf8', bold: true },
     { text: 'Клавиша ', color: '#e2e8f0' },
     { text: '[4] СКАН', color: '#38bdf8', bold: true },
     { text: ` раскрывает тип цели за ${GAME_CONFIG.scanDuration} с (расходует заряд).`, color: '#e2e8f0' },
   ]);
-  addRow(startX, cy + 26, [
+  addRow(startX, cy + 34, [
     { text: '• СНАБЖЕНИЕ: ', color: '#2dd4bf', bold: true },
     { text: 'Докупка ракет ', color: '#e2e8f0' },
     { text: '[5]', color: '#facc15', bold: true },
@@ -596,39 +633,54 @@ export function createBriefingOverlay(
   ]);
 
   // 5. Панель быстрого управления (жёлтый акцент)
-  const cmdPanel = scene.add.rectangle(width / 2, cy + 74, 500, 32, GAME_CONFIG.colors.modal.panelDark, 0.95);
-  cmdPanel.setStrokeStyle(1.5, GAME_CONFIG.colors.modal.panelBorderGold, 0.7);
+  const cmdPanel = scene.add.rectangle(cx, cy + 96, 580, 36, GAME_CONFIG.colors.modal.panelDark, 0.95);
+  cmdPanel.setStrokeStyle(1.5, GAME_CONFIG.colors.modal.panelBorderGold, 0.75);
   contentObjects.push(cmdPanel);
 
   const cmdText = scene.add.text(
-    width / 2,
-    cy + 74,
-    'УПРАВЛЕНИЕ:  [1] СВОЙ   [2] УГРОЗА   [3] ЛОЖНАЯ ЦЕЛЬ   [4] СКАН   [P] ПАУЗА',
+    cx,
+    cy + 96,
+    'УПРАВЛЕНИЕ (КЛАВИАТУРА): [1] СВОЙ  [2] УГРОЗА  [3] ЛОЖНАЯ ЦЕЛЬ  [4] СКАН  [P] ПАУЗА',
     {
       ...briefingTextStyle,
-      fontSize: '11px',
+      fontSize: '11.5px',
       color: '#facc15',
       fontStyle: 'bold',
     },
   ).setOrigin(0.5);
   contentObjects.push(cmdText);
 
-  const actionBtn = scene.add.rectangle(width / 2, cy + 155, 300, 42, GAME_CONFIG.colors.modal.btnRestartBg, 0.9);
+  // Кнопка действия
+  const actionBtn = scene.add.rectangle(
+    cx,
+    cy + 186,
+    340,
+    44,
+    GAME_CONFIG.colors.modal.btnRestartBg,
+    0.95,
+  );
   actionBtn.setStrokeStyle(1.5, GAME_CONFIG.colors.modal.btnRestartBorder, 1);
   actionBtn.setInteractive({ useHandCursor: true });
 
-  const actionText = scene.add.text(width / 2, cy + 155, 'ЗАСТУПИТЬ НА СМЕНУ (ПРОБЕЛ)', {
+  const actionText = scene.add.text(cx, cy + 186, 'ЗАСТУПИТЬ НА СМЕНУ (ПРОБЕЛ)', {
     ...briefingTextStyle,
-    fontSize: '13px',
+    fontSize: '14px',
     color: '#ffffff',
     fontStyle: 'bold',
   }).setOrigin(0.5);
 
   actionBtn.on('pointerover', () => actionBtn.setFillStyle(GAME_CONFIG.colors.modal.btnRestartHover, 1));
-  actionBtn.on('pointerout', () => actionBtn.setFillStyle(GAME_CONFIG.colors.modal.btnRestartBg, 0.9));
+  actionBtn.on('pointerout', () => actionBtn.setFillStyle(GAME_CONFIG.colors.modal.btnRestartBg, 0.95));
   actionBtn.on('pointerdown', () => onClose());
 
-  container.add([darkBg, modal, title, ...contentObjects, actionBtn, actionText]);
+  container.add([
+    darkBg,
+    modalGraphics,
+    title,
+    ...contentObjects,
+    actionBtn,
+    actionText,
+  ]);
 
   return {
     container,
