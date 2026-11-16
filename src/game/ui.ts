@@ -805,6 +805,9 @@ export function createHud(
   const ammoCardY = 498;
   const ammoCardW = panelW - 32;
   const ammoCardH = 48;
+  const leftW = Math.floor(ammoCardW / 2);
+  const rightW = ammoCardW - leftW;
+
   hudGraphics.fillStyle(0x061910, 0.75);
   hudGraphics.fillRoundedRect(ammoCardX, ammoCardY, ammoCardW, ammoCardH, 4);
   hudGraphics.lineStyle(1, colors.hudBorder, 0.7);
@@ -812,9 +815,261 @@ export function createHud(
   // Вертикальный внутренний разделитель между ракетами и сканами
   hudGraphics.lineStyle(1, colors.hudBorder, 0.5);
   hudGraphics.beginPath();
-  hudGraphics.moveTo(ammoCardX + ammoCardW / 2, ammoCardY + 4);
-  hudGraphics.lineTo(ammoCardX + ammoCardW / 2, ammoCardY + ammoCardH - 4);
+  hudGraphics.moveTo(ammoCardX + leftW, ammoCardY + 4);
+  hudGraphics.lineTo(ammoCardX + leftW, ammoCardY + ammoCardH - 4);
   hudGraphics.strokePath();
+
+  // Световые контуры подсветки половинок блока при расходе/пополнении ресурсов
+  const missileHighlight = scene.add.graphics();
+  missileHighlight.setAlpha(0);
+
+  const scanHighlight = scene.add.graphics();
+  scanHighlight.setAlpha(0);
+
+  let missileTween: Phaser.Tweens.TweenChain | Phaser.Tweens.Tween | null = null;
+  let scanTween: Phaser.Tweens.TweenChain | Phaser.Tweens.Tween | null = null;
+
+  // Параметры тактических оповещений о дефиците ресурсов
+  const MISSILE_ALERT_EMPTY_INTERVAL = 0.95; // Частое настойчивое мигание при 0 ракет
+  const MISSILE_ALERT_LOW_INTERVAL = 1.7;    // Предупреждающее подмигивание при <=2 ракет (почаще)
+  const SCAN_ALERT_EMPTY_INTERVAL = 1.5;     // Сокращённый интервал подмигивания при 0 сканов
+  const SCAN_ALERT_LOW_INTERVAL = 2.6;       // Предупреждающее напоминание о последнем скане (почаще)
+
+  let currentInterceptors = GAME_CONFIG.startInterceptors;
+  let currentScans = GAME_CONFIG.maxScansPerWave;
+  let missileAlertTimer = 0;
+  let scanAlertTimer = 0;
+
+  const flashMissileBorder = (isGain: boolean) => {
+    if (missileTween) missileTween.stop();
+    missileAlertTimer = 0;
+    const glowColor = isGain ? 0x22c55e : 0xef4444;
+    const coreColor = isGain ? 0x86efac : 0xfca5a5;
+    missileHighlight.clear();
+
+    // 1. Сочная неоновая подсветка ячейки
+    missileHighlight.fillStyle(glowColor, 0.22);
+    missileHighlight.fillRoundedRect(ammoCardX, ammoCardY, leftW, ammoCardH, {
+      tl: 4,
+      tr: 0,
+      bl: 4,
+      br: 0,
+    });
+
+    // 2. Внешний мягкий ореол свечения (Bloom)
+    missileHighlight.lineStyle(3.5, glowColor, 0.55);
+    missileHighlight.strokeRoundedRect(ammoCardX, ammoCardY, leftW, ammoCardH, {
+      tl: 4,
+      tr: 0,
+      bl: 4,
+      br: 0,
+    });
+
+    // 3. Чёткая яркая сердцевина контура (Core)
+    missileHighlight.lineStyle(2, coreColor, 1.0);
+    missileHighlight.strokeRoundedRect(ammoCardX, ammoCardY, leftW, ammoCardH, {
+      tl: 4,
+      tr: 0,
+      bl: 4,
+      br: 0,
+    });
+
+    missileHighlight.setAlpha(1);
+
+    // Тактическое «подмигивание» (strobe-blink): яркая вспышка -> просадка -> повторный импульс -> спад
+    missileTween = scene.tweens.chain({
+      targets: missileHighlight,
+      tweens: [
+        { alpha: 0.35, duration: 80, ease: 'Linear' },
+        { alpha: 1.0, duration: 80, ease: 'Linear' },
+        { alpha: 0, duration: 320, ease: 'Quad.easeOut' },
+      ],
+    });
+  };
+
+  const flashScanBorder = (isGain: boolean) => {
+    if (scanTween) scanTween.stop();
+    scanAlertTimer = 0;
+    const glowColor = isGain ? 0x0284c7 : 0xef4444;
+    const coreColor = isGain ? 0x7dd3fc : 0xfca5a5;
+    scanHighlight.clear();
+
+    // 1. Сочная неоновая подсветка ячейки
+    scanHighlight.fillStyle(glowColor, 0.22);
+    scanHighlight.fillRoundedRect(ammoCardX + leftW, ammoCardY, rightW, ammoCardH, {
+      tl: 0,
+      tr: 4,
+      bl: 0,
+      br: 4,
+    });
+
+    // 2. Внешний мягкий ореол свечения (Bloom)
+    scanHighlight.lineStyle(3.5, glowColor, 0.55);
+    scanHighlight.strokeRoundedRect(ammoCardX + leftW, ammoCardY, rightW, ammoCardH, {
+      tl: 0,
+      tr: 4,
+      bl: 0,
+      br: 4,
+    });
+
+    // 3. Чёткая яркая сердцевина контура (Core)
+    scanHighlight.lineStyle(2, coreColor, 1.0);
+    scanHighlight.strokeRoundedRect(ammoCardX + leftW, ammoCardY, rightW, ammoCardH, {
+      tl: 0,
+      tr: 4,
+      bl: 0,
+      br: 4,
+    });
+
+    scanHighlight.setAlpha(1);
+
+    // Тактическое «подмигивание» (strobe-blink): яркая вспышка -> просадка -> повторный импульс -> спад
+    scanTween = scene.tweens.chain({
+      targets: scanHighlight,
+      tweens: [
+        { alpha: 0.35, duration: 80, ease: 'Linear' },
+        { alpha: 1.0, duration: 80, ease: 'Linear' },
+        { alpha: 0, duration: 320, ease: 'Quad.easeOut' },
+      ],
+    });
+  };
+
+  // Автоматические сигналы предупреждения при критическом остатке ресурсов
+  const pulseMissileAlert = (level: 'low' | 'empty') => {
+    if (missileTween) missileTween.stop();
+
+    if (level === 'empty') {
+      // Настойчивое аварийное мигание: яркий двойной строб тревоги
+      const glowColor = 0xef4444;
+      const coreColor = 0xfca5a5;
+      missileHighlight.clear();
+      missileHighlight.fillStyle(glowColor, 0.24);
+      missileHighlight.fillRoundedRect(ammoCardX, ammoCardY, leftW, ammoCardH, {
+        tl: 4,
+        tr: 0,
+        bl: 4,
+        br: 0,
+      });
+      missileHighlight.lineStyle(3.5, glowColor, 0.6);
+      missileHighlight.strokeRoundedRect(ammoCardX, ammoCardY, leftW, ammoCardH, {
+        tl: 4,
+        tr: 0,
+        bl: 4,
+        br: 0,
+      });
+      missileHighlight.lineStyle(2, coreColor, 1.0);
+      missileHighlight.strokeRoundedRect(ammoCardX, ammoCardY, leftW, ammoCardH, {
+        tl: 4,
+        tr: 0,
+        bl: 4,
+        br: 0,
+      });
+      missileHighlight.setAlpha(1);
+
+      missileTween = scene.tweens.chain({
+        targets: missileHighlight,
+        tweens: [
+          { alpha: 0.2, duration: 80, ease: 'Linear' },
+          { alpha: 0.95, duration: 80, ease: 'Linear' },
+          { alpha: 0, duration: 260, ease: 'Quad.easeOut' },
+        ],
+      });
+    } else {
+      // Предупреждающее мягкое подмигивание (осталось <=2 ракет)
+      const glowColor = 0xef4444;
+      const coreColor = 0xf87171;
+      missileHighlight.clear();
+      missileHighlight.fillStyle(glowColor, 0.14);
+      missileHighlight.fillRoundedRect(ammoCardX, ammoCardY, leftW, ammoCardH, {
+        tl: 4,
+        tr: 0,
+        bl: 4,
+        br: 0,
+      });
+      missileHighlight.lineStyle(2, coreColor, 0.9);
+      missileHighlight.strokeRoundedRect(ammoCardX, ammoCardY, leftW, ammoCardH, {
+        tl: 4,
+        tr: 0,
+        bl: 4,
+        br: 0,
+      });
+      missileHighlight.setAlpha(1);
+
+      missileTween = scene.tweens.add({
+        targets: missileHighlight,
+        alpha: 0,
+        duration: 450,
+        ease: 'Quad.easeOut',
+      });
+    }
+  };
+
+  const pulseScanAlert = (level: 'low' | 'empty') => {
+    if (scanTween) scanTween.stop();
+
+    if (level === 'empty') {
+      // Сокращённое и более заметное подмигивание об отсутствии сканов (тёплый янтарный оттенок)
+      const glowColor = 0xf97316;
+      const coreColor = 0xfdba74;
+      scanHighlight.clear();
+      scanHighlight.fillStyle(glowColor, 0.18);
+      scanHighlight.fillRoundedRect(ammoCardX + leftW, ammoCardY, rightW, ammoCardH, {
+        tl: 0,
+        tr: 4,
+        bl: 0,
+        br: 4,
+      });
+      scanHighlight.lineStyle(2.5, glowColor, 0.5);
+      scanHighlight.strokeRoundedRect(ammoCardX + leftW, ammoCardY, rightW, ammoCardH, {
+        tl: 0,
+        tr: 4,
+        bl: 0,
+        br: 4,
+      });
+      scanHighlight.lineStyle(1.8, coreColor, 0.95);
+      scanHighlight.strokeRoundedRect(ammoCardX + leftW, ammoCardY, rightW, ammoCardH, {
+        tl: 0,
+        tr: 4,
+        bl: 0,
+        br: 4,
+      });
+      scanHighlight.setAlpha(1);
+
+      scanTween = scene.tweens.add({
+        targets: scanHighlight,
+        alpha: 0,
+        duration: 450,
+        ease: 'Quad.easeOut',
+      });
+    } else {
+      // Деликатное напоминание о последнем заряде сканера
+      const glowColor = 0x38bdf8;
+      const coreColor = 0x7dd3fc;
+      scanHighlight.clear();
+      scanHighlight.fillStyle(glowColor, 0.12);
+      scanHighlight.fillRoundedRect(ammoCardX + leftW, ammoCardY, rightW, ammoCardH, {
+        tl: 0,
+        tr: 4,
+        bl: 0,
+        br: 4,
+      });
+      scanHighlight.lineStyle(1.8, coreColor, 0.85);
+      scanHighlight.strokeRoundedRect(ammoCardX + leftW, ammoCardY, rightW, ammoCardH, {
+        tl: 0,
+        tr: 4,
+        bl: 0,
+        br: 4,
+      });
+      scanHighlight.setAlpha(1);
+
+      scanTween = scene.tweens.add({
+        targets: scanHighlight,
+        alpha: 0,
+        duration: 420,
+        ease: 'Quad.easeOut',
+      });
+    }
+  };
 
   // 2. Кнопка меню в левом верхнем углу (на фоне позади радара)
   if (callbacks.onTogglePause) {
@@ -1119,7 +1374,7 @@ export function createHud(
   );
 
   // Правая секция: Сканеры
-  const scanColX = ammoCardX + ammoCardW / 2 + 6;
+  const scanColX = ammoCardX + leftW + 6;
   const scanIcon = scene.add.image(scanColX + 18, ammoCardY + 24, 'icon_hud_scan');
   scene.add.text(scanColX + 36, ammoCardY + 8, 'СКАНЕРЫ', {
     ...monoStyle,
@@ -1175,6 +1430,34 @@ export function createHud(
     );
   };
 
+  // Вспомогательная функция для всплывающей тактической анимации изменения боезапаса (+1, -1)
+  const spawnDeltaText = (x: number, y: number, diff: number, gainColor = '#4ade80') => {
+    const textStr = diff > 0 ? `+${diff}` : `${diff}`;
+    const colorStr = diff > 0 ? gainColor : '#ef4444';
+    const deltaText = scene.add.text(x, y, textStr, {
+      ...monoStyle,
+      fontSize: '14px',
+      color: colorStr,
+      fontStyle: 'bold',
+    });
+    deltaText.setDepth(15);
+
+    scene.tweens.add({
+      targets: deltaText,
+      x: x + 16,
+      y: y - 8,
+      alpha: 0,
+      duration: 850,
+      ease: 'Cubic.easeOut',
+      onComplete: () => {
+        deltaText.destroy();
+      },
+    });
+  };
+
+  let prevInterceptors = -1;
+  let prevScans = -1;
+
   // 6. Обновление счета и ресурсов
   const updateScoreBoard = (data: ScoreBoardData) => {
     const mult = calculateStreakMultiplier(data.streak).toFixed(1);
@@ -1183,6 +1466,35 @@ export function createHud(
     streakText.setText(`СЕРИЯ: ${data.streak} (x${mult})`);
     waveText.setText(`ВОЛНА: ${data.wave}`);
     highScoreText.setText(`РЕКОРД: ${data.highScore}`);
+
+    // Анимация дельты боезапаса ракет и подсветка контура ячейки
+    if (prevInterceptors === -1) {
+      prevInterceptors = data.interceptors;
+    } else {
+      const diffMissiles = data.interceptors - prevInterceptors;
+      if (diffMissiles !== 0) {
+        spawnDeltaText(ammoCardX + 76, ammoCardY + 22, diffMissiles, '#4ade80');
+        flashMissileBorder(diffMissiles > 0);
+        prevInterceptors = data.interceptors;
+      }
+    }
+
+    // Анимация дельты зарядов сканера и подсветка контура ячейки
+    if (prevScans === -1) {
+      prevScans = data.scansAvailable;
+    } else {
+      const diffScans = data.scansAvailable - prevScans;
+      if (diffScans !== 0) {
+        spawnDeltaText(scanColX + 74, ammoCardY + 22, diffScans, '#38bdf8');
+        flashScanBorder(diffScans > 0);
+        prevScans = data.scansAvailable;
+      }
+    }
+
+    currentInterceptors = data.interceptors;
+    currentScans = data.scansAvailable;
+    if (currentInterceptors > 2) missileAlertTimer = 0;
+    if (currentScans > 1) scanAlertTimer = 0;
 
     ammoCountText.setText(`${data.interceptors}/${GAME_CONFIG.maxInterceptors}`);
     ammoCountText.setColor(data.interceptors > 1 ? '#facc15' : '#ef4444');
@@ -1303,6 +1615,42 @@ export function createHud(
     feedbackTimer = 2.8;
   };
 
+  const updateResourceAlerts = (dt: number) => {
+    // 1. Контроль дефицита боезапаса ракет
+    if (currentInterceptors === 0) {
+      missileAlertTimer += dt;
+      if (missileAlertTimer >= MISSILE_ALERT_EMPTY_INTERVAL) {
+        missileAlertTimer = 0;
+        pulseMissileAlert('empty');
+      }
+    } else if (currentInterceptors <= 2) {
+      missileAlertTimer += dt;
+      if (missileAlertTimer >= MISSILE_ALERT_LOW_INTERVAL) {
+        missileAlertTimer = 0;
+        pulseMissileAlert('low');
+      }
+    } else {
+      missileAlertTimer = 0;
+    }
+
+    // 2. Контроль дефицита сканеров (более мягкая и ненавязчивая реакция)
+    if (currentScans === 0) {
+      scanAlertTimer += dt;
+      if (scanAlertTimer >= SCAN_ALERT_EMPTY_INTERVAL) {
+        scanAlertTimer = 0;
+        pulseScanAlert('empty');
+      }
+    } else if (currentScans === 1) {
+      scanAlertTimer += dt;
+      if (scanAlertTimer >= SCAN_ALERT_LOW_INTERVAL) {
+        scanAlertTimer = 0;
+        pulseScanAlert('low');
+      }
+    } else {
+      scanAlertTimer = 0;
+    }
+  };
+
   const updateFeedback = (dt: number) => {
     if (feedbackTimer > 0) {
       feedbackTimer -= dt;
@@ -1310,6 +1658,7 @@ export function createHud(
         feedbackText.setText('');
       }
     }
+    updateResourceAlerts(dt);
   };
 
   let waveBannerTimer = 0;
