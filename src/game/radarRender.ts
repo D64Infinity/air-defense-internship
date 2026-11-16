@@ -21,6 +21,7 @@ export interface RadarRenderData {
   timeNow: number;
   interceptors: readonly InterceptorUnit[];
   explosions: ExplosionEffect[];
+  warningSector?: { angle: number; timer: number; duration: number } | null;
 }
 
 /**
@@ -424,6 +425,80 @@ export function createRadarRender(
           speck.size,
         );
       }
+    }
+
+    // 2.2. Тактическая тревожная подсветка сектора угрозы (Массированный залп)
+    if (data.warningSector && data.warningSector.timer > 0) {
+      const { angle, timer, duration } = data.warningSector;
+      const progress = Math.max(0, Math.min(1, timer / duration));
+      // Мягкое мерцание и плавное затухание в конце
+      const pulse = 0.75 + 0.25 * Math.sin(data.timeNow * 0.016);
+      const fade = progress < 0.25 ? progress / 0.25 : 1;
+      const alphaBase = 0.22 * pulse * fade;
+
+      const sectorArc = 0.44; // ~25 градусов в каждую сторону от азимута прилёта (~50° дуга)
+      const aStart = angle - sectorArc;
+      const aEnd = angle + sectorArc;
+
+      // 1. Полупрозрачная секторная подсветка внешнего эшелона радара (от 0.62 R до R)
+      dynamicGraphics.fillStyle(colors.dangerRing, alphaBase);
+      dynamicGraphics.beginPath();
+      dynamicGraphics.arc(radarX, radarY, radarRadius - 1, aStart, aEnd, false);
+      dynamicGraphics.arc(radarX, radarY, radarRadius * 0.62, aEnd, aStart, true);
+      dynamicGraphics.closePath();
+      dynamicGraphics.fillPath();
+
+      // 2. Яркая тревожная кромка по внешнему ободу радара
+      const rimAlpha = Math.min(0.95, 0.75 * pulse * fade);
+      dynamicGraphics.lineStyle(2.5, colors.dangerRing, rimAlpha);
+      dynamicGraphics.beginPath();
+      dynamicGraphics.arc(radarX, radarY, radarRadius - 1, aStart, aEnd, false);
+      dynamicGraphics.strokePath();
+
+      // 3. Радиальные ограничивающие лучи сектора угрозы
+      dynamicGraphics.lineStyle(1.5, colors.dangerRing, 0.45 * pulse * fade);
+      dynamicGraphics.beginPath();
+      dynamicGraphics.moveTo(
+        radarX + Math.cos(aStart) * (radarRadius * 0.62),
+        radarY + Math.sin(aStart) * (radarRadius * 0.62),
+      );
+      dynamicGraphics.lineTo(
+        radarX + Math.cos(aStart) * (radarRadius - 1),
+        radarY + Math.sin(aStart) * (radarRadius - 1),
+      );
+      dynamicGraphics.moveTo(
+        radarX + Math.cos(aEnd) * (radarRadius * 0.62),
+        radarY + Math.sin(aEnd) * (radarRadius * 0.62),
+      );
+      dynamicGraphics.lineTo(
+        radarX + Math.cos(aEnd) * (radarRadius - 1),
+        radarY + Math.sin(aEnd) * (radarRadius - 1),
+      );
+      dynamicGraphics.strokePath();
+
+      // 4. Тактический шеврон опасности (направлен внутрь сектора к базе)
+      const chevronDist = radarRadius - 14;
+      const cx = radarX + Math.cos(angle) * chevronDist;
+      const cy = radarY + Math.sin(angle) * chevronDist;
+      const chevSize = 8;
+      const nx = -Math.cos(angle);
+      const ny = -Math.sin(angle);
+      const px = -ny;
+      const py = nx;
+
+      dynamicGraphics.fillStyle(colors.dangerRing, 0.85 * pulse * fade);
+      dynamicGraphics.beginPath();
+      dynamicGraphics.moveTo(cx + nx * chevSize, cy + ny * chevSize);
+      dynamicGraphics.lineTo(
+        cx - nx * (chevSize * 0.6) + px * (chevSize * 0.8),
+        cy - ny * (chevSize * 0.6) + py * (chevSize * 0.8),
+      );
+      dynamicGraphics.lineTo(
+        cx - nx * (chevSize * 0.6) - px * (chevSize * 0.8),
+        cy - ny * (chevSize * 0.6) - py * (chevSize * 0.8),
+      );
+      dynamicGraphics.closePath();
+      dynamicGraphics.fillPath();
     }
 
     // 3. Маркер базы в центре (вспыхивает красным при уроне)

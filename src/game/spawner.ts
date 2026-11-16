@@ -23,6 +23,11 @@ export interface TargetSpawner {
     activeTargetsCount: number,
     targetsLeftInWave: number,
   ) => GameTarget | null;
+
+  /**
+   * Спавн крылатой ракеты по заданному азимуту (для тактических событий, например залпов)
+   */
+  spawnMissileAtAngle: (angle: number, wave: number) => GameTarget;
 }
 
 /**
@@ -145,6 +150,47 @@ export function createSpawner(): TargetSpawner {
     return createTarget(x, y, wave);
   };
 
+  const spawnMissileAtAngle = (angle: number, wave: number): GameTarget => {
+    const spawnDist = GAME_CONFIG.radarRadius - 2;
+    const x = GAME_CONFIG.radarX + Math.cos(angle) * spawnDist;
+    const y = GAME_CONFIG.radarY + Math.sin(angle) * spawnDist;
+
+    const type = 'missile';
+    const typeCfg = GAME_CONFIG.targetTypes.missile;
+    const heading = Math.atan2(GAME_CONFIG.radarY - y, GAME_CONFIG.radarX - x);
+
+    const waveSpeedFactor = 1 + Math.min(0.35, (wave - 1) * 0.04);
+    const speed =
+      Phaser.Math.FloatBetween(typeCfg.speedRange[0], typeCfg.speedRange[1]) *
+      waveSpeedFactor;
+
+    const signal = Math.round(
+      Phaser.Math.FloatBetween(typeCfg.signalRange[0], typeCfg.signalRange[1]),
+    );
+
+    const vx = Math.cos(heading) * speed;
+    const vy = Math.sin(heading) * speed;
+
+    let headingDeg = Math.round(Phaser.Math.RadToDeg(heading));
+    if (headingDeg < 0) headingDeg += 360;
+
+    return {
+      id: nextTargetId++,
+      type,
+      x,
+      y,
+      vx,
+      vy,
+      speed: Math.round(speed),
+      headingDeg,
+      headingRad: heading,
+      targetHeadingRad: heading,
+      turnRate: 0,
+      signal,
+      alpha: 0,
+    };
+  };
+
   const update = (
     dt: number,
     wave: number,
@@ -174,5 +220,6 @@ export function createSpawner(): TargetSpawner {
   return {
     reset,
     update,
+    spawnMissileAtAngle,
   };
 }

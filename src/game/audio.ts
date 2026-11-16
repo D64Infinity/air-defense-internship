@@ -12,6 +12,7 @@ export interface SoundSystem {
   playDenyClick: () => void;
   playLaunch: () => void;
   playWaveTransition: (isCleanWave?: boolean) => void;
+  playSalvoAlert: () => void;
   toggleMute: () => boolean;
   readonly isMuted: boolean;
 }
@@ -1298,6 +1299,91 @@ export function createSoundSystem(): SoundSystem {
     };
   };
 
+  /**
+   * Тактический сигнал тревоги при массированном залпе (глубокий, низкий и звонкий резонансный боевой ревун ПВО)
+   */
+  const playSalvoAlert = (): void => {
+    if (isMuted) return;
+    const audioCtx = getContext();
+    if (!audioCtx) return;
+
+    const now = audioCtx.currentTime;
+    const masterDest = getMasterIn(audioCtx);
+
+    // Двойной раскатистый импульс боевого корабельного ревуна (тяжелый низкий гул с металлической формантой)
+    const pulses = [
+      { start: 0, dur: 0.22, baseFreq: 142 },
+      { start: 0.25, dur: 0.28, baseFreq: 138 },
+    ];
+
+    pulses.forEach(({ start, dur, baseFreq }) => {
+      const t = now + start;
+
+      // Два взаимно расстроенных пилообразных осциллятора для низкого вибрирующего баса
+      const osc1 = audioCtx.createOscillator();
+      const osc2 = audioCtx.createOscillator();
+      // Квадратная волна октавы для металлического звонкого обертона трубы
+      const oscSub = audioCtx.createOscillator();
+
+      osc1.type = 'sawtooth';
+      osc2.type = 'sawtooth';
+      oscSub.type = 'square';
+
+      // Легкий нисходящий питч-глиссандо для ощущения тяжелой массы ревуна
+      osc1.frequency.setValueAtTime(baseFreq * 1.08, t);
+      osc1.frequency.exponentialRampToValueAtTime(baseFreq, t + dur * 0.6);
+
+      osc2.frequency.setValueAtTime(baseFreq * 1.08 + 3.2, t);
+      osc2.frequency.exponentialRampToValueAtTime(baseFreq + 3.0, t + dur * 0.6);
+
+      oscSub.frequency.setValueAtTime(baseFreq * 2.0, t);
+      oscSub.frequency.exponentialRampToValueAtTime(baseFreq * 1.96, t + dur * 0.6);
+
+      // Резонансный фильтр для металлического формантного тембра клаксона (звонкий раструб)
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(750, t);
+      filter.frequency.exponentialRampToValueAtTime(520, t + dur);
+      filter.Q.setValueAtTime(3.8, t);
+
+      const gain = audioCtx.createGain();
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.linearRampToValueAtTime(0.22, t + 0.018); // Быстрая плотная атака
+      gain.gain.exponentialRampToValueAtTime(0.12, t + dur * 0.7);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+
+      // Микширование в фильтр
+      const subGain = audioCtx.createGain();
+      subGain.gain.setValueAtTime(0.35, t);
+
+      osc1.connect(filter);
+      osc2.connect(filter);
+      oscSub.connect(subGain);
+      subGain.connect(filter);
+
+      filter.connect(gain);
+      gain.connect(masterDest);
+
+      osc1.start(t);
+      osc2.start(t);
+      oscSub.start(t);
+
+      const stopTime = t + dur + 0.02;
+      osc1.stop(stopTime);
+      osc2.stop(stopTime);
+      oscSub.stop(stopTime);
+
+      osc1.onended = () => {
+        osc1.disconnect();
+        osc2.disconnect();
+        oscSub.disconnect();
+        subGain.disconnect();
+        filter.disconnect();
+        gain.disconnect();
+      };
+    });
+  };
+
   const toggleMute = (): boolean => {
     isMuted = !isMuted;
     if (masterGain && ctx) {
@@ -1314,6 +1400,7 @@ export function createSoundSystem(): SoundSystem {
     playDenyClick,
     playLaunch,
     playWaveTransition,
+    playSalvoAlert,
     toggleMute,
     get isMuted() {
       return isMuted;

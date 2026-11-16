@@ -27,6 +27,7 @@ import { createAlertManager, type AlertManager } from './alerts';
 import { setupGameInputs } from './input';
 import { createRadarRender, type RadarRender } from './radarRender';
 import { createSpawner, type TargetSpawner } from './spawner';
+import { createTacticalEventsManager, type TacticalEventManager } from './events';
 import { createScoreTracker, type ScoreTracker } from './scoring';
 import { createArmory, type ArmoryTracker } from './armory';
 import { createStatsTracker, type StatsTracker } from './stats';
@@ -51,6 +52,7 @@ export class GameScene extends Phaser.Scene {
   private pauseOverlay!: PauseOverlay;
   private briefingOverlay!: BriefingOverlay;
   private spawner: TargetSpawner = createSpawner();
+  private tacticalEvents: TacticalEventManager = createTacticalEventsManager(this.spawner);
   private scoring: ScoreTracker = createScoreTracker();
   private armory: ArmoryTracker = createArmory();
   private stats: StatsTracker = createStatsTracker();
@@ -73,6 +75,7 @@ export class GameScene extends Phaser.Scene {
 
   // Таймеры эффектов
   private baseFlashTimer = 0;
+  private warningSector: { angle: number; timer: number; duration: number } | null = null;
 
   constructor() {
     super('GameScene');
@@ -86,9 +89,12 @@ export class GameScene extends Phaser.Scene {
     this.scoring.reset();
     this.armory.reset();
     this.stats.reset();
+    this.tacticalEvents.reset();
+    this.warningSector = null;
     this.wave = 1;
     this.waveTargetsToSpawn = GAME_CONFIG.waveTargetsBase;
     this.waveHadFlaws = false;
+    this.tacticalEvents.startWave(this.wave, this.waveTargetsToSpawn);
     this.targets = [];
     this.selectedTarget = null;
     this.explosions = [];
@@ -180,6 +186,35 @@ export class GameScene extends Phaser.Scene {
 
     // 1. Физика целей и спавн новых бортов до расчёта луча радара
     this.updateTargets(dt);
+
+    if (this.warningSector) {
+      this.warningSector.timer -= dt;
+      if (this.warningSector.timer <= 0) {
+        this.warningSector = null;
+      }
+    }
+
+    // Обработка динамических тактических событий (массированные залпы)
+    const eventResult = this.tacticalEvents.update(dt, {
+      wave: this.wave,
+      activeTargetsCount: this.targets.length,
+      targetsLeftInWave: this.waveTargetsToSpawn,
+    });
+    if (eventResult.warningSector) {
+      this.warningSector = {
+        angle: eventResult.warningSector.angle,
+        timer: eventResult.warningSector.duration,
+        duration: eventResult.warningSector.duration,
+      };
+    }
+    if (eventResult.playAlarmSound) {
+      this.soundSystem.playSalvoAlert();
+    }
+    for (const target of eventResult.spawnedTargets) {
+      this.targets.push(target);
+      this.waveTargetsToSpawn = Math.max(0, this.waveTargetsToSpawn - 1);
+    }
+
     const newTarget = this.spawner.update(
       dt,
       this.wave,
@@ -207,6 +242,7 @@ export class GameScene extends Phaser.Scene {
       timeNow: this.time.now,
       interceptors: this.interceptorManager.activeUnits,
       explosions: this.explosions,
+      warningSector: this.warningSector,
     });
     this.hud.updateFeedback(dt);
     this.updateTelemetry();
@@ -225,6 +261,7 @@ export class GameScene extends Phaser.Scene {
   private startCombat(): void {
     this.isGameStarted = true;
     this.spawner.reset();
+    this.tacticalEvents.startWave(this.wave, this.waveTargetsToSpawn);
     this.targets = [];
     this.soundSystem.playWaveTransition(false);
     this.showWaveBanner('ВОЛНА 1\nБОЕВОЕ ДЕЖУРСТВО');
@@ -748,6 +785,7 @@ export class GameScene extends Phaser.Scene {
       this.wave++;
       this.waveTargetsToSpawn =
         GAME_CONFIG.waveTargetsBase + this.wave * GAME_CONFIG.waveTargetsIncrement;
+      this.tacticalEvents.startWave(this.wave, this.waveTargetsToSpawn);
 
       // Луч ускоряется с каждой волной
       this.radarRender.setWaveSpeed(this.wave);
