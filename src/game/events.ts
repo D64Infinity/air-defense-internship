@@ -17,6 +17,22 @@ export const EVENT_CONFIG = {
     fanSpreadRad: 0.09, // Угловой веерный разброс траекторий (~5 градусов)
     startChanceWave4: 0.10, // 10% вероятность на первой проверке (волна 4)
   },
+  general: {
+    maneuverSwarm: {
+      minWave: 4, // Доступно с 4-й волны
+      chance: 0.12, // Фиксированный шанс 12%
+      bannerTitle: 'ОСОБЫЙ СЕКТОР',
+      bannerSubtitle: '[ МАНЕВРЕННЫЙ ПРОРЫВ: 3 ЭШЕЛОНА ]',
+      startCreditsGrant: 900, // Начальная субсидия ПВО (+900 CR на закупку ракет)
+      creditsRewardMultiplier: 1.25, // Множитель награды кредитов за волну при отражении прорыва
+      echelon1Delay: 2.5, // Время до запуска 1-го захода (сек)
+      interEchelonPause: 3.0, // Передышка между заходами для закупки ракет (сек)
+      warningLeadTime: 2.0, // Время тревоги перед каждым заходом (сек)
+      echelonCount: 3, // Количество эшелонов
+      missilesPerEchelon: 6, // Количество ракет в каждом эшелоне
+      totalMissiles: 18, // 3 захода по 6 ракет = 18 ракет всего
+    },
+  },
 } as const;
 
 /**
@@ -35,6 +51,17 @@ export interface TacticalEventContext {
 export interface SalvoWarningArc {
   angle: number;
   phase: 'warning' | 'active'; // 'warning' = 2 сек до прилёта, 'active' = ракеты в воздухе до уничтожения
+}
+
+/**
+ * Результат старта волны для менеджера событий
+ */
+export interface TacticalWaveStartResult {
+  isSpecialWave: boolean;
+  specialWaveTargetsCount?: number;
+  bannerTitle?: string;
+  bannerSubtitle?: string;
+  creditsGrant?: number;
 }
 
 /**
@@ -73,7 +100,8 @@ export function calculateSalvoProbability(wavesSinceLastSalvo: number): number {
  */
 export interface TacticalEventManager {
   reset: () => void;
-  startWave: (wave: number, targetsLeftInWave: number) => void;
+  startWave: (wave: number, targetsLeftInWave: number) => TacticalWaveStartResult;
+  isSpecialWaveActive: () => boolean;
   update: (
     dt: number,
     context: TacticalEventContext,
@@ -98,6 +126,32 @@ interface SalvoState {
 }
 
 /**
+ * Внутреннее состояние генерального события «Манёвренный прорыв» (Maneuver Swarm Wave)
+ */
+type ManeuverSwarmStep =
+  | 'idle'
+  | 'delay_echelon_1'
+  | 'warning_echelon_1'
+  | 'active_echelon_1'
+  | 'pause_between_1_2'
+  | 'warning_echelon_2'
+  | 'active_echelon_2'
+  | 'pause_between_2_3'
+  | 'warning_echelon_3'
+  | 'active_echelon_3'
+  | 'done';
+
+interface ManeuverSwarmState {
+  active: boolean;
+  step: ManeuverSwarmStep;
+  timer: number;
+  baseAngle1: number;
+  baseAngle2: number;
+  baseAngle3: number;
+  trackedTargetIds: Set<number>;
+}
+
+/**
  * Фабрика менеджера динамических тактических событий
  */
 export function createTacticalEventsManager(
@@ -117,22 +171,73 @@ export function createTacticalEventsManager(
     trackedTargetIds: new Set<number>(),
   };
 
+  let swarm: ManeuverSwarmState = {
+    active: false,
+    step: 'idle',
+    timer: 0,
+    baseAngle1: 0,
+    baseAngle2: 0,
+    baseAngle3: 0,
+    trackedTargetIds: new Set<number>(),
+  };
+
   const reset = (): void => {
     salvo.phase = 'idle';
     salvo.missilesLeftToSpawn = 0;
     salvo.trackedTargetIds.clear();
     wavesSinceLastSalvo = 0;
+
+    swarm.active = false;
+    swarm.step = 'idle';
+    swarm.timer = 0;
+    swarm.trackedTargetIds.clear();
+  };
+
+  const isSpecialWaveActive = (): boolean => {
+    return swarm.active && swarm.step !== 'done' && swarm.step !== 'idle';
   };
 
   /**
    * Инициализация событий в начале новой волны
    */
-  const startWave = (wave: number, targetsLeftInWave: number): void => {
+  const startWave = (
+    wave: number,
+    targetsLeftInWave: number,
+  ): TacticalWaveStartResult => {
     salvo.phase = 'idle';
     salvo.missilesLeftToSpawn = 0;
     salvo.trackedTargetIds.clear();
 
-    // Оценка запуска события «Массированный залп»
+    swarm.active = false;
+    swarm.step = 'idle';
+    swarm.trackedTargetIds.clear();
+
+    // 1. Оценка генерального события: «Манёвренный прорыв» (с 4-й волны с фиксированным шансом 12%)
+    const isManeuverSwarm =
+      wave >= EVENT_CONFIG.general.maneuverSwarm.minWave &&
+      Math.random() < EVENT_CONFIG.general.maneuverSwarm.chance;
+
+    if (isManeuverSwarm) {
+      swarm.active = true;
+      swarm.step = 'delay_echelon_1';
+      swarm.timer = EVENT_CONFIG.general.maneuverSwarm.echelon1Delay;
+      swarm.baseAngle1 = Phaser.Math.FloatBetween(0, Math.PI * 2);
+      swarm.baseAngle2 = Phaser.Math.FloatBetween(0, Math.PI * 2);
+      swarm.baseAngle3 = Phaser.Math.FloatBetween(0, Math.PI * 2);
+      swarm.trackedTargetIds.clear();
+
+      // В особую генеральную волну прогрессивный залп взаимно исключается
+      return {
+        isSpecialWave: true,
+        specialWaveTargetsCount:
+          EVENT_CONFIG.general.maneuverSwarm.totalMissiles,
+        bannerTitle: `ВОЛНА ${wave}: ${EVENT_CONFIG.general.maneuverSwarm.bannerTitle}`,
+        bannerSubtitle: EVENT_CONFIG.general.maneuverSwarm.bannerSubtitle,
+        creditsGrant: EVENT_CONFIG.general.maneuverSwarm.startCreditsGrant,
+      };
+    }
+
+    // 2. Оценка прогрессивного события: «Массированный залп» (доступно с 3-й волны)
     let shouldTrigger = false;
     if (wave === EVENT_CONFIG.salvo.minWave && targetsLeftInWave >= 4) {
       // На 3-й волне ивент гарантирован (100%)
@@ -172,6 +277,10 @@ export function createTacticalEventsManager(
       salvo.currentSalvoIndex = 0;
       salvo.trackedTargetIds.clear();
     }
+
+    return {
+      isSpecialWave: false,
+    };
   };
 
   /**
@@ -185,6 +294,206 @@ export function createTacticalEventsManager(
     let warningArc: SalvoWarningArc | null = null;
     let playAlarmSound: boolean | undefined = undefined;
 
+    // A. Обработка генерального ивента («Манёвренный прорыв» — особая волна из 3 эшелонов по 6 ракет)
+    if (swarm.active) {
+      switch (swarm.step) {
+        case 'delay_echelon_1': {
+          swarm.timer -= dt;
+          if (swarm.timer <= 0) {
+            swarm.step = 'warning_echelon_1';
+            swarm.timer = EVENT_CONFIG.general.maneuverSwarm.warningLeadTime;
+            playAlarmSound = true;
+          }
+          break;
+        }
+
+        case 'warning_echelon_1': {
+          warningArc = { angle: swarm.baseAngle1, phase: 'warning' };
+          swarm.timer -= dt;
+          if (swarm.timer <= 0) {
+            swarm.step = 'active_echelon_1';
+
+            // Эшелон 1: «Двойные Клещи» (3 ракеты с левого крыла + 3 ракеты с правого крыла)
+            const offsetsLeft = [
+              { ang: -0.62, flank: 0.78, delay: 2.4 },
+              { ang: -0.55, flank: 0.88, delay: 2.7 },
+              { ang: -0.48, flank: 0.98, delay: 3.0 },
+            ];
+            for (const p of offsetsLeft) {
+              const m = spawner.spawnManeuveringMissileAtAngle(
+                swarm.baseAngle1 + p.ang,
+                p.flank,
+                p.delay,
+                context.wave,
+              );
+              m.isSalvo = true;
+              swarm.trackedTargetIds.add(m.id);
+              spawnedTargets.push(m);
+            }
+
+            const offsetsRight = [
+              { ang: 0.48, flank: -0.98, delay: 3.0 },
+              { ang: 0.55, flank: -0.88, delay: 2.7 },
+              { ang: 0.62, flank: -0.78, delay: 2.4 },
+            ];
+            for (const p of offsetsRight) {
+              const m = spawner.spawnManeuveringMissileAtAngle(
+                swarm.baseAngle1 + p.ang,
+                p.flank,
+                p.delay,
+                context.wave,
+              );
+              m.isSalvo = true;
+              swarm.trackedTargetIds.add(m.id);
+              spawnedTargets.push(m);
+            }
+          }
+          break;
+        }
+
+        case 'active_echelon_1': {
+          warningArc = { angle: swarm.baseAngle1, phase: 'active' };
+
+          const hasAlive = context.activeTargets.some((t) =>
+            swarm.trackedTargetIds.has(t.id),
+          );
+
+          if (!hasAlive && spawnedTargets.length === 0) {
+            // Первый эшелон отбит! 6-секундная передышка для закупки ракет
+            swarm.trackedTargetIds.clear();
+            swarm.step = 'pause_between_1_2';
+            swarm.timer = EVENT_CONFIG.general.maneuverSwarm.interEchelonPause;
+            warningArc = null;
+          }
+          break;
+        }
+
+        case 'pause_between_1_2': {
+          swarm.timer -= dt;
+          if (swarm.timer <= 0) {
+            swarm.step = 'warning_echelon_2';
+            swarm.timer = EVENT_CONFIG.general.maneuverSwarm.warningLeadTime;
+            playAlarmSound = true;
+          }
+          break;
+        }
+
+        case 'warning_echelon_2': {
+          warningArc = { angle: swarm.baseAngle2, phase: 'warning' };
+          swarm.timer -= dt;
+          if (swarm.timer <= 0) {
+            swarm.step = 'active_echelon_2';
+
+            // Эшелон 2: «Шестиструнный Каскадный Серп» (6 ракет ступенчатой спиральной лентой)
+            for (let i = 0; i < 6; i++) {
+              const ang = swarm.baseAngle2 - 0.35 + i * 0.14;
+              const flank = 0.68 + i * 0.055; // 0.68 .. 0.955 rad (строго безопасно внутри радара)
+              const delay = 1.9 + i * 0.26; // каскадный доворот от 1.9с до 3.2с
+              const m = spawner.spawnManeuveringMissileAtAngle(
+                ang,
+                flank,
+                delay,
+                context.wave,
+              );
+              m.isSalvo = true;
+              swarm.trackedTargetIds.add(m.id);
+              spawnedTargets.push(m);
+            }
+          }
+          break;
+        }
+
+        case 'active_echelon_2': {
+          warningArc = { angle: swarm.baseAngle2, phase: 'active' };
+
+          const hasAlive = context.activeTargets.some((t) =>
+            swarm.trackedTargetIds.has(t.id),
+          );
+
+          if (!hasAlive && spawnedTargets.length === 0) {
+            // Второй эшелон отбит! Вторая передышка для закупки ракет
+            swarm.trackedTargetIds.clear();
+            swarm.step = 'pause_between_2_3';
+            swarm.timer = EVENT_CONFIG.general.maneuverSwarm.interEchelonPause;
+            warningArc = null;
+          }
+          break;
+        }
+
+        case 'pause_between_2_3': {
+          swarm.timer -= dt;
+          if (swarm.timer <= 0) {
+            swarm.step = 'warning_echelon_3';
+            swarm.timer = EVENT_CONFIG.general.maneuverSwarm.warningLeadTime;
+            playAlarmSound = true;
+          }
+          break;
+        }
+
+        case 'warning_echelon_3': {
+          warningArc = { angle: swarm.baseAngle3, phase: 'warning' };
+          swarm.timer -= dt;
+          if (swarm.timer <= 0) {
+            swarm.step = 'active_echelon_3';
+
+            // Эшелон 3: «Сходящийся Трезубец» (2 ракеты слева + 2 по центру + 2 справа = 6 ракет)
+            const tridentWings = [
+              // Левое крыло (2 ракеты)
+              { ang: -0.6, flank: 0.86, delay: 2.6 },
+              { ang: -0.52, flank: 0.92, delay: 2.9 },
+              // Центральная пара (2 ракеты)
+              { ang: -0.08, flank: 0.3, delay: 2.1 },
+              { ang: 0.08, flank: -0.3, delay: 2.1 },
+              // Правое крыло (2 ракеты)
+              { ang: 0.52, flank: -0.92, delay: 2.9 },
+              { ang: 0.6, flank: -0.86, delay: 2.6 },
+            ];
+            for (const p of tridentWings) {
+              const m = spawner.spawnManeuveringMissileAtAngle(
+                swarm.baseAngle3 + p.ang,
+                p.flank,
+                p.delay,
+                context.wave,
+              );
+              m.isSalvo = true;
+              swarm.trackedTargetIds.add(m.id);
+              spawnedTargets.push(m);
+            }
+          }
+          break;
+        }
+
+        case 'active_echelon_3': {
+          warningArc = { angle: swarm.baseAngle3, phase: 'active' };
+
+          const hasAlive = context.activeTargets.some((t) =>
+            swarm.trackedTargetIds.has(t.id),
+          );
+
+          if (!hasAlive && spawnedTargets.length === 0) {
+            // Третий эшелон отбит — вся особая волна полностью завершена!
+            swarm.trackedTargetIds.clear();
+            swarm.step = 'done';
+            swarm.active = false;
+            warningArc = null;
+          }
+          break;
+        }
+
+        case 'done':
+        default: {
+          break;
+        }
+      }
+
+      return {
+        spawnedTargets,
+        warningArc,
+        playAlarmSound,
+      };
+    }
+
+    // B. Обработка прогрессивного события («Массированный залп»)
     // 1. Ожидание времени до включения раннего оповещения
     if (salvo.phase === 'scheduled') {
       salvo.delayTimer -= dt;
@@ -274,6 +583,7 @@ export function createTacticalEventsManager(
   return {
     reset,
     startWave,
+    isSpecialWaveActive,
     update,
   };
 }

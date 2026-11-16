@@ -1257,17 +1257,20 @@ export function createHud(
 
   const subtitleText = scene.add.text(0, 30, '', {
     fontFamily: 'Consolas, monospace',
-    fontSize: '16px',
+    fontSize: '15px',
     color: '#86efac',
     fontStyle: 'bold',
+    align: 'center',
     resolution: GAME_CONFIG.textResolution,
   }).setOrigin(0.5);
 
   const bonusText = scene.add.text(0, 46, '', {
     fontFamily: 'Consolas, monospace',
-    fontSize: '16px',
+    fontSize: '14px',
     color: '#facc15',
     fontStyle: 'bold',
+    align: 'center',
+    lineSpacing: 4,
     resolution: GAME_CONFIG.textResolution,
   }).setOrigin(0.5);
 
@@ -1785,8 +1788,34 @@ export function createHud(
     updateResourceAlerts(dt);
   };
 
+  const WAVE_BANNER_CONFIG = {
+    minWidth: 450,
+    maxWidth: 500,
+    paddingX: 48,
+    heights: {
+      noBonus: 114,
+      singleBonus: 148,
+      multiBonus: 176,
+    },
+    dividers: {
+      noBonus: 6,
+      singleBonus: -12,
+      multiBonus: -22,
+    },
+    positions: {
+      noBonus: { titleY: -20, subtitleY: 28 },
+      singleBonus: { titleY: -38, subtitleY: 14, bonusY: 44 },
+      multiBonus: { titleY: -48, subtitleY: 4, bonusY: 46 },
+    },
+    durations: {
+      noBonus: 3.0,
+      singleBonus: 3.6,
+      multiBonus: 4.0,
+    },
+  } as const;
+
   let waveBannerTimer = 0;
-  let waveBannerTotalDuration = 3.0;
+  let waveBannerTotalDuration: number = WAVE_BANNER_CONFIG.durations.noBonus;
 
   const showWaveBanner = (text: string) => {
     const rawLines = text
@@ -1795,11 +1824,51 @@ export function createHud(
       .filter((l) => l.length > 0);
     const title = rawLines[0] || 'ВОЛНА';
     const subtitle = rawLines[1] || '';
-    const bonus = rawLines[2] || '';
+    const bonusLines = rawLines.slice(2).join('\n');
+    const bonusCount = rawLines.length > 2 ? rawLines.length - 2 : 0;
+    const hasBonus = bonusCount > 0;
 
-    const hasBonus = bonus.length > 0;
-    const boxW = 440;
-    const boxH = hasBonus ? 152 : 116;
+    titleText.setText(title);
+    subtitleText.setText(subtitle);
+
+    if (hasBonus) {
+      bonusText.setText(bonusLines);
+      bonusText.setVisible(true);
+    } else {
+      bonusText.setText('');
+      bonusText.setVisible(false);
+    }
+
+    // Вычисляем ширину окна с учётом реального размера текста, чтобы рамка не нарушалась
+    const contentW = Math.max(
+      titleText.width,
+      subtitleText.width,
+      hasBonus ? bonusText.width : 0,
+    );
+    const boxW = Math.max(
+      WAVE_BANNER_CONFIG.minWidth,
+      Math.min(WAVE_BANNER_CONFIG.maxWidth, Math.round(contentW + WAVE_BANNER_CONFIG.paddingX)),
+    );
+
+    let boxH: number = WAVE_BANNER_CONFIG.heights.noBonus;
+    let dividerY: number = WAVE_BANNER_CONFIG.dividers.noBonus;
+    if (bonusCount === 1) {
+      boxH = WAVE_BANNER_CONFIG.heights.singleBonus;
+      dividerY = WAVE_BANNER_CONFIG.dividers.singleBonus;
+      titleText.setPosition(0, WAVE_BANNER_CONFIG.positions.singleBonus.titleY);
+      subtitleText.setPosition(0, WAVE_BANNER_CONFIG.positions.singleBonus.subtitleY);
+      bonusText.setPosition(0, WAVE_BANNER_CONFIG.positions.singleBonus.bonusY);
+    } else if (bonusCount >= 2) {
+      boxH = WAVE_BANNER_CONFIG.heights.multiBonus;
+      dividerY = WAVE_BANNER_CONFIG.dividers.multiBonus;
+      titleText.setPosition(0, WAVE_BANNER_CONFIG.positions.multiBonus.titleY);
+      subtitleText.setPosition(0, WAVE_BANNER_CONFIG.positions.multiBonus.subtitleY);
+      bonusText.setPosition(0, WAVE_BANNER_CONFIG.positions.multiBonus.bonusY);
+    } else {
+      titleText.setPosition(0, WAVE_BANNER_CONFIG.positions.noBonus.titleY);
+      subtitleText.setPosition(0, WAVE_BANNER_CONFIG.positions.noBonus.subtitleY);
+    }
+
     const halfW = boxW / 2;
     const halfH = boxH / 2;
 
@@ -1843,30 +1912,17 @@ export function createHud(
     bgBox.strokePath();
 
     // Разделительная линия между заголовком и дополнительной информацией
-    const dividerY = hasBonus ? -10 : 8;
     bgBox.lineStyle(1, 0x38bdf8, 0.28);
     bgBox.beginPath();
     bgBox.moveTo(-halfW + 24, dividerY);
     bgBox.lineTo(halfW - 24, dividerY);
     bgBox.strokePath();
 
-    // Позиционирование текстов с выверенными пропорциями
-    titleText.setText(title);
-    titleText.setPosition(0, hasBonus ? -38 : -20);
-
-    subtitleText.setText(subtitle);
-    subtitleText.setPosition(0, hasBonus ? 16 : 30);
-
-    if (hasBonus) {
-      bonusText.setText(bonus);
-      bonusText.setPosition(0, 46);
-      bonusText.setVisible(true);
-    } else {
-      bonusText.setText('');
-      bonusText.setVisible(false);
-    }
-
-    waveBannerTotalDuration = hasBonus ? 3.6 : 3.0;
+    waveBannerTotalDuration = hasBonus
+      ? bonusCount > 1
+        ? WAVE_BANNER_CONFIG.durations.multiBonus
+        : WAVE_BANNER_CONFIG.durations.singleBonus
+      : WAVE_BANNER_CONFIG.durations.noBonus;
     waveBannerTimer = waveBannerTotalDuration;
     waveContainer.setScale(0.94);
     waveContainer.setAlpha(0);

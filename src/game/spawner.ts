@@ -28,11 +28,24 @@ export interface TargetSpawner {
    * Спавн крылатой ракеты по заданному азимуту (для тактических событий, например залпов)
    */
   spawnMissileAtAngle: (angle: number, wave: number) => GameTarget;
+
+  /**
+   * Спавн маневрирующей крылатой ракеты с кастомным отклонением от центра и задержкой доворота
+   */
+  spawnManeuveringMissileAtAngle: (
+    angle: number,
+    flankOffsetRad: number,
+    maneuverDelaySec: number,
+    wave: number,
+  ) => GameTarget;
 }
 
 /**
  * Фабрика изолированного модуля спавна целей
  */
+/** Защитный отступ спавна (px) от кромки радара, предотвращающий мгновенный выход дуговых ракет за радиус отсечения */
+const MANEUVER_SPAWN_RADAR_INSET = 4;
+
 export function createSpawner(): TargetSpawner {
   let nextTargetId = 1;
   let spawnTimer = 1.2;
@@ -191,6 +204,59 @@ export function createSpawner(): TargetSpawner {
     };
   };
 
+  const spawnManeuveringMissileAtAngle = (
+    angle: number,
+    flankOffsetRad: number,
+    maneuverDelaySec: number,
+    wave: number,
+  ): GameTarget => {
+    // Безопасный отступ от кромки, чтобы при фланговой дуге ракета не вылетала за границу радара
+    const spawnDist = GAME_CONFIG.radarRadius - MANEUVER_SPAWN_RADAR_INSET;
+    const x = GAME_CONFIG.radarX + Math.cos(angle) * spawnDist;
+    const y = GAME_CONFIG.radarY + Math.sin(angle) * spawnDist;
+
+    const type = 'missile';
+    const typeCfg = GAME_CONFIG.targetTypes.missile;
+    const angleToCenter = Math.atan2(
+      GAME_CONFIG.radarY - y,
+      GAME_CONFIG.radarX - x,
+    );
+    const heading = angleToCenter + flankOffsetRad;
+
+    const waveSpeedFactor = 1 + Math.min(0.35, (wave - 1) * 0.04);
+    const speed =
+      Phaser.Math.FloatBetween(typeCfg.speedRange[0], typeCfg.speedRange[1]) *
+      waveSpeedFactor;
+
+    const signal = Math.round(
+      Phaser.Math.FloatBetween(typeCfg.signalRange[0], typeCfg.signalRange[1]),
+    );
+
+    const vx = Math.cos(heading) * speed;
+    const vy = Math.sin(heading) * speed;
+
+    let headingDeg = Math.round(Phaser.Math.RadToDeg(heading));
+    if (headingDeg < 0) headingDeg += 360;
+
+    return {
+      id: nextTargetId++,
+      type,
+      x,
+      y,
+      vx,
+      vy,
+      speed: Math.round(speed),
+      headingDeg,
+      headingRad: heading,
+      targetHeadingRad: heading,
+      turnRate: 1.4,
+      maneuverTimer: maneuverDelaySec,
+      isManeuveringMissile: true,
+      signal,
+      alpha: 0,
+    };
+  };
+
   const update = (
     dt: number,
     wave: number,
@@ -221,5 +287,6 @@ export function createSpawner(): TargetSpawner {
     reset,
     update,
     spawnMissileAtAngle,
+    spawnManeuveringMissileAtAngle,
   };
 }

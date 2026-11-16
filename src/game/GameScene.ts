@@ -27,7 +27,11 @@ import { createAlertManager, type AlertManager } from './alerts';
 import { setupGameInputs } from './input';
 import { createRadarRender, type RadarRender } from './radarRender';
 import { createSpawner, type TargetSpawner } from './spawner';
-import { createTacticalEventsManager, type TacticalEventManager } from './events';
+import {
+  createTacticalEventsManager,
+  type TacticalEventManager,
+  EVENT_CONFIG,
+} from './events';
 import { createScoreTracker, type ScoreTracker } from './scoring';
 import { createArmory, type ArmoryTracker } from './armory';
 import { createStatsTracker, type StatsTracker } from './stats';
@@ -70,6 +74,7 @@ export class GameScene extends Phaser.Scene {
   private wave = 1;
   private waveTargetsToSpawn = GAME_CONFIG.waveTargetsBase;
   private waveHadFlaws = false;
+  private isSpecialWaveCurrent = false;
   private isGameOver = false;
   private highScore = 0;
 
@@ -92,7 +97,15 @@ export class GameScene extends Phaser.Scene {
     this.wave = 1;
     this.waveTargetsToSpawn = GAME_CONFIG.waveTargetsBase;
     this.waveHadFlaws = false;
-    this.tacticalEvents.startWave(this.wave, this.waveTargetsToSpawn);
+    this.isSpecialWaveCurrent = false;
+    const waveInit = this.tacticalEvents.startWave(this.wave, this.waveTargetsToSpawn);
+    this.isSpecialWaveCurrent = waveInit.isSpecialWave;
+    if (waveInit.isSpecialWave && waveInit.specialWaveTargetsCount) {
+      this.waveTargetsToSpawn = waveInit.specialWaveTargetsCount;
+    }
+    if (waveInit.creditsGrant && waveInit.creditsGrant > 0) {
+      this.armory.addCredits(waveInit.creditsGrant);
+    }
     this.targets = [];
     this.selectedTarget = null;
     this.explosions = [];
@@ -200,15 +213,17 @@ export class GameScene extends Phaser.Scene {
       this.waveTargetsToSpawn = Math.max(0, this.waveTargetsToSpawn - 1);
     }
 
-    const newTarget = this.spawner.update(
-      dt,
-      this.wave,
-      this.targets.length,
-      this.waveTargetsToSpawn,
-    );
-    if (newTarget) {
-      this.targets.push(newTarget);
-      this.waveTargetsToSpawn--;
+    if (!this.tacticalEvents.isSpecialWaveActive()) {
+      const newTarget = this.spawner.update(
+        dt,
+        this.wave,
+        this.targets.length,
+        this.waveTargetsToSpawn,
+      );
+      if (newTarget) {
+        this.targets.push(newTarget);
+        this.waveTargetsToSpawn--;
+      }
     }
 
     // 2. Движение луча радара и детекция (включая свежезаспавненные цели текущего кадра)
@@ -246,7 +261,14 @@ export class GameScene extends Phaser.Scene {
   private startCombat(): void {
     this.isGameStarted = true;
     this.spawner.reset();
-    this.tacticalEvents.startWave(this.wave, this.waveTargetsToSpawn);
+    const waveInit = this.tacticalEvents.startWave(this.wave, this.waveTargetsToSpawn);
+    this.isSpecialWaveCurrent = waveInit.isSpecialWave;
+    if (waveInit.isSpecialWave && waveInit.specialWaveTargetsCount) {
+      this.waveTargetsToSpawn = waveInit.specialWaveTargetsCount;
+    }
+    if (waveInit.creditsGrant && waveInit.creditsGrant > 0) {
+      this.armory.addCredits(waveInit.creditsGrant);
+    }
     this.targets = [];
     this.soundSystem.playWaveTransition(false);
     this.showWaveBanner('ВОЛНА 1\nБОЕВОЕ ДЕЖУРСТВО');
@@ -767,30 +789,83 @@ export class GameScene extends Phaser.Scene {
    */
   private checkWaveProgress(): void {
     if (this.waveTargetsToSpawn <= 0 && this.targets.length === 0 && !this.isGameOver) {
+      const completedSpecialWave = this.isSpecialWaveCurrent;
       this.wave++;
       this.waveTargetsToSpawn =
         GAME_CONFIG.waveTargetsBase + this.wave * GAME_CONFIG.waveTargetsIncrement;
-      this.tacticalEvents.startWave(this.wave, this.waveTargetsToSpawn);
+      const waveInit = this.tacticalEvents.startWave(this.wave, this.waveTargetsToSpawn);
+      this.isSpecialWaveCurrent = waveInit.isSpecialWave;
+      if (waveInit.isSpecialWave && waveInit.specialWaveTargetsCount) {
+        this.waveTargetsToSpawn = waveInit.specialWaveTargetsCount;
+      }
 
       // Луч ускоряется с каждой волной
       this.radarRender.setWaveSpeed(this.wave);
 
       // Пополнение боекомплекта перехватчиков, зарядов сканирования и начисление кредитов за волну
-      const { addedAmmo, waveCredits } = this.armory.refillForWave(this.wave);
+      let { addedAmmo, waveCredits } = this.armory.refillForWave(this.wave);
+      const swarmCfg = EVENT_CONFIG.general.maneuverSwarm;
+      if (completedSpecialWave) {
+        // Увеличенный бонус по кредитам за завершение особого манёвренного прорыва
+        const mult: number = swarmCfg.creditsRewardMultiplier;
+        const extraCredits = Math.round(waveCredits * (mult - 1));
+        if (extraCredits > 0) {
+          this.armory.addCredits(extraCredits);
+        }
+        waveCredits = Math.round(waveCredits * mult);
+      }
 
-      let cleanBonusText = '';
+      if (waveInit.creditsGrant && waveInit.creditsGrant > 0) {
+        this.armory.addCredits(waveInit.creditsGrant);
+      }
+
+      const mult: number = swarmCfg.creditsRewardMultiplier;
+      const rewardLabel =
+        mult === 2
+          ? '★ НАГРАДА УДВОЕНА ЗА ПРОРЫВ ★'
+          : `★ БОНУС ЗА ПРОРЫВ (+${Math.round((mult - 1) * 100)}%) ★`;
+
+      const bonusLines: string[] = [];
+      if (completedSpecialWave && mult > 1) {
+        bonusLines.push(rewardLabel);
+      }
+
       const isCleanWave = !this.waveHadFlaws;
       if (isCleanWave) {
         const bonus = this.scoring.applyCleanWaveBonus();
-        cleanBonusText = `\n★ ЧИСТАЯ ВОЛНА! (+${bonus} ОЧК) ★`;
+        bonusLines.push(`★ ЧИСТАЯ ВОЛНА! (+${bonus} ОЧК) ★`);
       }
       this.waveHadFlaws = false;
 
       this.soundSystem.playWaveTransition(isCleanWave);
       this.updateScoreBoard();
-      this.showWaveBanner(
-        `ВОЛНА ${this.wave}\nСНАБЖЕНИЕ: +${addedAmmo} РАКЕТЫ | +${waveCredits} CR | СКАНЫ ${GAME_CONFIG.maxScansPerWave}/${GAME_CONFIG.maxScansPerWave}${cleanBonusText}`,
-      );
+
+      if (waveInit.isSpecialWave && waveInit.bannerTitle && waveInit.bannerSubtitle) {
+        const lines = [
+          waveInit.bannerTitle,
+          waveInit.bannerSubtitle,
+        ];
+        if (waveInit.creditsGrant && waveInit.creditsGrant > 0) {
+          lines.push(`★ СУБСИДИЯ ПВО: +${waveInit.creditsGrant} CR ★`);
+        }
+        if (completedSpecialWave && mult > 1) {
+          lines.push(rewardLabel);
+        }
+        this.showWaveBanner(lines.join('\n'));
+        const grant = waveInit.creditsGrant || swarmCfg.startCreditsGrant;
+        this.hud.showNotification(
+          `[ ОСОБЫЙ СЕКТОР: СУБСИДИЯ ПВО +${grant} CR НА ОТРАЖЕНИЕ ${swarmCfg.echelonCount} ЭШЕЛОНОВ ]`,
+          swarmCfg.interEchelonPause,
+        );
+      } else {
+        const doubleTag = completedSpecialWave && mult > 1 ? ` (${mult}x)` : '';
+        const lines = [
+          `ВОЛНА ${this.wave}`,
+          `СНАБЖЕНИЕ: +${addedAmmo} РАКЕТЫ | +${waveCredits} CR${doubleTag} | СКАНЫ ${GAME_CONFIG.maxScansPerWave}/${GAME_CONFIG.maxScansPerWave}`,
+          ...bonusLines,
+        ];
+        this.showWaveBanner(lines.join('\n'));
+      }
     }
   }
 }
