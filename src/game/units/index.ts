@@ -9,3 +9,4 @@
 export * from './radarTargets';
 export * from './interceptor';
 export * from './sweeperDrone';
+export * from './dogfightRescue';

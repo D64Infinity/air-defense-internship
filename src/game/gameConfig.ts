@@ -259,4 +259,5 @@ export interface GameTarget {
   hasPassedBase?: boolean; // Флаг фиксации пролёта через базу
   hasBombedBase?: boolean; // Флаг: бомбардировщик уже сбросил бомбы на базу
   isSalvo?: boolean; // Флаг: ракета принадлежит массированному тактическому налёту
+  eventTriggered?: boolean; // Флаг: для цели уже отработал мини-ивент развязки волны
 }

@@ -42,6 +42,8 @@ import {
   type TargetSimulationEvent,
   createSweeperDroneManager,
   type SweeperDroneManager,
+  createDogfightRescueManager,
+  type DogfightRescueManager,
 } from './units';
 
 
@@ -69,6 +71,7 @@ export class GameScene extends Phaser.Scene {
   private explosions: ExplosionEffect[] = [];
   private interceptorManager: InterceptorManager = createInterceptorManager();
   private sweeperDrone: SweeperDroneManager = createSweeperDroneManager();
+  private dogfightRescue: DogfightRescueManager = createDogfightRescueManager();
 
   // Состояние игры
   private baseHealth = GAME_CONFIG.maxBaseHealth;
@@ -109,6 +112,7 @@ export class GameScene extends Phaser.Scene {
     }
     this.targets = [];
     this.sweeperDrone.reset();
+    this.dogfightRescue.reset();
     this.selectedTarget = null;
     this.explosions = [];
     this.interceptorManager.reset();
@@ -234,11 +238,21 @@ export class GameScene extends Phaser.Scene {
     this.radarRender.updateBeam(dt, this.targets);
     this.updateScanning(dt);
     this.interceptorManager.update(dt);
-    this.checkSweeperDroneTrigger();
+    this.checkSectorEndgameSweep();
     this.sweeperDrone.update(
       dt,
       (target) => this.handleSweeperDroneKill(target),
       () => this.checkWaveProgress(),
+      (pan) => this.soundSystem.playDroneBurst(pan),
+    );
+    this.dogfightRescue.update(
+      dt,
+      (x, y) => {
+        const pan = (x - GAME_CONFIG.radarX) / GAME_CONFIG.radarRadius;
+        this.soundSystem.playExplosion('decoy', pan);
+        this.explosions.push(createExplosion(x, y, false));
+      },
+      (ally) => this.handleDogfightCompleted(ally),
       (pan) => this.soundSystem.playDroneBurst(pan),
     );
     updateExplosions(this.explosions, dt);
@@ -251,6 +265,7 @@ export class GameScene extends Phaser.Scene {
       timeNow: this.time.now,
       interceptors: this.interceptorManager.activeUnits,
       sweeperDrone: this.sweeperDrone,
+      dogfightRescue: this.dogfightRescue,
       explosions: this.explosions,
       warningArc: eventResult.warningArc,
     });
@@ -281,6 +296,7 @@ export class GameScene extends Phaser.Scene {
     }
     this.targets = [];
     this.sweeperDrone.reset();
+    this.dogfightRescue.reset();
     this.soundSystem.playWaveTransition(false);
     this.showWaveBanner('ВОЛНА 1\nБОЕВОЕ ДЕЖУРСТВО');
     this.hud.showNotification(
@@ -376,6 +392,7 @@ export class GameScene extends Phaser.Scene {
     this.explosions = [];
     this.interceptorManager.reset();
     this.sweeperDrone.reset();
+    this.dogfightRescue.reset();
     this.ambientBg.reset();
     this.pauseOverlay.hide();
     this.briefingOverlay.hide();
@@ -485,7 +502,7 @@ export class GameScene extends Phaser.Scene {
       }
       this.updateTelemetry();
       this.updateTargetSelectionUI();
-      this.checkSweeperDroneTrigger();
+      this.checkSectorEndgameSweep();
       return;
     }
 
@@ -686,22 +703,79 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Проверка условий отправки патрульного дрона-чистильщика:
-   * когда в очереди спавна волны не осталось целей (0), на радаре осталась ровно одна цель,
-   * и она является ловушкой, уже помеченной игроком как помеха.
+   * Проверка наличия не нейтрализованных боевых угроз на радаре (ракеты и бомбардировщики)
    */
-  private checkSweeperDroneTrigger(): void {
-    if (this.sweeperDrone.isActive || this.isGameOver || !this.isGameStarted) return;
-    if (this.waveTargetsToSpawn > 0) return;
-    if (this.targets.length !== 1) return;
+  private hasActiveThreats(): boolean {
+    return this.targets.some((t) => t.type === 'missile' || t.type === 'bomber');
+  }
 
-    const lastTarget = this.targets[0];
-    if (lastTarget.type === 'decoy' && lastTarget.markedAs === 'ignore') {
-      this.sweeperDrone.dispatch(lastTarget);
-      this.showFeedback(
-        '[ПАТРУЛЬ] ДРОН ЗАЧИСТКИ НАПРАВЛЕН НА ЛОЖНУЮ ЦЕЛЬ',
-        '#38bdf8',
+  /**
+   * Проверка: находится ли цель в комфортной зоне контакта (Engagement Zone) для мини-ивента
+   * (не в упор к базе и не на самой кромке радара)
+   */
+  private isTargetInEngagementZone(target: GameTarget): boolean {
+    const dist = getDistToBase(target.x, target.y);
+    const minSafeDist = GAME_CONFIG.baseRadius + 28; // ~46 px от центра базы
+    const maxSafeDist = GAME_CONFIG.radarRadius * 0.85; // ~178 px от центра базы
+    return dist >= minSafeDist && dist <= maxSafeDist;
+  }
+
+  /**
+   * Обзор воздушной обстановки в финале волны (Sector Endgame Sweep):
+   * когда пул волны исчерпан и нет боевых угроз, оставшиеся мирные цели
+   * (союзники и ловушки) обслуживаются мини-ивентами в безопасной зоне контакта
+   */
+  private checkSectorEndgameSweep(): void {
+    if (this.isGameOver || !this.isGameStarted) return;
+    if (this.waveTargetsToSpawn > 0) return;
+    if (this.hasActiveThreats()) return;
+
+    // 1. Проверяем союзников, ожидающих эскорта
+    if (!this.dogfightRescue.isActive) {
+      const candidateFriend = this.targets.find(
+        (t) => t.type === 'friend' && t.markedAs === 'friend' && !t.eventTriggered,
       );
+
+      if (candidateFriend) {
+        if (this.isTargetInEngagementZone(candidateFriend)) {
+          candidateFriend.eventTriggered = true;
+          this.dogfightRescue.start(candidateFriend);
+          this.showFeedback(
+            '[ТРЕВОГА] ПЕРЕХВАТЧИКИ ВРАГА НА ХВОСТЕ СОЮЗНИКА!',
+            '#f97316',
+          );
+          this.soundSystem.playSalvoAlert();
+        } else {
+          // Если борт уже у самой базы или у кромки — не запускаем засаду,
+          // а просто даём безопасный форсаж, чтобы он быстро сел или вышел
+          candidateFriend.eventTriggered = true;
+          candidateFriend.speed = Math.max(68, Math.round(candidateFriend.speed * 2.2));
+          candidateFriend.turnRate = 0;
+          candidateFriend.vx = Math.cos(candidateFriend.headingRad) * candidateFriend.speed;
+          candidateFriend.vy = Math.sin(candidateFriend.headingRad) * candidateFriend.speed;
+        }
+      }
+    }
+
+    // 2. Проверяем ловушки, подлежащие нейтрализации патрульным дроном
+    if (!this.sweeperDrone.isActive && !this.dogfightRescue.isActive) {
+      const candidateDecoy = this.targets.find(
+        (t) => t.type === 'decoy' && t.markedAs === 'ignore' && !t.eventTriggered,
+      );
+
+      if (candidateDecoy) {
+        if (this.isTargetInEngagementZone(candidateDecoy)) {
+          candidateDecoy.eventTriggered = true;
+          this.sweeperDrone.dispatch(candidateDecoy);
+          this.showFeedback(
+            '[ПАТРУЛЬ] ДРОН ЗАЧИСТКИ НАПРАВЛЕН НА ЛОЖНУЮ ЦЕЛЬ',
+            '#38bdf8',
+          );
+        } else {
+          // Если ловушка уже на выходе или в упор к базе — помечаем, чтобы не висела
+          candidateDecoy.eventTriggered = true;
+        }
+      }
     }
   }
 
@@ -714,6 +788,50 @@ export class GameScene extends Phaser.Scene {
     this.explosions.push(createExplosion(target.x, target.y, false));
     this.handleDecoyCompletion(target, false, true);
     this.removeTarget(target);
+  }
+
+  /**
+   * Завершение сцены воздушного боя: перевод спасённого союзника на форсаж с перерасчётом маршрута
+   */
+  private handleDogfightCompleted(ally: GameTarget): void {
+    // Включаем союзнику форсаж (~75-80 px/с)
+    ally.speed = Math.max(72, Math.round(ally.speed * 2.8));
+    ally.turnRate = 0; // прямой скоростной вектор без блужданий
+    ally.hasManeuvered = true; // блокируем повторный таймер манёвра
+    ally.maneuverTimer = undefined;
+
+    // 50% шанс: аварийный заход на базу для ремонта, 50% скоростной уход из сектора
+    const goesToBase = Math.random() < 0.5;
+    let targetAngle: number;
+
+    if (goesToBase) {
+      targetAngle = Math.atan2(
+        GAME_CONFIG.radarY - ally.y,
+        GAME_CONFIG.radarX - ally.x,
+      );
+      this.showFeedback(
+        '[ЭФИР] СОЮЗНИК: "ХВОСТ ЧИСТ! ИДУ НА АВАРИЙНУЮ ПОСАДКУ К ВАМ НА БАЗУ!"',
+        GAME_CONFIG.colors.text.success,
+      );
+    } else {
+      targetAngle = Math.atan2(
+        ally.y - GAME_CONFIG.radarY,
+        ally.x - GAME_CONFIG.radarX,
+      );
+      this.showFeedback(
+        '[ЭФИР] СОЮЗНИК: "ХВОСТ ЧИСТ! ВКЛЮЧАЮ ФОРСАЖ, УХОЖУ ИЗ СЕКТОРА!"',
+        GAME_CONFIG.colors.text.success,
+      );
+    }
+
+    ally.headingRad = targetAngle;
+    ally.targetHeadingRad = targetAngle;
+    ally.vx = Math.cos(targetAngle) * ally.speed;
+    ally.vy = Math.sin(targetAngle) * ally.speed;
+
+    let deg = Math.round(Phaser.Math.RadToDeg(targetAngle));
+    if (deg < 0) deg += 360;
+    ally.headingDeg = deg;
   }
 
   private showFeedback(text: string, color: string): void {
@@ -762,6 +880,9 @@ export class GameScene extends Phaser.Scene {
     }
 
     for (const target of targetsToRemove) {
+      if (this.dogfightRescue.isCombatActive && target.type === 'friend') {
+        continue;
+      }
       this.removeTarget(target);
     }
   }
@@ -792,10 +913,12 @@ export class GameScene extends Phaser.Scene {
         break;
 
       case 'friend_landed':
+        if (this.dogfightRescue.isCombatActive) break;
         this.handleFriendCompletion(ev.target, true);
         break;
 
       case 'friend_exited':
+        if (this.dogfightRescue.isCombatActive) break;
         this.handleFriendCompletion(ev.target, false);
         break;
 
@@ -840,7 +963,11 @@ export class GameScene extends Phaser.Scene {
    * Проверка перехода к следующей волне
    */
   private checkWaveProgress(): void {
-    if (this.sweeperDrone.isActive) {
+    if (this.targets.length === 0) {
+      this.sweeperDrone.reset();
+      this.dogfightRescue.reset();
+    }
+    if (this.sweeperDrone.isActive || this.dogfightRescue.isActive) {
       return;
     }
     if (this.waveTargetsToSpawn <= 0 && this.targets.length === 0 && !this.isGameOver) {

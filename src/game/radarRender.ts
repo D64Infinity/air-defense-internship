@@ -8,6 +8,7 @@ import {
   renderInterceptors,
   type InterceptorUnit,
   type SweeperDroneManager,
+  type DogfightRescueManager,
 } from './units';
 
 /**
@@ -23,6 +24,7 @@ export interface RadarRenderData {
   interceptors: readonly InterceptorUnit[];
   explosions: ExplosionEffect[];
   sweeperDrone?: SweeperDroneManager;
+  dogfightRescue?: DogfightRescueManager;
   warningArc?: { angle: number; phase: 'warning' | 'active' } | null;
 }
 
@@ -663,6 +665,9 @@ export function createRadarRender(
 
     // 6.7. Декоративный дрон зачистки ложных целей
     data.sweeperDrone?.render(dynamicGraphics);
+
+    // 6.8. Воздушный бой и спасение союзника
+    data.dogfightRescue?.render(dynamicGraphics);
 
     // 7. Эффекты взрывов и ударных волн
     renderExplosions(dynamicGraphics, data.explosions);
