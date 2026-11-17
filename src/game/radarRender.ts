@@ -7,7 +7,8 @@ import {
 import {
   renderInterceptors,
   type InterceptorUnit,
-} from './interceptor';
+  type SweeperDroneManager,
+} from './units';
 
 /**
  * Данные текущего кадра для отрисовки динамических объектов радара
@@ -21,6 +22,7 @@ export interface RadarRenderData {
   timeNow: number;
   interceptors: readonly InterceptorUnit[];
   explosions: ExplosionEffect[];
+  sweeperDrone?: SweeperDroneManager;
   warningArc?: { angle: number; phase: 'warning' | 'active' } | null;
 }
 
@@ -658,6 +660,9 @@ export function createRadarRender(
 
     // 6.5. Ракеты-перехватчики ПВО и инверсионные следы
     renderInterceptors(dynamicGraphics, data.interceptors);
+
+    // 6.7. Декоративный дрон зачистки ложных целей
+    data.sweeperDrone?.render(dynamicGraphics);
 
     // 7. Эффекты взрывов и ударных волн
     renderExplosions(dynamicGraphics, data.explosions);

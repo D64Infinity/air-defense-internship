@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { GAME_CONFIG, type GameTarget } from './gameConfig';
+import { GAME_CONFIG, type GameTarget } from '../gameConfig';
 
 /**
  * Точка высокотемпературного инверсионного следа ракеты на люминофоре

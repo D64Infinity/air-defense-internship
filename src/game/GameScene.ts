@@ -10,10 +10,6 @@ import {
   type ExplosionEffect,
 } from './effects';
 import {
-  createInterceptorManager,
-  type InterceptorManager,
-} from './interceptor';
-import {
   createGameOverOverlay,
   createPauseOverlay,
   createBriefingOverlay,
@@ -38,11 +34,15 @@ import { createStatsTracker, type StatsTracker } from './stats';
 import { createSoundSystem, type SoundSystem } from './audio';
 import { AmbientBackground } from './background';
 import {
+  createInterceptorManager,
+  type InterceptorManager,
   getDistToBase,
   findTargetNear,
   updateTargetsSimulation,
   type TargetSimulationEvent,
-} from './targetSimulation';
+  createSweeperDroneManager,
+  type SweeperDroneManager,
+} from './units';
 
 
 export class GameScene extends Phaser.Scene {
@@ -68,6 +68,7 @@ export class GameScene extends Phaser.Scene {
   private selectedTarget: GameTarget | null = null;
   private explosions: ExplosionEffect[] = [];
   private interceptorManager: InterceptorManager = createInterceptorManager();
+  private sweeperDrone: SweeperDroneManager = createSweeperDroneManager();
 
   // Состояние игры
   private baseHealth = GAME_CONFIG.maxBaseHealth;
@@ -107,6 +108,7 @@ export class GameScene extends Phaser.Scene {
       this.armory.addCredits(waveInit.creditsGrant);
     }
     this.targets = [];
+    this.sweeperDrone.reset();
     this.selectedTarget = null;
     this.explosions = [];
     this.interceptorManager.reset();
@@ -232,6 +234,13 @@ export class GameScene extends Phaser.Scene {
     this.radarRender.updateBeam(dt, this.targets);
     this.updateScanning(dt);
     this.interceptorManager.update(dt);
+    this.checkSweeperDroneTrigger();
+    this.sweeperDrone.update(
+      dt,
+      (target) => this.handleSweeperDroneKill(target),
+      () => this.checkWaveProgress(),
+      (pan) => this.soundSystem.playDroneBurst(pan),
+    );
     updateExplosions(this.explosions, dt);
     this.radarRender.renderDynamic({
       baseFlashTimer: this.baseFlashTimer,
@@ -241,6 +250,7 @@ export class GameScene extends Phaser.Scene {
       scanningTarget: this.armory.scanningTarget,
       timeNow: this.time.now,
       interceptors: this.interceptorManager.activeUnits,
+      sweeperDrone: this.sweeperDrone,
       explosions: this.explosions,
       warningArc: eventResult.warningArc,
     });
@@ -270,6 +280,7 @@ export class GameScene extends Phaser.Scene {
       this.armory.addCredits(waveInit.creditsGrant);
     }
     this.targets = [];
+    this.sweeperDrone.reset();
     this.soundSystem.playWaveTransition(false);
     this.showWaveBanner('ВОЛНА 1\nБОЕВОЕ ДЕЖУРСТВО');
     this.hud.showNotification(
@@ -364,6 +375,7 @@ export class GameScene extends Phaser.Scene {
     this.isPaused = false;
     this.explosions = [];
     this.interceptorManager.reset();
+    this.sweeperDrone.reset();
     this.ambientBg.reset();
     this.pauseOverlay.hide();
     this.briefingOverlay.hide();
@@ -473,6 +485,7 @@ export class GameScene extends Phaser.Scene {
       }
       this.updateTelemetry();
       this.updateTargetSelectionUI();
+      this.checkSweeperDroneTrigger();
       return;
     }
 
@@ -635,16 +648,24 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Обработка завершения пути ложной цели (выход из сектора или рассеивание)
+   * Обработка завершения пути ложной цели (выход из сектора, рассеивание или уничтожение патрулем)
    */
-  private handleDecoyCompletion(target: GameTarget, isDissipated = false): void {
+  private handleDecoyCompletion(
+    target: GameTarget,
+    isDissipated = false,
+    isDestroyedByDrone = false,
+  ): void {
     if (target.markedAs === 'ignore') {
       this.stats.recordDecoyFiltered();
       this.scoring.addDecoySuccess();
-      const reason = isDissipated ? 'СИГНАЛ РАССЕЯЛСЯ' : 'ПОКИНУЛА СЕКТОР';
+      const reason = isDestroyedByDrone
+        ? 'УНИЧТОЖЕНА ПАТРУЛЕМ'
+        : isDissipated
+          ? 'СИГНАЛ РАССЕЯЛСЯ'
+          : 'ПОКИНУЛА СЕКТОР';
       this.showFeedback(
         `[ФИЛЬТР] ЛОЖНАЯ ЦЕЛЬ (${reason}) (СЕРИЯ +1)`,
-        GAME_CONFIG.colors.text.muted,
+        isDestroyedByDrone ? '#38bdf8' : GAME_CONFIG.colors.text.muted,
       );
     } else if (target.markedAs === 'friend') {
       this.stats.recordDecoyMistake();
@@ -662,6 +683,37 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.updateScoreBoard();
+  }
+
+  /**
+   * Проверка условий отправки патрульного дрона-чистильщика:
+   * когда в очереди спавна волны не осталось целей (0), на радаре осталась ровно одна цель,
+   * и она является ловушкой, уже помеченной игроком как помеха.
+   */
+  private checkSweeperDroneTrigger(): void {
+    if (this.sweeperDrone.isActive || this.isGameOver || !this.isGameStarted) return;
+    if (this.waveTargetsToSpawn > 0) return;
+    if (this.targets.length !== 1) return;
+
+    const lastTarget = this.targets[0];
+    if (lastTarget.type === 'decoy' && lastTarget.markedAs === 'ignore') {
+      this.sweeperDrone.dispatch(lastTarget);
+      this.showFeedback(
+        '[ПАТРУЛЬ] ДРОН ЗАЧИСТКИ НАПРАВЛЕН НА ЛОЖНУЮ ЦЕЛЬ',
+        '#38bdf8',
+      );
+    }
+  }
+
+  /**
+   * Обработка уничтожения ложной цели патрульным дроном
+   */
+  private handleSweeperDroneKill(target: GameTarget): void {
+    const pan = (target.x - GAME_CONFIG.radarX) / GAME_CONFIG.radarRadius;
+    this.soundSystem.playExplosion('decoy', pan);
+    this.explosions.push(createExplosion(target.x, target.y, false));
+    this.handleDecoyCompletion(target, false, true);
+    this.removeTarget(target);
   }
 
   private showFeedback(text: string, color: string): void {
@@ -788,6 +840,9 @@ export class GameScene extends Phaser.Scene {
    * Проверка перехода к следующей волне
    */
   private checkWaveProgress(): void {
+    if (this.sweeperDrone.isActive) {
+      return;
+    }
     if (this.waveTargetsToSpawn <= 0 && this.targets.length === 0 && !this.isGameOver) {
       const completedSpecialWave = this.isSpecialWaveCurrent;
       this.wave++;

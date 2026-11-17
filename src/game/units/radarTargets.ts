@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { GAME_CONFIG, type GameTarget, type TargetType } from './gameConfig';
+import { GAME_CONFIG, type GameTarget, type TargetType } from '../gameConfig';
 
 /**
  * Расчёт расстояния от координат (x, y) до центра базы

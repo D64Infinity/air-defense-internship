@@ -11,6 +11,7 @@ export interface SoundSystem {
   playBaseDamage: () => void;
   playDenyClick: () => void;
   playLaunch: () => void;
+  playDroneBurst: (pan?: number) => void;
   playWaveTransition: (isCleanWave?: boolean) => void;
   playSalvoAlert: () => void;
   toggleMute: () => boolean;
@@ -1384,6 +1385,44 @@ export function createSoundSystem(): SoundSystem {
     });
   };
 
+  /**
+   * Быстрая очередь импульсов ("пиу-пиу-пиу") автопушки патрульного дрона
+   */
+  const playDroneBurst = (pan?: number): void => {
+    if (isMuted) return;
+    const audioCtx = getContext();
+    if (!audioCtx) return;
+
+    const now = audioCtx.currentTime;
+    const route = createOutputRoute(audioCtx, pan, now);
+
+    // Серия из 3 быстрых импульсов автопушки
+    for (let i = 0; i < 3; i++) {
+      const shotTime = now + i * 0.055;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(1250, shotTime);
+      osc.frequency.exponentialRampToValueAtTime(320, shotTime + 0.045);
+
+      gain.gain.setValueAtTime(0.0001, shotTime);
+      gain.gain.linearRampToValueAtTime(0.22, shotTime + 0.004);
+      gain.gain.exponentialRampToValueAtTime(0.0001, shotTime + 0.045);
+
+      osc.connect(gain);
+      gain.connect(route.destination);
+
+      osc.start(shotTime);
+      osc.stop(shotTime + 0.05);
+
+      osc.onended = () => {
+        osc.disconnect();
+        gain.disconnect();
+      };
+    }
+  };
+
   const toggleMute = (): boolean => {
     isMuted = !isMuted;
     if (masterGain && ctx) {
@@ -1399,6 +1438,7 @@ export function createSoundSystem(): SoundSystem {
     playBaseDamage,
     playDenyClick,
     playLaunch,
+    playDroneBurst,
     playWaveTransition,
     playSalvoAlert,
     toggleMute,
