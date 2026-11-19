@@ -329,44 +329,80 @@ export function createBarrageSalvoManager(): BarrageSalvoManager {
   const render = (graphics: Phaser.GameObjects.Graphics): void => {
     if (!active) return;
 
-    // 0. МЯГКИЙ ЯНТАРНЫЙ ЗАСВЕТ СЕКТОРА (Phosphor Horizon Bloom)
+    // 0. МЯГКИЙ ЯНТАРНЫЙ ЗАСВЕТ СЕКТОРА (Phosphor Horizon Bloom) С ПЛАВНЫМ ГРАДИЕНТОМ К ТЁМНОЙ ЗОНЕ
     if (sectorBloomIntensity > 0.005) {
       const bloomAlpha = sectorBloomIntensity * BARRAGE_CONFIG.sectorBloomMaxAlpha;
 
-      // Полупрозрачный теплый фон 180° дуги между базой и кромкой радара
-      graphics.fillStyle(BARRAGE_CONFIG.colors.warningDot, bloomAlpha);
-      graphics.beginPath();
-      graphics.arc(
-        GAME_CONFIG.radarX,
-        GAME_CONFIG.radarY,
-        GAME_CONFIG.radarRadius * 0.98,
-        warningAngle1,
-        warningAngle2,
-        false,
-      );
-      graphics.arc(
-        GAME_CONFIG.radarX,
-        GAME_CONFIG.radarY,
-        GAME_CONFIG.baseRadius + 8,
-        warningAngle2,
-        warningAngle1,
-        true,
-      );
-      graphics.closePath();
-      graphics.fillPath();
+      // Параметры градиентного рассеивания люминофора:
+      // Вместо резкого плоского среза полукруга по диаметру, сектор разбивается на плавные
+      // угловые клинья с косинусным затуханием (cosine ease-out) на боковых границах
+      // и деликатным рассеиванием (~16 градусов) в нетронутую область радара.
+      const featherAngle = 0.28; // мягкий шлейф рассеивания света за пределы 180° дуги
+      const halfSpan = Math.PI * 0.5 + featherAngle;
+      const numSlices = 36; // 36 сегментов формируют непрерывный аналоговый градиент
+      const coreLimit = Math.PI * 0.5 - 0.32; // центральная область полной яркости (~144°)
+      const fadeWidth = halfSpan - coreLimit; // ширина зоны спада до нуля (~35°)
 
-      // Деликатная светящаяся линия по внешней кромке
-      graphics.lineStyle(2.0, BARRAGE_CONFIG.colors.warningDot, sectorBloomIntensity * 0.22);
-      graphics.beginPath();
-      graphics.arc(
-        GAME_CONFIG.radarX,
-        GAME_CONFIG.radarY,
-        GAME_CONFIG.radarRadius * 0.98,
-        warningAngle1,
-        warningAngle2,
-        false,
-      );
-      graphics.strokePath();
+      const rOuter = GAME_CONFIG.radarRadius * 0.98;
+      const rInner = GAME_CONFIG.baseRadius + 8;
+
+      for (let i = 0; i < numSlices; i++) {
+        const a1 = centerAngle - halfSpan + (i / numSlices) * (halfSpan * 2);
+        const a2 = centerAngle - halfSpan + ((i + 1) / numSlices) * (halfSpan * 2);
+        const aMid = (a1 + a2) * 0.5;
+
+        // Кратчайшее угловое отклонение от центральной оси налёта
+        const angleDist = Math.abs(Phaser.Math.Angle.Wrap(aMid - centerAngle));
+
+        let angularFactor = 1.0;
+        if (angleDist > coreLimit) {
+          const t = Phaser.Math.Clamp((angleDist - coreLimit) / fadeWidth, 0, 1);
+          // Косинусный C1-гладкий спад: f(0)=1, f(1)=0, нулевая производная на обоих концах
+          angularFactor = 0.5 * (1 + Math.cos(t * Math.PI));
+        }
+
+        if (angularFactor <= 0.002) continue;
+
+        const sliceAlpha = bloomAlpha * angularFactor;
+
+        // Заполнение сегмента с плавно спадающей альфой
+        graphics.fillStyle(BARRAGE_CONFIG.colors.warningDot, sliceAlpha);
+        graphics.beginPath();
+        graphics.arc(
+          GAME_CONFIG.radarX,
+          GAME_CONFIG.radarY,
+          rOuter,
+          a1,
+          a2,
+          false,
+        );
+        graphics.arc(
+          GAME_CONFIG.radarX,
+          GAME_CONFIG.radarY,
+          rInner,
+          a2,
+          a1,
+          true,
+        );
+        graphics.closePath();
+        graphics.fillPath();
+
+        // Внешняя светящаяся кромка с тем же градиентным затуханием (без резких обрывов)
+        if (sectorBloomIntensity > 0.02 && angularFactor > 0.04) {
+          const edgeAlpha = sectorBloomIntensity * 0.20 * angularFactor;
+          graphics.lineStyle(1.6, BARRAGE_CONFIG.colors.warningDot, edgeAlpha);
+          graphics.beginPath();
+          graphics.arc(
+            GAME_CONFIG.radarX,
+            GAME_CONFIG.radarY,
+            rOuter,
+            a1,
+            a2,
+            false,
+          );
+          graphics.strokePath();
+        }
+      }
     }
 
     // 1. ПРЕДУПРЕЖДАЮЩИЙ СЕКТОР (мигающие точки вдоль двух ограничительных радиусов 180° полудуги)

@@ -759,7 +759,6 @@ export class GameScene extends Phaser.Scene {
       );
       const bonusScore = points + 200;
       const creditsReward = 150;
-      this.soundSystem.playJammerShutdown();
       this.armory.addCredits(creditsReward);
       this.scoring.addDirectScore(200);
       this.stats.recordBomberIntercept();

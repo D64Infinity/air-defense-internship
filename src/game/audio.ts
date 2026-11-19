@@ -18,7 +18,7 @@ export interface SoundSystem {
   playBarrageRocketLaunch: () => void;
   playAirburst: (pan?: number) => void;
   playFlareSizzle: () => void;
-  playJammerShutdown: () => void;
+  playJammerShutdown: (pan?: number) => void;
   toggleMute: () => boolean;
   readonly isMuted: boolean;
 }
@@ -953,6 +953,126 @@ export function createSoundSystem(): SoundSystem {
   };
 
   /**
+   * 5. САМОЛЁТ РЭБ «СТРОБ» (150 CR):
+   * Катастрофа генератора активных помех (0.85 сек):
+   * - Кинетический разрыв корпуса с ударной волной Фридлендера;
+   * - Глубокий атмосферный грохот разрушения фюзеляжа (коричневый шум 680 -> 42 Гц);
+   * - Массивный индуктивный срыв контура генератора РЭБ (EMP Spindown: треугольная волна с 360 Гц до 36 Гц);
+   * - Высоковольтная дуга короткого замыкания и схлопывание эфирного шума (полосовой фильтр 1200 -> 240 Гц).
+   */
+  const playJammerExplosion = (
+    audioCtx: AudioContext,
+    route: AudioOutputRoute,
+    now: number,
+  ): void => {
+    const duration = 0.85;
+
+    // Слой 1: Физическая ударная волна Фридлендера (Friedlander Shock Front)
+    const shock = audioCtx.createBufferSource();
+    shock.buffer = getFriedlanderMissileBuffer(audioCtx);
+
+    const shockGain = audioCtx.createGain();
+    shockGain.gain.setValueAtTime(0.85, now);
+
+    shock.connect(shockGain);
+    shockGain.connect(route.destination);
+    if (route.skyEcho) {
+      shockGain.connect(route.skyEcho);
+    }
+
+    // Слой 2: Глубокий грохот взрыва фюзеляжа и керосина (Brownian Gas Turbulence)
+    const blastNoise = audioCtx.createBufferSource();
+    blastNoise.buffer = getBrownNoiseBuffer(audioCtx);
+
+    const blastFilter = audioCtx.createBiquadFilter();
+    blastFilter.type = 'lowpass';
+    blastFilter.frequency.setValueAtTime(680, now);
+    blastFilter.frequency.exponentialRampToValueAtTime(42, now + duration);
+    blastFilter.Q.value = 2.0;
+
+    const blastGain = audioCtx.createGain();
+    blastGain.gain.setValueAtTime(0.0001, now);
+    blastGain.gain.linearRampToValueAtTime(0.65, now + 0.004);
+    blastGain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+
+    blastNoise.connect(blastFilter);
+    blastFilter.connect(blastGain);
+    blastGain.connect(route.destination);
+    if (route.skyEcho) {
+      blastGain.connect(route.skyEcho);
+    }
+
+    // Слой 3: Мощный индуктивный срыв контура генератора РЭБ (EMP Generator Coil Spindown)
+    // Сочный треугольный осциллятор, падающий с 360 Гц (плотный гул) в инфразвук 36 Гц
+    const empOsc = audioCtx.createOscillator();
+    empOsc.type = 'triangle';
+    empOsc.frequency.setValueAtTime(360, now);
+    empOsc.frequency.exponentialRampToValueAtTime(36, now + 0.38);
+
+    const empFilter = audioCtx.createBiquadFilter();
+    empFilter.type = 'lowpass';
+    empFilter.frequency.setValueAtTime(750, now);
+    empFilter.frequency.exponentialRampToValueAtTime(120, now + 0.38);
+    empFilter.Q.value = 2.5;
+
+    const empGain = audioCtx.createGain();
+    empGain.gain.setValueAtTime(0.0001, now);
+    empGain.gain.linearRampToValueAtTime(0.55, now + 0.006);
+    empGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.40);
+
+    empOsc.connect(empFilter);
+    empFilter.connect(empGain);
+    empGain.connect(route.destination);
+
+    // Слой 4: Электрическая дуга короткого замыкания и распад эфирного шума (Arc Discharge & Static Collapse)
+    const arcNoise = audioCtx.createBufferSource();
+    arcNoise.buffer = getWhiteNoiseBuffer(audioCtx);
+
+    const arcFilter = audioCtx.createBiquadFilter();
+    arcFilter.type = 'bandpass';
+    arcFilter.frequency.setValueAtTime(1200, now);
+    arcFilter.frequency.exponentialRampToValueAtTime(240, now + 0.28);
+    arcFilter.Q.value = 1.8;
+
+    const arcGain = audioCtx.createGain();
+    arcGain.gain.setValueAtTime(0.0001, now);
+    arcGain.gain.linearRampToValueAtTime(0.42, now + 0.003);
+    arcGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.30);
+
+    arcNoise.connect(arcFilter);
+    arcFilter.connect(arcGain);
+    arcGain.connect(route.destination);
+
+    // Старт источников
+    shock.start(now);
+    shock.stop(now + 0.16);
+
+    blastNoise.start(now);
+    blastNoise.stop(now + duration);
+
+    empOsc.start(now);
+    empOsc.stop(now + 0.40);
+
+    arcNoise.start(now);
+    arcNoise.stop(now + 0.32);
+
+    blastNoise.onended = () => {
+      shock.disconnect();
+      shockGain.disconnect();
+      blastNoise.disconnect();
+      blastFilter.disconnect();
+      blastGain.disconnect();
+      empOsc.disconnect();
+      empFilter.disconnect();
+      empGain.disconnect();
+      arcNoise.disconnect();
+      arcFilter.disconnect();
+      arcGain.disconnect();
+      route.cleanup();
+    };
+  };
+
+  /**
    * Синтез звука детонации цели с дифференциацией по типу и стерео-панорамированием (pan: -1.0 .. +1.0)
    */
   const playExplosion = (targetType: TargetType, pan?: number): void => {
@@ -972,6 +1092,9 @@ export function createSoundSystem(): SoundSystem {
         break;
       case 'bomber':
         playBomberExplosion(audioCtx, route, now);
+        break;
+      case 'jammer':
+        playJammerExplosion(audioCtx, route, now);
         break;
       case 'friend':
         playFriendExplosion(audioCtx, route, now);
@@ -1611,61 +1734,10 @@ export function createSoundSystem(): SoundSystem {
   };
 
   /**
-   * Электрический щелчок схлопывания помех при сбитии самолёта РЭБ
+   * Схлопывание помех и катастрофа самолёта РЭБ (с панорамированием)
    */
-  const playJammerShutdown = (): void => {
-    if (isMuted) return;
-    const audioCtx = getContext();
-    if (!audioCtx) return;
-
-    const now = audioCtx.currentTime;
-    const masterDest = masterIn || audioCtx.destination;
-
-    // 1. Быстрый спадающий свист разрядки высоковольтного конденсатора
-    const osc = audioCtx.createOscillator();
-    const oscGain = audioCtx.createGain();
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(2200, now);
-    osc.frequency.exponentialRampToValueAtTime(140, now + 0.18);
-
-    oscGain.gain.setValueAtTime(0.0001, now);
-    oscGain.gain.linearRampToValueAtTime(0.25, now + 0.005);
-    oscGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
-
-    osc.connect(oscGain);
-    oscGain.connect(masterDest);
-
-    osc.start(now);
-    osc.stop(now + 0.2);
-    osc.onended = () => {
-      osc.disconnect();
-      oscGain.disconnect();
-    };
-
-    // 2. Треск разрыва статического поля
-    const buffer = getWhiteNoiseBuffer(audioCtx);
-    const noise = audioCtx.createBufferSource();
-    noise.buffer = buffer;
-    const bpf = audioCtx.createBiquadFilter();
-    bpf.type = 'bandpass';
-    bpf.frequency.setValueAtTime(3200, now);
-    bpf.Q.setValueAtTime(4.0, now);
-
-    const noiseGain = audioCtx.createGain();
-    noiseGain.gain.setValueAtTime(0.2, now);
-    noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
-
-    noise.connect(bpf);
-    bpf.connect(noiseGain);
-    noiseGain.connect(masterDest);
-
-    noise.start(now);
-    noise.stop(now + 0.14);
-    noise.onended = () => {
-      noise.disconnect();
-      bpf.disconnect();
-      noiseGain.disconnect();
-    };
+  const playJammerShutdown = (pan?: number): void => {
+    playExplosion('jammer', pan);
   };
 
   const toggleMute = (): boolean => {
