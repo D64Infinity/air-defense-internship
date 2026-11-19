@@ -10,6 +10,7 @@ import {
   type SweeperDroneManager,
   type DogfightRescueManager,
   type BarrageSalvoManager,
+  type JammerAircraftManager,
 } from './units';
 
 /**
@@ -27,6 +28,7 @@ export interface RadarRenderData {
   sweeperDrone?: SweeperDroneManager;
   dogfightRescue?: DogfightRescueManager;
   barrageSalvo?: BarrageSalvoManager;
+  jammerAircraft?: JammerAircraftManager;
   warningArc?: { angle: number; phase: 'warning' | 'active' } | null;
 }
 
@@ -555,8 +557,27 @@ export function createRadarRender(
     dynamicGraphics.fillStyle(baseColor, 0.95);
     dynamicGraphics.fillCircle(radarX, radarY, 3);
 
+    // 3.5. Конус радиопомех самолёта РЭБ («Шумовой Строб»)
+    data.jammerAircraft?.render(dynamicGraphics);
+
     // 4. Метки целей (люминофор)
     for (const target of data.targets) {
+      // Самолёт РЭБ уже отрисован специализированным маркером в jammerAircraft.render
+      if (target.isJammer) continue;
+
+      // Проверка на экранирование конусом помех РЭБ
+      const isJammed = data.jammerAircraft?.isTargetJammed(target);
+      if (isJammed) {
+        // Цель скрыта в шуме РЭБ: мерцающий микро-шум вместо чёткой боевой метки
+        if (target.alpha > 0.05 && Math.random() < 0.28) {
+          const jx = target.x + (Math.random() - 0.5) * 6;
+          const jy = target.y + (Math.random() - 0.5) * 6;
+          dynamicGraphics.fillStyle(colors.blipHalo, target.alpha * 0.15);
+          dynamicGraphics.fillCircle(jx, jy, 1.4);
+        }
+        continue;
+      }
+
       if (target.alpha > 0.02) {
         dynamicGraphics.fillStyle(colors.blipHalo, target.alpha * 0.38);
         dynamicGraphics.fillCircle(target.x, target.y, blipRadius * 2.4);

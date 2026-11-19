@@ -143,6 +143,174 @@ type ManeuverSwarmStep =
   | 'active_echelon_3'
   | 'done';
 
+/**
+ * Описание единичной ракеты в тактическом шаблоне манёвра
+ */
+export interface SwarmMissileDef {
+  ang: number; // угловое смещение точки старта от baseAngle (рад)
+  flank: number; // начальный угол ухода во фланг относительно центра (рад)
+  delay: number; // время полёта по фланговой дуге до доворота на базу (сек)
+}
+
+/**
+ * Тактический шаблон манёвренного эшелона (6 ракет)
+ */
+export interface SwarmPattern {
+  id: string;
+  name: string;
+  missiles: readonly SwarmMissileDef[];
+}
+
+/**
+ * Каталог 12 уникальных тактических манёвров («Манёвренный прорыв»)
+ */
+export const SWARM_PATTERNS: readonly SwarmPattern[] = [
+  {
+    id: 'double_pincers',
+    name: 'Двойные Клещи',
+    missiles: [
+      { ang: -0.62, flank: 0.78, delay: 2.4 },
+      { ang: -0.55, flank: 0.88, delay: 2.7 },
+      { ang: -0.48, flank: 0.98, delay: 3.0 },
+      { ang: 0.48, flank: -0.98, delay: 3.0 },
+      { ang: 0.55, flank: -0.88, delay: 2.7 },
+      { ang: 0.62, flank: -0.78, delay: 2.4 },
+    ],
+  },
+  {
+    id: 'cascade_scythe',
+    name: 'Каскадный Серп',
+    missiles: [
+      { ang: -0.35, flank: 0.68, delay: 1.9 },
+      { ang: -0.21, flank: 0.73, delay: 2.15 },
+      { ang: -0.07, flank: 0.79, delay: 2.4 },
+      { ang: 0.07, flank: 0.84, delay: 2.65 },
+      { ang: 0.21, flank: 0.90, delay: 2.9 },
+      { ang: 0.35, flank: 0.95, delay: 3.15 },
+    ],
+  },
+  {
+    id: 'converging_trident',
+    name: 'Сходящийся Трезубец',
+    missiles: [
+      { ang: -0.08, flank: 0.28, delay: 2.0 },
+      { ang: 0.08, flank: -0.28, delay: 2.0 },
+      { ang: -0.60, flank: 0.86, delay: 2.7 },
+      { ang: -0.52, flank: 0.92, delay: 3.0 },
+      { ang: 0.52, flank: -0.92, delay: 3.0 },
+      { ang: 0.60, flank: -0.86, delay: 2.7 },
+    ],
+  },
+  {
+    id: 'crossfire_scissors',
+    name: 'Зеркальные Ножницы',
+    missiles: [
+      { ang: -0.58, flank: 0.86, delay: 2.3 },
+      { ang: -0.48, flank: 0.88, delay: 2.5 },
+      { ang: -0.38, flank: 0.92, delay: 2.7 },
+      { ang: 0.38, flank: -0.92, delay: 2.7 },
+      { ang: 0.48, flank: -0.88, delay: 2.5 },
+      { ang: 0.58, flank: -0.86, delay: 2.3 },
+    ],
+  },
+  {
+    id: 'bait_and_fang',
+    name: 'Приманка и Клык',
+    missiles: [
+      { ang: -0.18, flank: -0.32, delay: 1.6 },
+      { ang: -0.06, flank: 0.22, delay: 1.7 },
+      { ang: 0.06, flank: -0.22, delay: 1.7 },
+      { ang: 0.18, flank: 0.32, delay: 1.6 },
+      { ang: -0.65, flank: 0.98, delay: 3.3 },
+      { ang: 0.65, flank: -0.98, delay: 3.3 },
+    ],
+  },
+  {
+    id: 'wedge_arrowhead',
+    name: 'Стрела Прорыва',
+    missiles: [
+      { ang: -0.56, flank: 0.82, delay: 1.9 },
+      { ang: 0.56, flank: -0.82, delay: 1.9 },
+      { ang: -0.28, flank: 0.52, delay: 2.3 },
+      { ang: 0.28, flank: -0.52, delay: 2.3 },
+      { ang: -0.08, flank: 0.15, delay: 2.8 },
+      { ang: 0.08, flank: -0.15, delay: 2.8 },
+    ],
+  },
+  {
+    id: 'twin_vortex',
+    name: 'Двойной Вихрь',
+    missiles: [
+      { ang: -0.12, flank: -0.78, delay: 1.9 },
+      { ang: 0.12, flank: 0.78, delay: 1.9 },
+      { ang: -0.32, flank: -0.84, delay: 2.5 },
+      { ang: 0.32, flank: 0.84, delay: 2.5 },
+      { ang: -0.52, flank: -0.92, delay: 3.1 },
+      { ang: 0.52, flank: 0.92, delay: 3.1 },
+    ],
+  },
+  {
+    id: 'deep_flank',
+    name: 'Глубокий Охват',
+    missiles: [
+      { ang: -0.60, flank: 0.92, delay: 2.1 },
+      { ang: -0.50, flank: 0.94, delay: 2.35 },
+      { ang: -0.40, flank: 0.95, delay: 2.6 },
+      { ang: -0.30, flank: 0.96, delay: 2.85 },
+      { ang: -0.20, flank: 0.97, delay: 3.1 },
+      { ang: -0.10, flank: 0.98, delay: 3.35 },
+    ],
+  },
+  {
+    id: 'alternating_s_weave',
+    name: 'Шахматная Змейка',
+    missiles: [
+      { ang: -0.50, flank: -0.85, delay: 2.1 },
+      { ang: -0.30, flank: 0.85, delay: 2.1 },
+      { ang: -0.10, flank: -0.78, delay: 2.6 },
+      { ang: 0.10, flank: 0.78, delay: 2.6 },
+      { ang: 0.30, flank: -0.92, delay: 3.1 },
+      { ang: 0.50, flank: 0.92, delay: 3.1 },
+    ],
+  },
+  {
+    id: 'radial_nova',
+    name: 'Звёздный Разрыв',
+    missiles: [
+      { ang: -0.06, flank: -0.95, delay: 1.9 },
+      { ang: -0.02, flank: -0.55, delay: 1.9 },
+      { ang: 0.00, flank: -0.18, delay: 1.9 },
+      { ang: 0.00, flank: 0.18, delay: 1.9 },
+      { ang: 0.02, flank: 0.55, delay: 1.9 },
+      { ang: 0.06, flank: 0.95, delay: 1.9 },
+    ],
+  },
+  {
+    id: 'tsunami_front',
+    name: 'Волна Цунами',
+    missiles: [
+      { ang: -0.55, flank: 0.40, delay: 1.8 },
+      { ang: -0.33, flank: 0.22, delay: 2.05 },
+      { ang: -0.11, flank: 0.08, delay: 2.3 },
+      { ang: 0.11, flank: -0.08, delay: 2.3 },
+      { ang: 0.33, flank: -0.22, delay: 2.05 },
+      { ang: 0.55, flank: -0.40, delay: 1.8 },
+    ],
+  },
+  {
+    id: 'tandem_column',
+    name: 'Эшелонированная Колонна',
+    missiles: [
+      { ang: -0.10, flank: 0.45, delay: 1.8 },
+      { ang: 0.10, flank: -0.45, delay: 1.8 },
+      { ang: -0.14, flank: 0.65, delay: 2.4 },
+      { ang: 0.14, flank: -0.65, delay: 2.4 },
+      { ang: -0.18, flank: 0.88, delay: 3.1 },
+      { ang: 0.18, flank: -0.88, delay: 3.1 },
+    ],
+  },
+] as const;
+
 interface ManeuverSwarmState {
   active: boolean;
   step: ManeuverSwarmStep;
@@ -150,6 +318,7 @@ interface ManeuverSwarmState {
   baseAngle1: number;
   baseAngle2: number;
   baseAngle3: number;
+  chosenPatterns: [SwarmPattern, SwarmPattern, SwarmPattern] | null;
   trackedTargetIds: Set<number>;
 }
 
@@ -180,6 +349,7 @@ export function createTacticalEventsManager(
     baseAngle1: 0,
     baseAngle2: 0,
     baseAngle3: 0,
+    chosenPatterns: null,
     trackedTargetIds: new Set<number>(),
   };
 
@@ -192,6 +362,7 @@ export function createTacticalEventsManager(
     swarm.active = false;
     swarm.step = 'idle';
     swarm.timer = 0;
+    swarm.chosenPatterns = null;
     swarm.trackedTargetIds.clear();
   };
 
@@ -227,6 +398,14 @@ export function createTacticalEventsManager(
       swarm.baseAngle2 = Phaser.Math.FloatBetween(0, Math.PI * 2);
       swarm.baseAngle3 = Phaser.Math.FloatBetween(0, Math.PI * 2);
       swarm.trackedTargetIds.clear();
+
+      // Случайный выбор 3 уникальных неповторяющихся манёвров из каталога 12 паттернов
+      const shuffledPatterns = Phaser.Utils.Array.Shuffle([...SWARM_PATTERNS]);
+      swarm.chosenPatterns = [
+        shuffledPatterns[0],
+        shuffledPatterns[1],
+        shuffledPatterns[2],
+      ];
 
       // В особую генеральную волну прогрессивный залп взаимно исключается
       return {
@@ -317,30 +496,10 @@ export function createTacticalEventsManager(
           if (swarm.timer <= 0) {
             swarm.step = 'active_echelon_1';
 
-            // Эшелон 1: «Двойные Клещи» (3 ракеты с левого крыла + 3 ракеты с правого крыла)
-            const offsetsLeft = [
-              { ang: -0.62, flank: 0.78, delay: 2.4 },
-              { ang: -0.55, flank: 0.88, delay: 2.7 },
-              { ang: -0.48, flank: 0.98, delay: 3.0 },
-            ];
-            for (const p of offsetsLeft) {
-              const m = spawner.spawnManeuveringMissileAtAngle(
-                swarm.baseAngle1 + p.ang,
-                p.flank,
-                p.delay,
-                context.wave,
-              );
-              m.isSalvo = true;
-              swarm.trackedTargetIds.add(m.id);
-              spawnedTargets.push(m);
-            }
-
-            const offsetsRight = [
-              { ang: 0.48, flank: -0.98, delay: 3.0 },
-              { ang: 0.55, flank: -0.88, delay: 2.7 },
-              { ang: 0.62, flank: -0.78, delay: 2.4 },
-            ];
-            for (const p of offsetsRight) {
+            const pattern = swarm.chosenPatterns
+              ? swarm.chosenPatterns[0]
+              : SWARM_PATTERNS[0];
+            for (const p of pattern.missiles) {
               const m = spawner.spawnManeuveringMissileAtAngle(
                 swarm.baseAngle1 + p.ang,
                 p.flank,
@@ -388,15 +547,14 @@ export function createTacticalEventsManager(
           if (swarm.timer <= 0) {
             swarm.step = 'active_echelon_2';
 
-            // Эшелон 2: «Шестиструнный Каскадный Серп» (6 ракет ступенчатой спиральной лентой)
-            for (let i = 0; i < 6; i++) {
-              const ang = swarm.baseAngle2 - 0.35 + i * 0.14;
-              const flank = 0.68 + i * 0.055; // 0.68 .. 0.955 rad (строго безопасно внутри радара)
-              const delay = 1.9 + i * 0.26; // каскадный доворот от 1.9с до 3.2с
+            const pattern = swarm.chosenPatterns
+              ? swarm.chosenPatterns[1]
+              : SWARM_PATTERNS[1];
+            for (const p of pattern.missiles) {
               const m = spawner.spawnManeuveringMissileAtAngle(
-                ang,
-                flank,
-                delay,
+                swarm.baseAngle2 + p.ang,
+                p.flank,
+                p.delay,
                 context.wave,
               );
               m.isSalvo = true;
@@ -440,19 +598,10 @@ export function createTacticalEventsManager(
           if (swarm.timer <= 0) {
             swarm.step = 'active_echelon_3';
 
-            // Эшелон 3: «Сходящийся Трезубец» (2 ракеты слева + 2 по центру + 2 справа = 6 ракет)
-            const tridentWings = [
-              // Левое крыло (2 ракеты)
-              { ang: -0.6, flank: 0.86, delay: 2.6 },
-              { ang: -0.52, flank: 0.92, delay: 2.9 },
-              // Центральная пара (2 ракеты)
-              { ang: -0.08, flank: 0.3, delay: 2.1 },
-              { ang: 0.08, flank: -0.3, delay: 2.1 },
-              // Правое крыло (2 ракеты)
-              { ang: 0.52, flank: -0.92, delay: 2.9 },
-              { ang: 0.6, flank: -0.86, delay: 2.6 },
-            ];
-            for (const p of tridentWings) {
+            const pattern = swarm.chosenPatterns
+              ? swarm.chosenPatterns[2]
+              : SWARM_PATTERNS[2];
+            for (const p of pattern.missiles) {
               const m = spawner.spawnManeuveringMissileAtAngle(
                 swarm.baseAngle3 + p.ang,
                 p.flank,

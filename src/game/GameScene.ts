@@ -47,6 +47,9 @@ import {
   createBarrageSalvoManager,
   type BarrageSalvoManager,
   BARRAGE_CONFIG,
+  createJammerAircraftManager,
+  type JammerAircraftManager,
+  JAMMER_CONFIG,
 } from './units';
 
 
@@ -76,11 +79,17 @@ export class GameScene extends Phaser.Scene {
   private sweeperDrone: SweeperDroneManager = createSweeperDroneManager();
   private dogfightRescue: DogfightRescueManager = createDogfightRescueManager();
   private barrageSalvo: BarrageSalvoManager = createBarrageSalvoManager();
+  private jammerAircraft: JammerAircraftManager = createJammerAircraftManager();
 
   // Тайминги и контроль частоты заградительного налёта
   private barrageTimer = 0;
   private nextBarrageDelay = -1;
   private hadBarrageLastWave = false;
+
+  // Тайминги и контроль появления самолёта РЭБ помех
+  private jammerTimer = 0;
+  private nextJammerDelay = -1;
+  private hadJammerLastWave = false;
 
   // Состояние игры
   private baseHealth = GAME_CONFIG.maxBaseHealth;
@@ -122,6 +131,14 @@ export class GameScene extends Phaser.Scene {
     this.targets = [];
     this.sweeperDrone.reset();
     this.dogfightRescue.reset();
+    this.barrageSalvo.reset();
+    this.barrageTimer = 0;
+    this.nextBarrageDelay = -1;
+    this.hadBarrageLastWave = false;
+    this.jammerAircraft.reset();
+    this.jammerTimer = 0;
+    this.nextJammerDelay = -1;
+    this.hadJammerLastWave = false;
     this.selectedTarget = null;
     this.explosions = [];
     this.interceptorManager.reset();
@@ -161,7 +178,16 @@ export class GameScene extends Phaser.Scene {
     this.gameOverOverlay = createGameOverOverlay(this, () => this.restartGame());
     setupGameInputs(this, {
       onSelectRadarTarget: (x, y) => {
-        this.selectedTarget = findTargetNear(this.targets, x, y);
+        const found = findTargetNear(this.targets, x, y);
+        if (found && this.jammerAircraft.isTargetJammed(found)) {
+          this.soundSystem.playDenyClick();
+          this.showFeedback(
+            '[ОТКАЗ] СИГНАЛ ПОДАВЛЕН РЭБ! ЗАХВАТ ЦЕЛИ НЕВОЗМОЖЕН',
+            GAME_CONFIG.colors.text.warning,
+          );
+          return;
+        }
+        this.selectedTarget = found;
         this.updateTargetSelectionUI();
       },
       onTogglePause: () => this.togglePause(),
@@ -282,6 +308,23 @@ export class GameScene extends Phaser.Scene {
       () => this.soundSystem.playFlareSizzle(),
     );
 
+    // Самолёт РЭБ постановщик помех («Шумовой Строб»)
+    if (!this.jammerAircraft.isActive && this.nextJammerDelay > 0) {
+      this.jammerTimer += dt;
+      if (this.jammerTimer >= this.nextJammerDelay) {
+        this.nextJammerDelay = -1; // строго один самолёт РЭБ на волну максимум
+        const jammerTarget = this.jammerAircraft.spawn(this.wave);
+        this.targets.push(jammerTarget);
+        this.soundSystem.playSectorWarningPing();
+        this.hud.showNotification(
+          '[ ВНИМАНИЕ: В СЕКТОРЕ ОБНАРУЖЕН САМОЛЁТ РЭБ ПРОТИВНИКА! ]',
+          4.5,
+        );
+      }
+    }
+
+    this.jammerAircraft.update(dt);
+
     updateExplosions(this.explosions, dt);
     this.radarRender.renderDynamic({
       baseFlashTimer: this.baseFlashTimer,
@@ -294,6 +337,7 @@ export class GameScene extends Phaser.Scene {
       sweeperDrone: this.sweeperDrone,
       dogfightRescue: this.dogfightRescue,
       barrageSalvo: this.barrageSalvo,
+      jammerAircraft: this.jammerAircraft,
       explosions: this.explosions,
       warningArc: eventResult.warningArc,
     });
@@ -329,6 +373,29 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
+   * Назначение вылета самолёта РЭБ на волну (орбитальный постановщик помех)
+   */
+  private scheduleJammerForWave(): void {
+    this.jammerAircraft.reset();
+    this.jammerTimer = 0;
+
+    // Волна 3+: шанс 28%, если в прошлой волне РЭБ не было
+    const canTrigger = this.wave >= JAMMER_CONFIG.minWave && !this.hadJammerLastWave;
+    const willTrigger = canTrigger && Math.random() < JAMMER_CONFIG.waveChance;
+
+    if (willTrigger) {
+      this.nextJammerDelay = Phaser.Math.FloatBetween(
+        JAMMER_CONFIG.delayMin,
+        JAMMER_CONFIG.delayMax,
+      );
+      this.hadJammerLastWave = true;
+    } else {
+      this.nextJammerDelay = -1;
+      this.hadJammerLastWave = false;
+    }
+  }
+
+  /**
    * Запуск боевого дежурства (старт спавна и появление первых целей)
    */
   private startCombat(): void {
@@ -346,7 +413,9 @@ export class GameScene extends Phaser.Scene {
     this.sweeperDrone.reset();
     this.dogfightRescue.reset();
     this.hadBarrageLastWave = false;
+    this.hadJammerLastWave = false;
     this.scheduleBarrageForWave();
+    this.scheduleJammerForWave();
     this.soundSystem.playWaveTransition(false);
     this.showWaveBanner('ВОЛНА 1\nБОЕВОЕ ДЕЖУРСТВО');
     this.hud.showNotification(
@@ -444,8 +513,14 @@ export class GameScene extends Phaser.Scene {
     this.interceptorManager.reset();
     this.sweeperDrone.reset();
     this.dogfightRescue.reset();
+    this.barrageSalvo.reset();
+    this.barrageTimer = 0;
+    this.nextBarrageDelay = -1;
     this.hadBarrageLastWave = false;
-    this.scheduleBarrageForWave();
+    this.jammerAircraft.reset();
+    this.jammerTimer = 0;
+    this.nextJammerDelay = -1;
+    this.hadJammerLastWave = false;
     this.ambientBg.reset();
     this.pauseOverlay.hide();
     this.briefingOverlay.hide();
@@ -466,6 +541,7 @@ export class GameScene extends Phaser.Scene {
       this.updateTargetSelectionUI();
     }
     this.armory.cancelScanIfTarget(target);
+    this.jammerAircraft.onTargetDestroyed(target.id);
     this.checkWaveProgress();
   }
 
@@ -474,6 +550,14 @@ export class GameScene extends Phaser.Scene {
    */
   private startScanning(): void {
     if (!this.selectedTarget || this.isGameOver || this.armory.isScanning) return;
+    if (this.jammerAircraft.isTargetJammed(this.selectedTarget)) {
+      this.soundSystem.playDenyClick();
+      this.showFeedback(
+        '[ОТКАЗ] СИГНАЛ ПОДАВЛЕН РЭБ! СКАНИРОВАНИЕ НЕВОЗМОЖНО',
+        GAME_CONFIG.colors.text.warning,
+      );
+      return;
+    }
     const res = this.armory.startScan(this.selectedTarget);
     this.showFeedback(res.message, res.color);
     if (res.success) {
@@ -537,6 +621,14 @@ export class GameScene extends Phaser.Scene {
    */
   private resolveDecision(choice: DecisionChoice): void {
     if (!this.selectedTarget || this.isGameOver) return;
+    if (this.jammerAircraft.isTargetJammed(this.selectedTarget)) {
+      this.soundSystem.playDenyClick();
+      this.showFeedback(
+        '[ОТКАЗ] СИГНАЛ ПОДАВЛЕН РЭБ! ЗАХВАТ СУО СОРВАН',
+        GAME_CONFIG.colors.text.warning,
+      );
+      return;
+    }
     const target = this.selectedTarget;
 
     // 1. Пометка цели (Свой / Помеха) без немедленного удаления с карты
@@ -659,6 +751,33 @@ export class GameScene extends Phaser.Scene {
           isLongRange,
         });
       }
+    } else if (target.type === 'jammer') {
+      const distToBase = getDistToBase(target.x, target.y);
+      const { points, isLongRange } = this.scoring.addThreatScore(
+        distToBase,
+        GAME_CONFIG.radarRadius,
+      );
+      const bonusScore = points + 200;
+      const creditsReward = 150;
+      this.soundSystem.playJammerShutdown();
+      this.armory.addCredits(creditsReward);
+      this.scoring.addDirectScore(200);
+      this.stats.recordBomberIntercept();
+      this.showFeedback(
+        `[ВЕРНО!] САМОЛЁТ РЭБ СБИТ! ЭФИР РАСЧИЩЕН (+${bonusScore}, +${creditsReward} CR)`,
+        GAME_CONFIG.colors.text.success,
+      );
+      this.hud.showNotification(
+        '[ РЛС: ПОСТАНОВЩИК РЭБ УНИЧТОЖЕН — ЭФИР РАСЧИЩЕН ]',
+        4.0,
+      );
+      this.alerts.showInterceptAlert({
+        unitType: 'jammer',
+        points: bonusScore,
+        credits: creditsReward,
+        isLongRange,
+      });
+      this.jammerAircraft.onTargetDestroyed(target.id);
     } else if (target.type === 'friend') {
       // Огонь по своим
       this.stats.recordFriendlyFire();
@@ -769,7 +888,9 @@ export class GameScene extends Phaser.Scene {
    * Проверка наличия не нейтрализованных боевых угроз на радаре (ракеты и бомбардировщики)
    */
   private hasActiveThreats(): boolean {
-    return this.targets.some((t) => t.type === 'missile' || t.type === 'bomber');
+    return this.targets.some(
+      (t) => t.type === 'missile' || t.type === 'bomber' || t.type === 'jammer',
+    );
   }
 
   /**
@@ -1062,7 +1183,12 @@ export class GameScene extends Phaser.Scene {
         break;
 
       case 'target_escaped':
-        // Уход цели за пределы зоны без последствий
+        if (ev.target.type === 'jammer') {
+          this.hud.showNotification(
+            '[ РЛС: САМОЛЁТ РЭБ ПОКИНУЛ СЕКТОР ]',
+            3.5,
+          );
+        }
         break;
     }
   }
@@ -1110,6 +1236,7 @@ export class GameScene extends Phaser.Scene {
 
       // Запланировать редкий заградительный налёт в новой волне
       this.scheduleBarrageForWave();
+      this.scheduleJammerForWave();
 
       // Пополнение боекомплекта перехватчиков, зарядов сканирования и начисление кредитов за волну
       let { addedAmmo, waveCredits } = this.armory.refillForWave(this.wave);

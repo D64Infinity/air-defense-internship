@@ -48,6 +48,9 @@ export const TARGET_MANEUVERS: Record<TargetType, (target: GameTarget) => void> 
   decoy: () => {
     // Ловушки следуют заданной хордовой траектории
   },
+  jammer: () => {
+    // Самолёт РЭБ следует орбитальной траектории менеджера
+  },
   bomber: (target) => {
     // 70% шанс доворота прямо на базу для атаки, 30% транзитный уход
     if (Math.random() < 0.7) {
@@ -95,6 +98,14 @@ export function disengageTarget(target: GameTarget): void {
  * Обновление физики движения, доворота курса и затухания люминофора цели
  */
 export function updateTargetMotion(target: GameTarget, dt: number): void {
+  // Самолёт РЭБ управляется своим менеджером (орбита или уход из сектора)
+  if (target.isJammer) {
+    if (target.alpha > 0) {
+      target.alpha = Math.max(0, target.alpha - dt / GAME_CONFIG.blipFadeDuration);
+    }
+    return;
+  }
+
   // 1. Проверка таймера запланированного манёвра
   if (target.maneuverTimer !== undefined && !target.hasManeuvered) {
     target.maneuverTimer -= dt;

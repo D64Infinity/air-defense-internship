@@ -109,6 +109,14 @@ export const GAME_CONFIG = {
       signalRange: [15, 48],
       headingJitter: 0.85,
     },
+    jammer: {
+      label: 'Самолёт РЭБ',
+      category: 'threat',
+      weight: 0, // Не спавнится общим рандомом, управляется модулем JammerAircraftManager
+      speedRange: [24, 30],
+      signalRange: [85, 95],
+      headingJitter: 0.0,
+    },
   },
 
   // Цветовая палитра CRT-радара
@@ -259,5 +267,7 @@ export interface GameTarget {
   hasPassedBase?: boolean; // Флаг фиксации пролёта через базу
   hasBombedBase?: boolean; // Флаг: бомбардировщик уже сбросил бомбы на базу
   isSalvo?: boolean; // Флаг: ракета принадлежит массированному тактическому налёту
+  isJammer?: boolean; // Флаг: самолёт радиоэлектронной борьбы (постановщик помех)
+  isEgressing?: boolean; // Флаг: самолёт РЭБ завершил дежурство и уходит из сектора
   eventTriggered?: boolean; // Флаг: для цели уже отработал мини-ивент развязки волны
 }

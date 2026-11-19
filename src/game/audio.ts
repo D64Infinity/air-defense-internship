@@ -18,6 +18,7 @@ export interface SoundSystem {
   playBarrageRocketLaunch: () => void;
   playAirburst: (pan?: number) => void;
   playFlareSizzle: () => void;
+  playJammerShutdown: () => void;
   toggleMute: () => boolean;
   readonly isMuted: boolean;
 }
@@ -1609,6 +1610,64 @@ export function createSoundSystem(): SoundSystem {
     };
   };
 
+  /**
+   * Электрический щелчок схлопывания помех при сбитии самолёта РЭБ
+   */
+  const playJammerShutdown = (): void => {
+    if (isMuted) return;
+    const audioCtx = getContext();
+    if (!audioCtx) return;
+
+    const now = audioCtx.currentTime;
+    const masterDest = masterIn || audioCtx.destination;
+
+    // 1. Быстрый спадающий свист разрядки высоковольтного конденсатора
+    const osc = audioCtx.createOscillator();
+    const oscGain = audioCtx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(2200, now);
+    osc.frequency.exponentialRampToValueAtTime(140, now + 0.18);
+
+    oscGain.gain.setValueAtTime(0.0001, now);
+    oscGain.gain.linearRampToValueAtTime(0.25, now + 0.005);
+    oscGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+
+    osc.connect(oscGain);
+    oscGain.connect(masterDest);
+
+    osc.start(now);
+    osc.stop(now + 0.2);
+    osc.onended = () => {
+      osc.disconnect();
+      oscGain.disconnect();
+    };
+
+    // 2. Треск разрыва статического поля
+    const buffer = getWhiteNoiseBuffer(audioCtx);
+    const noise = audioCtx.createBufferSource();
+    noise.buffer = buffer;
+    const bpf = audioCtx.createBiquadFilter();
+    bpf.type = 'bandpass';
+    bpf.frequency.setValueAtTime(3200, now);
+    bpf.Q.setValueAtTime(4.0, now);
+
+    const noiseGain = audioCtx.createGain();
+    noiseGain.gain.setValueAtTime(0.2, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
+
+    noise.connect(bpf);
+    bpf.connect(noiseGain);
+    noiseGain.connect(masterDest);
+
+    noise.start(now);
+    noise.stop(now + 0.14);
+    noise.onended = () => {
+      noise.disconnect();
+      bpf.disconnect();
+      noiseGain.disconnect();
+    };
+  };
+
   const toggleMute = (): boolean => {
     isMuted = !isMuted;
     if (masterGain && ctx) {
@@ -1631,6 +1690,7 @@ export function createSoundSystem(): SoundSystem {
     playBarrageRocketLaunch,
     playAirburst,
     playFlareSizzle,
+    playJammerShutdown,
     toggleMute,
     get isMuted() {
       return isMuted;

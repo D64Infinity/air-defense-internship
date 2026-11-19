@@ -11,3 +11,4 @@ export * from './interceptor';
 export * from './sweeperDrone';
 export * from './dogfightRescue';
 export * from './barrageSalvo';
+export * from './jammerAircraft';

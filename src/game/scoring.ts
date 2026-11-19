@@ -64,6 +64,7 @@ export interface ScoreTracker {
   addThreatScore: (distToBase: number, radarRadius: number) => { points: number; isLongRange: boolean };
   addFriendlyScore: () => number;
   addDecoySuccess: () => void;
+  addDirectScore: (amount: number) => void;
   resetStreak: () => void;
   applyFriendlyFirePenalty: () => number;
   applyCleanWaveBonus: () => number;
@@ -109,6 +110,9 @@ export function createScoreTracker(): ScoreTracker {
     addDecoySuccess: () => {
       streak++;
       updateBest();
+    },
+    addDirectScore: (amount: number) => {
+      score += amount;
     },
     resetStreak: () => {
       streak = 0;
