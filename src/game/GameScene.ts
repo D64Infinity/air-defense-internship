@@ -48,7 +48,7 @@ import {
 
 
 export class GameScene extends Phaser.Scene {
-  private static hasSeenBriefing = true; /* !!! ВРЕМЕННО TRUE !!! */
+  private static hasSeenBriefing = true; /* !!! ВРЕМЕННО TRUE !!! НЕ ТРОГАТЬ!!! */
 
   private ambientBg!: AmbientBackground;
   private radarRender!: RadarRender;
@@ -488,6 +488,14 @@ export class GameScene extends Phaser.Scene {
 
     // 1. Пометка цели (Свой / Помеха) без немедленного удаления с карты
     if (choice === 'friend' || choice === 'ignore') {
+      if (target.eventTriggered) {
+        this.soundSystem.playDenyClick();
+        this.showFeedback(
+          '[ОТКАЗ] ПО ЦЕЛИ УЖЕ ЗАПУЩЕН ПРОТОКОЛ ОПЕРАЦИИ!',
+          GAME_CONFIG.colors.text.warning,
+        );
+        return;
+      }
       target.markedAs = choice;
       if (choice === 'friend') {
         this.showFeedback(
@@ -507,10 +515,12 @@ export class GameScene extends Phaser.Scene {
     }
 
     // 2. Боевой перехват (Угроза) — пуск ракеты-перехватчика
-    if (target.isTargeted) {
+    if (target.isTargeted || target.eventTriggered) {
       this.soundSystem.playDenyClick();
       this.showFeedback(
-        '[СУО] ЦЕЛЬ УЖЕ В ЗАХВАТЕ! РАКЕТА В ВОЗДУХЕ',
+        target.eventTriggered
+          ? '[ОТКАЗ] ПО ЦЕЛИ УЖЕ ЗАПУЩЕН ПРОТОКОЛ ОПЕРАЦИИ!'
+          : '[СУО] ЦЕЛЬ УЖЕ В ЗАХВАТЕ! РАКЕТА В ВОЗДУХЕ',
         GAME_CONFIG.colors.text.warning,
       );
       return;
@@ -641,7 +651,7 @@ export class GameScene extends Phaser.Scene {
       this.stats.recordFriendSaved();
       const points = this.scoring.addFriendlyScore();
 
-      const action = isLanding ? 'БЕЗОПАСНО СЕЛ НА БАЗУ' : 'БЕЗОПАСНО ПОКИНУЛ СЕКТОР';
+      const action = isLanding ? 'УСПЕШНО СЕЛ НА БАЗУ' : 'ПОКИНУЛ СЕКТОР';
       const tag = isLanding ? '[ПОСАДКА]' : '[ТРАНЗИТ]';
       this.showFeedback(
         `${tag} СОЮЗНИК ${action} (+${points}, СЕРИЯ +1)`,
@@ -654,9 +664,9 @@ export class GameScene extends Phaser.Scene {
       const penalty = GAME_CONFIG.unidentifiedFriendPenalty;
       this.armory.deductCredits(penalty);
 
-      const cause = target.markedAs === 'ignore' ? 'ПРИНЯТ ЗА ПОМЕХУ' : 'ПРОПУЩЕН БЕЗ ОПОЗНАНИЯ';
+      const cause = target.markedAs === 'ignore' ? 'ПРИНЯТ ЗА ПОМЕХУ!' : 'ПРОПУЩЕН БЕЗ ОТМЕТКИ!';
       this.showFeedback(
-        `[ОШИБКА!] СОЮЗНИК ${cause} (-${penalty} CR, СЕРИЯ СБРОШЕНА)`,
+        `[ОШИБКА!] СОЮЗНИК ${cause} (-${penalty} CR, СБРОС)`,
         GAME_CONFIG.colors.text.criticalPenalty,
       );
     }
@@ -676,10 +686,10 @@ export class GameScene extends Phaser.Scene {
       this.stats.recordDecoyFiltered();
       this.scoring.addDecoySuccess();
       const reason = isDestroyedByDrone
-        ? 'УНИЧТОЖЕНА ПАТРУЛЕМ'
+        ? 'СБИТА ПАТРУЛЕМ'
         : isDissipated
           ? 'СИГНАЛ РАССЕЯЛСЯ'
-          : 'ПОКИНУЛА СЕКТОР';
+          : 'ПОКИНУЛА ЗОНУ';
       this.showFeedback(
         `[ФИЛЬТР] ЛОЖНАЯ ЦЕЛЬ (${reason}) (СЕРИЯ +1)`,
         isDestroyedByDrone ? '#38bdf8' : GAME_CONFIG.colors.text.muted,
@@ -689,7 +699,7 @@ export class GameScene extends Phaser.Scene {
       this.scoring.resetStreak();
       this.waveHadFlaws = true;
       this.showFeedback(
-        `[ОШИБКА!] ЛОЖНАЯ ЦЕЛЬ БЫЛА ПРИНЯТА ЗА СОЮЗНИКА!`,
+        `[ОШИБКА!] ЛОЖНАЯ ЦЕЛЬ ПРИНЯТА ЗА СОЮЗНИКА!`,
         GAME_CONFIG.colors.text.criticalPenalty,
       );
     } else if (isDissipated) {
@@ -730,45 +740,62 @@ export class GameScene extends Phaser.Scene {
     if (this.waveTargetsToSpawn > 0) return;
     if (this.hasActiveThreats()) return;
 
-    // 1. Проверяем союзников, ожидающих эскорта
-    if (!this.dogfightRescue.isActive) {
+    // 1. Проверяем цели, помеченные как СОЮЗНИК
+    if (!this.dogfightRescue.isActive && !this.sweeperDrone.isActive) {
       const candidateFriend = this.targets.find(
-        (t) => t.type === 'friend' && t.markedAs === 'friend' && !t.eventTriggered,
+        (t) => t.markedAs === 'friend' && !t.eventTriggered,
       );
 
       if (candidateFriend) {
-        if (this.isTargetInEngagementZone(candidateFriend)) {
-          candidateFriend.eventTriggered = true;
-          this.dogfightRescue.start(candidateFriend);
-          this.showFeedback(
-            '[ТРЕВОГА] ПЕРЕХВАТЧИКИ ВРАГА НА ХВОСТЕ СОЮЗНИКА!',
-            '#f97316',
-          );
-          this.soundSystem.playSalvoAlert();
-        } else {
-          // Если борт уже у самой базы или у кромки — не запускаем засаду,
-          // а просто даём безопасный форсаж, чтобы он быстро сел или вышел
-          candidateFriend.eventTriggered = true;
-          candidateFriend.speed = Math.max(68, Math.round(candidateFriend.speed * 2.2));
-          candidateFriend.turnRate = 0;
-          candidateFriend.vx = Math.cos(candidateFriend.headingRad) * candidateFriend.speed;
-          candidateFriend.vy = Math.sin(candidateFriend.headingRad) * candidateFriend.speed;
+        if (candidateFriend.type === 'friend') {
+          // Истинный союзник: за ним охотятся перехватчики врага, база высылает дрон-спасатель
+          if (this.isTargetInEngagementZone(candidateFriend)) {
+            candidateFriend.eventTriggered = true;
+            this.dogfightRescue.start(candidateFriend);
+            this.showFeedback(
+              '[ТРЕВОГА] ПЕРЕХВАТЧИКИ ВРАГА НА ХВОСТЕ СОЮЗНИКА!',
+              '#f97316',
+            );
+            this.soundSystem.playSalvoAlert();
+          } else {
+            // Если борт уже у самой базы или у кромки — не запускаем засаду, а даём безопасный форсаж
+            candidateFriend.eventTriggered = true;
+            candidateFriend.speed = Math.max(68, Math.round(candidateFriend.speed * 2.2));
+            candidateFriend.turnRate = 0;
+            candidateFriend.vx = Math.cos(candidateFriend.headingRad) * candidateFriend.speed;
+            candidateFriend.vy = Math.sin(candidateFriend.headingRad) * candidateFriend.speed;
+          }
+        } else if (candidateFriend.type === 'decoy') {
+          // Ловушка, ошибочно принятая за союзника:
+          // Враги не атакуют свою ловушку. Наша база высылает синий технический борт эскорта для проводки на базу!
+          if (this.isTargetInEngagementZone(candidateFriend)) {
+            candidateFriend.eventTriggered = true;
+            this.sweeperDrone.dispatch(candidateFriend, 'escort');
+            this.showFeedback(
+              '[ЭСКОРТ] ВЫСЛАН БОРТ НА ВСТРЕЧУ СОЮЗНИКА',
+              '#38bdf8',
+            );
+          } else {
+            candidateFriend.eventTriggered = true;
+          }
         }
       }
     }
 
-    // 2. Проверяем ловушки, подлежащие нейтрализации патрульным дроном
+    // 2. Проверяем цели, помеченные как ЛОВУШКА (включая ошибочные метки на союзниках)
     if (!this.sweeperDrone.isActive && !this.dogfightRescue.isActive) {
       const candidateDecoy = this.targets.find(
-        (t) => t.type === 'decoy' && t.markedAs === 'ignore' && !t.eventTriggered,
+        (t) => t.markedAs === 'ignore' && !t.eventTriggered,
       );
 
       if (candidateDecoy) {
         if (this.isTargetInEngagementZone(candidateDecoy)) {
           candidateDecoy.eventTriggered = true;
-          this.sweeperDrone.dispatch(candidateDecoy);
+          this.sweeperDrone.dispatch(candidateDecoy, 'sweep');
           this.showFeedback(
-            '[ПАТРУЛЬ] ДРОН ЗАЧИСТКИ НАПРАВЛЕН НА ЛОЖНУЮ ЦЕЛЬ',
+            candidateDecoy.type === 'friend'
+              ? '[ПАТРУЛЬ] ДРОН ЗАЧИСТКИ НАПРАВЛЕН НА ЦЕЛЬ'
+              : '[ПАТРУЛЬ] ДРОН НАПРАВЛЕН НА ЛОЖНУЮ ЦЕЛЬ',
             '#38bdf8',
           );
         } else {
@@ -780,13 +807,57 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Обработка уничтожения ложной цели патрульным дроном
+   * Обработка достижения цели патрульным дроном зачистки или бортом сопровождения
    */
   private handleSweeperDroneKill(target: GameTarget): void {
     const pan = (target.x - GAME_CONFIG.radarX) / GAME_CONFIG.radarRadius;
-    this.soundSystem.playExplosion('decoy', pan);
-    this.explosions.push(createExplosion(target.x, target.y, false));
-    this.handleDecoyCompletion(target, false, true);
+
+    // Режим сопровождения ('escort'): борт подлетел к «союзнику» и обнаружил пустое облако помех!
+    if (this.sweeperDrone.mode === 'escort') {
+      this.soundSystem.playExplosion('decoy', pan);
+      this.explosions.push(createExplosion(target.x, target.y, false));
+      this.stats.recordDecoyMistake();
+      this.scoring.resetStreak();
+      this.waveHadFlaws = true;
+      this.showFeedback(
+        '[ЭСКОРТ] "ВИЗУАЛЬНО ПУСТО! В ТОЧКЕ ОБЛАКО ДИПОЛЕЙ!"',
+        GAME_CONFIG.colors.text.criticalPenalty,
+      );
+      this.alerts.showInterceptAlert({
+        unitType: 'decoy',
+        points: 0,
+        credits: 0,
+        streakReset: true,
+      });
+      this.updateScoreBoard();
+      this.removeTarget(target);
+      return;
+    }
+
+    // Режим зачистки ('sweep'): расстрел цели из курсовой автопушки
+    this.soundSystem.playExplosion(target.type, pan);
+    this.explosions.push(createExplosion(target.x, target.y, target.type === 'friend'));
+
+    if (target.type === 'friend') {
+      // ОГОНЬ ПО СВОИМ: Дрон расстрелял союзника, принятого за ловушку!
+      this.stats.recordFriendlyFire();
+      this.waveHadFlaws = true;
+      const penalty = this.scoring.applyFriendlyFirePenalty();
+      this.armory.deductCredits(GAME_CONFIG.creditsFriendlyFirePenalty);
+      this.showFeedback(
+        `[ОГОНЬ ПО СВОИМ!] СБИТ СОЮЗНИК! (-${penalty} очк, -${GAME_CONFIG.creditsFriendlyFirePenalty} CR)`,
+        GAME_CONFIG.colors.text.criticalPenalty,
+      );
+      this.alerts.showInterceptAlert({
+        unitType: 'friend',
+        points: -penalty,
+        credits: -GAME_CONFIG.creditsFriendlyFirePenalty,
+        streakReset: true,
+      });
+      this.updateScoreBoard();
+    } else {
+      this.handleDecoyCompletion(target, false, true);
+    }
     this.removeTarget(target);
   }
 
@@ -810,7 +881,7 @@ export class GameScene extends Phaser.Scene {
         GAME_CONFIG.radarX - ally.x,
       );
       this.showFeedback(
-        '[ЭФИР] СОЮЗНИК: "ХВОСТ ЧИСТ! ИДУ НА АВАРИЙНУЮ ПОСАДКУ К ВАМ НА БАЗУ!"',
+        '[СОЮЗНИК] "ХВОСТ ЧИСТ! ИДУ НА ПОСАДКУ НА БАЗУ"',
         GAME_CONFIG.colors.text.success,
       );
     } else {
@@ -819,7 +890,7 @@ export class GameScene extends Phaser.Scene {
         ally.x - GAME_CONFIG.radarX,
       );
       this.showFeedback(
-        '[ЭФИР] СОЮЗНИК: "ХВОСТ ЧИСТ! ВКЛЮЧАЮ ФОРСАЖ, УХОЖУ ИЗ СЕКТОРА!"',
+        '[СОЮЗНИК] "ХВОСТ ЧИСТ! НА ФОРСАЖЕ ВЫХОЖУ ИЗ ЗОНЫ"',
         GAME_CONFIG.colors.text.success,
       );
     }

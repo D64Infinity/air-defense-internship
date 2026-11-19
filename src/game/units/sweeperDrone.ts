@@ -2,16 +2,25 @@ import Phaser from 'phaser';
 import { GAME_CONFIG, type GameTarget } from '../gameConfig';
 
 /**
- * Параметры конфигурации патрульного дрона-чистильщика
+ * Режимы вылета синего технического/патрульного дрона:
+ * - 'sweep': зачистка ложных целей или подозрительных отметок огнём автопушки
+ * - 'escort': вылет на визуальное опознание и сопровождение «союзника» (проверка эхо)
+ */
+export type SweeperDroneMode = 'sweep' | 'escort';
+
+/**
+ * Параметры конфигурации патрульного дрона-чистильщика / эскорта
  */
 export const SWEEPER_DRONE_CONFIG = {
   speed: 280, // пикселей в секунду (в ~6 раз быстрее обычных целей)
-  attackDistance: 50, // дистанция открытия огня (px)
+  attackDistance: 48, // дистанция открытия огня / сближения (px)
   burstDuration: 0.22, // длительность пулеметной очереди (сек)
+  scanDuration: 0.35, // длительность радиосканирования при эскорте (сек)
   roundsCount: 3, // количество очередей / трассеров
   blipColor: 0x38bdf8, // технический небесно-синий цвет (Tailwind Sky-400)
   blipCoreColor: 0xf0f9ff, // белое ядро отметки
   tracerColor: 0xbae6fd, // цвет светящихся трассеров пуль
+  scanRingColor: 0x38bdf8, // цвет круговой волны сканирования
   trailMaxLife: 0.22, // длительность угасания следа за дроном
 };
 
@@ -41,11 +50,12 @@ interface BulletTracer {
 type DronePhase = 'approach' | 'firing' | 'exit';
 
 /**
- * Интерфейс управления декоративным дроном зачистки
+ * Интерфейс управления декоративным дроном зачистки и сопровождения
  */
 export interface SweeperDroneManager {
   readonly isActive: boolean;
-  dispatch: (target: GameTarget) => void;
+  readonly mode: SweeperDroneMode;
+  dispatch: (target: GameTarget, mode?: SweeperDroneMode) => void;
   update: (
     dt: number,
     onTargetHit: (target: GameTarget) => void,
@@ -57,10 +67,11 @@ export interface SweeperDroneManager {
 }
 
 /**
- * Фабрика менеджера декоративного дрона зачистки
+ * Фабрика менеджера декоративного дрона зачистки и сопровождения
  */
 export function createSweeperDroneManager(): SweeperDroneManager {
   let active = false;
+  let mode: SweeperDroneMode = 'sweep';
   let targetRef: GameTarget | null = null;
   let phase: DronePhase = 'approach';
 
@@ -79,6 +90,7 @@ export function createSweeperDroneManager(): SweeperDroneManager {
 
   const reset = (): void => {
     active = false;
+    mode = 'sweep';
     targetRef = null;
     phase = 'approach';
     trail.length = 0;
@@ -89,13 +101,14 @@ export function createSweeperDroneManager(): SweeperDroneManager {
   };
 
   /**
-   * Запуск дрона из ближайшего сектора кромки радара на перехват ловушки
+   * Запуск дрона из ближайшего сектора кромки радара на перехват цели
    */
-  const dispatch = (target: GameTarget): void => {
+  const dispatch = (target: GameTarget, droneMode: SweeperDroneMode = 'sweep'): void => {
     if (active) return;
 
     reset();
     active = true;
+    mode = droneMode;
     targetRef = target;
     phase = 'approach';
 
@@ -145,27 +158,35 @@ export function createSweeperDroneManager(): SweeperDroneManager {
         const dist = Math.hypot(targetRef.x - x, targetRef.y - y);
         if (dist <= SWEEPER_DRONE_CONFIG.attackDistance) {
           phase = 'firing';
-          fireTimer = SWEEPER_DRONE_CONFIG.burstDuration;
+          fireTimer =
+            mode === 'escort'
+              ? SWEEPER_DRONE_CONFIG.scanDuration
+              : SWEEPER_DRONE_CONFIG.burstDuration;
 
-          // Звуковой эффект очереди автопушки
-          if (!soundPlayed && playBurstSound) {
-            soundPlayed = true;
-            const pan = Math.max(-1, Math.min(1, (x - GAME_CONFIG.radarX) / GAME_CONFIG.radarRadius));
-            playBurstSound(pan);
-          }
+          if (mode === 'sweep') {
+            // Звуковой эффект очереди автопушки
+            if (!soundPlayed && playBurstSound) {
+              soundPlayed = true;
+              const pan = Math.max(
+                -1,
+                Math.min(1, (x - GAME_CONFIG.radarX) / GAME_CONFIG.radarRadius),
+              );
+              playBurstSound(pan);
+            }
 
-          // Генерируем пачку тире-трассеров в сторону цели
-          tracers.length = 0;
-          for (let r = 0; r < SWEEPER_DRONE_CONFIG.roundsCount; r++) {
-            const jitterX = Phaser.Math.FloatBetween(-3, 3);
-            const jitterY = Phaser.Math.FloatBetween(-3, 3);
-            tracers.push({
-              startX: x,
-              startY: y,
-              endX: targetRef.x + jitterX,
-              endY: targetRef.y + jitterY,
-              progress: 0,
-            });
+            // Генерируем пачку тире-трассеров в сторону цели
+            tracers.length = 0;
+            for (let r = 0; r < SWEEPER_DRONE_CONFIG.roundsCount; r++) {
+              const jitterX = Phaser.Math.FloatBetween(-3, 3);
+              const jitterY = Phaser.Math.FloatBetween(-3, 3);
+              tracers.push({
+                startX: x,
+                startY: y,
+                endX: targetRef.x + jitterX,
+                endY: targetRef.y + jitterY,
+                progress: 0,
+              });
+            }
           }
         }
       }
@@ -175,15 +196,17 @@ export function createSweeperDroneManager(): SweeperDroneManager {
     } else if (phase === 'firing') {
       fireTimer -= dt;
 
-      // Обновляем прогресс полёта трассеров
-      for (const tracer of tracers) {
-        tracer.progress = Math.min(1, tracer.progress + dt * 6.5);
+      if (mode === 'sweep') {
+        // Обновляем прогресс полёта трассеров
+        for (const tracer of tracers) {
+          tracer.progress = Math.min(1, tracer.progress + dt * 6.5);
+        }
       }
 
       x += vx * dt;
       y += vy * dt;
 
-      // По окончании очереди ловушка уничтожается
+      // По окончании фазы (очереди выстрелов или сенсорного сканирования)
       if (fireTimer <= 0) {
         if (!targetDestroyed && targetRef) {
           targetDestroyed = true;
@@ -191,9 +214,15 @@ export function createSweeperDroneManager(): SweeperDroneManager {
         }
         phase = 'exit';
         tracers.length = 0;
+
+        // Поворот на отход к ближайшей границе радара
+        const exitAngle = Math.atan2(y - GAME_CONFIG.radarY, x - GAME_CONFIG.radarX);
+        heading = exitAngle;
+        vx = Math.cos(heading) * SWEEPER_DRONE_CONFIG.speed;
+        vy = Math.sin(heading) * SWEEPER_DRONE_CONFIG.speed;
       }
     } else if (phase === 'exit') {
-      // Дрон на максимальной скорости уходит за пределы радара
+      // Дрон на крейсерской скорости уходит за пределы радара
       x += vx * dt;
       y += vy * dt;
 
@@ -206,7 +235,7 @@ export function createSweeperDroneManager(): SweeperDroneManager {
   };
 
   /**
-   * Отрисовка декоративного дрона, трассеров и следа в экранных координатах радара
+   * Отрисовка декоративного дрона, трассеров, сканера и следа в экранных координатах радара
    */
   const render = (graphics: Phaser.GameObjects.Graphics): void => {
     if (!active) return;
@@ -220,10 +249,9 @@ export function createSweeperDroneManager(): SweeperDroneManager {
       graphics.lineBetween(p1.x, p1.y, p2.x, p2.y);
     }
 
-    // 2. Трассеры автопушки (короткие тире в полёте)
+    // 2. Трассеры автопушки (в режиме зачистки)
     for (const tracer of tracers) {
       const t = tracer.progress;
-      // Отрезок трассера летит от дрона к цели
       const headX = tracer.startX + (tracer.endX - tracer.startX) * t;
       const headY = tracer.startY + (tracer.endY - tracer.startY) * t;
       const tailProgress = Math.max(0, t - 0.28);
@@ -234,7 +262,16 @@ export function createSweeperDroneManager(): SweeperDroneManager {
       graphics.lineBetween(tailX, tailY, headX, headY);
     }
 
-    // 3. Отметка дрона на радаре (синий цвет союзного технического судна)
+    // 3. Расширяющееся кольцо радиосканирования (в режиме эскорта при контакте)
+    if (mode === 'escort' && phase === 'firing') {
+      const scanProgress = 1 - Math.max(0, fireTimer / SWEEPER_DRONE_CONFIG.scanDuration);
+      const scanRadius = scanProgress * 32;
+      const alpha = (1 - scanProgress) * 0.85;
+      graphics.lineStyle(1.5, SWEEPER_DRONE_CONFIG.scanRingColor, alpha);
+      graphics.strokeCircle(x, y, scanRadius);
+    }
+
+    // 4. Отметка дрона на радаре (синий цвет союзного технического судна)
     // Внешнее кольцо
     graphics.lineStyle(1.5, SWEEPER_DRONE_CONFIG.blipColor, 0.9);
     graphics.strokeCircle(x, y, GAME_CONFIG.blipRadius + 1);
@@ -253,6 +290,9 @@ export function createSweeperDroneManager(): SweeperDroneManager {
   return {
     get isActive() {
       return active;
+    },
+    get mode() {
+      return mode;
     },
     dispatch,
     update,

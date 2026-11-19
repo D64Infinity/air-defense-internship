@@ -1232,12 +1232,13 @@ export function createHud(
     lineSpacing: 4,
   });
 
-  const feedbackText = scene.add.text(656, 570, '', {
+  const feedbackText = scene.add.text(656, 583, '', {
     ...monoStyle,
-    fontSize: '12px',
+    fontSize: '11px',
     fontStyle: 'bold',
+    lineSpacing: 2,
     wordWrap: { width: 263 },
-  });
+  }).setOrigin(0, 0.5);
 
   // 3. Баннер волны и стартовые подсказки
   const waveContainer = scene.add.container(GAME_CONFIG.radarX, GAME_CONFIG.radarY - 35);

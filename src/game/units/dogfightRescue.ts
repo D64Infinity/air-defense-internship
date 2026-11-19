@@ -293,12 +293,12 @@ export function createDogfightRescueManager(): DogfightRescueManager {
         if (heroTrail[k].age >= 0.22) heroTrail.splice(k, 1);
       }
     } else if (phase === 'cleared') {
-      // Дрон улетает по инерции за пределы экрана
+      // Дрон-спасатель улетает за пределы радара
       heroX += heroVx * dt;
       heroY += heroVy * dt;
 
       const heroDist = Math.hypot(heroX - GAME_CONFIG.radarX, heroY - GAME_CONFIG.radarY);
-      if (heroDist > GAME_CONFIG.radarRadius * 1.1) {
+      if (heroDist > GAME_CONFIG.radarRadius * 1.08) {
         active = false;
       }
     }
