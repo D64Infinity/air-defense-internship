@@ -13,7 +13,9 @@ export const EVENT_CONFIG = {
     earlyWarningLeadTime: 2.0, // За 2.0 секунды ДО прилёта включается сирена и дуга на границе
     intervalBetweenMissiles: 0.75, // Интервал между ракетами в пачке (сек)
     wave3Count: 2, // 2 ракеты на 3-й волне
-    wave4PlusCount: 3, // 3 ракеты на 4+ волнах
+    wave4PlusMinCount: 3, // 3 ракеты (шанс 50%) на 4+ волнах
+    wave4PlusMaxCount: 4, // 4 ракеты (шанс 50%) на 4+ волнах
+    wave4PlusCount: 3, // Базовое значение для обратной совместимости
     fanSpreadRad: 0.09, // Угловой веерный разброс траекторий (~5 градусов)
     startChanceWave4: 0.10, // 10% вероятность на первой проверке (волна 4)
   },
@@ -262,9 +264,11 @@ export function createTacticalEventsManager(
       salvo.warningTimer = EVENT_CONFIG.salvo.earlyWarningLeadTime;
 
       const requestedCount =
-        wave === 3
+        wave === EVENT_CONFIG.salvo.minWave
           ? EVENT_CONFIG.salvo.wave3Count
-          : EVENT_CONFIG.salvo.wave4PlusCount;
+          : Math.random() < 0.5
+            ? EVENT_CONFIG.salvo.wave4PlusMinCount
+            : EVENT_CONFIG.salvo.wave4PlusMaxCount;
 
       // Не превышаем допустимый остаток целей в волне
       salvo.totalSalvoSize = Math.min(
@@ -530,7 +534,7 @@ export function createTacticalEventsManager(
             salvo.currentSalvoIndex === 0
               ? -EVENT_CONFIG.salvo.fanSpreadRad
               : EVENT_CONFIG.salvo.fanSpreadRad;
-        } else if (salvo.totalSalvoSize >= 3) {
+        } else if (salvo.totalSalvoSize === 3) {
           if (salvo.currentSalvoIndex === 0) {
             angleOffset = -EVENT_CONFIG.salvo.fanSpreadRad;
           } else if (salvo.currentSalvoIndex === 1) {
@@ -538,6 +542,16 @@ export function createTacticalEventsManager(
           } else {
             angleOffset = 0;
           }
+        } else if (salvo.totalSalvoSize === 4) {
+          // Для 4 ракет: фланги, затем внутренняя пара (равномерный веер с шагом fanSpreadRad)
+          const spread = EVENT_CONFIG.salvo.fanSpreadRad;
+          const offsets4 = [-1.5 * spread, 1.5 * spread, -0.5 * spread, 0.5 * spread];
+          angleOffset = offsets4[salvo.currentSalvoIndex] ?? 0;
+        } else {
+          // Симметричный веер для произвольного N
+          const half = (salvo.totalSalvoSize - 1) / 2;
+          angleOffset =
+            (salvo.currentSalvoIndex - half) * EVENT_CONFIG.salvo.fanSpreadRad;
         }
 
         const missileAngle = salvo.baseAngle + angleOffset;

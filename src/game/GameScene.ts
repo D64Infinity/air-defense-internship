@@ -44,6 +44,9 @@ import {
   type SweeperDroneManager,
   createDogfightRescueManager,
   type DogfightRescueManager,
+  createBarrageSalvoManager,
+  type BarrageSalvoManager,
+  BARRAGE_CONFIG,
 } from './units';
 
 
@@ -72,6 +75,12 @@ export class GameScene extends Phaser.Scene {
   private interceptorManager: InterceptorManager = createInterceptorManager();
   private sweeperDrone: SweeperDroneManager = createSweeperDroneManager();
   private dogfightRescue: DogfightRescueManager = createDogfightRescueManager();
+  private barrageSalvo: BarrageSalvoManager = createBarrageSalvoManager();
+
+  // Тайминги и контроль частоты заградительного налёта
+  private barrageTimer = 0;
+  private nextBarrageDelay = -1;
+  private hadBarrageLastWave = false;
 
   // Состояние игры
   private baseHealth = GAME_CONFIG.maxBaseHealth;
@@ -255,6 +264,24 @@ export class GameScene extends Phaser.Scene {
       (ally) => this.handleDogfightCompleted(ally),
       (pan) => this.soundSystem.playDroneBurst(pan),
     );
+
+    // Заградительный ракетный налёт (ADHD-крючок визуального хаоса и осветительных ракет)
+    if (!this.barrageSalvo.isActive && this.nextBarrageDelay > 0) {
+      this.barrageTimer += dt;
+      if (this.barrageTimer >= this.nextBarrageDelay) {
+        this.nextBarrageDelay = -1; // строго один залп на волну максимум
+        this.barrageSalvo.trigger();
+      }
+    }
+
+    this.barrageSalvo.update(
+      dt,
+      (pan) => this.soundSystem.playAirburst(pan),
+      () => this.soundSystem.playSectorWarningPing(),
+      () => this.soundSystem.playBarrageRocketLaunch(),
+      () => this.soundSystem.playFlareSizzle(),
+    );
+
     updateExplosions(this.explosions, dt);
     this.radarRender.renderDynamic({
       baseFlashTimer: this.baseFlashTimer,
@@ -266,6 +293,7 @@ export class GameScene extends Phaser.Scene {
       interceptors: this.interceptorManager.activeUnits,
       sweeperDrone: this.sweeperDrone,
       dogfightRescue: this.dogfightRescue,
+      barrageSalvo: this.barrageSalvo,
       explosions: this.explosions,
       warningArc: eventResult.warningArc,
     });
@@ -277,6 +305,26 @@ export class GameScene extends Phaser.Scene {
 
     if (this.baseFlashTimer > 0) {
       this.baseFlashTimer -= dt;
+    }
+  }
+
+  /**
+   * Назначение заградительного налёта на волну (редкий ивент с обязательным отдыхом)
+   */
+  private scheduleBarrageForWave(): void {
+    this.barrageSalvo.reset();
+    this.barrageTimer = 0;
+
+    // Волна 1: отключен (обучение). Волна 2+: шанс 35%, если в прошлой волне налёта не было
+    const canTrigger = this.wave >= BARRAGE_CONFIG.minWave && !this.hadBarrageLastWave;
+    const willTrigger = canTrigger && Math.random() < BARRAGE_CONFIG.waveChance;
+
+    if (willTrigger) {
+      this.nextBarrageDelay = Phaser.Math.FloatBetween(BARRAGE_CONFIG.delayMin, BARRAGE_CONFIG.delayMax);
+      this.hadBarrageLastWave = true;
+    } else {
+      this.nextBarrageDelay = -1;
+      this.hadBarrageLastWave = false;
     }
   }
 
@@ -297,6 +345,8 @@ export class GameScene extends Phaser.Scene {
     this.targets = [];
     this.sweeperDrone.reset();
     this.dogfightRescue.reset();
+    this.hadBarrageLastWave = false;
+    this.scheduleBarrageForWave();
     this.soundSystem.playWaveTransition(false);
     this.showWaveBanner('ВОЛНА 1\nБОЕВОЕ ДЕЖУРСТВО');
     this.hud.showNotification(
@@ -382,6 +432,7 @@ export class GameScene extends Phaser.Scene {
       isNewRecord,
       this.stats.snapshot,
     );
+    this.barrageSalvo.reset();
   }
 
   /**
@@ -393,6 +444,8 @@ export class GameScene extends Phaser.Scene {
     this.interceptorManager.reset();
     this.sweeperDrone.reset();
     this.dogfightRescue.reset();
+    this.hadBarrageLastWave = false;
+    this.scheduleBarrageForWave();
     this.ambientBg.reset();
     this.pauseOverlay.hide();
     this.briefingOverlay.hide();
@@ -1054,6 +1107,9 @@ export class GameScene extends Phaser.Scene {
 
       // Луч ускоряется с каждой волной
       this.radarRender.setWaveSpeed(this.wave);
+
+      // Запланировать редкий заградительный налёт в новой волне
+      this.scheduleBarrageForWave();
 
       // Пополнение боекомплекта перехватчиков, зарядов сканирования и начисление кредитов за волну
       let { addedAmmo, waveCredits } = this.armory.refillForWave(this.wave);

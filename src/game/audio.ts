@@ -14,6 +14,10 @@ export interface SoundSystem {
   playDroneBurst: (pan?: number) => void;
   playWaveTransition: (isCleanWave?: boolean) => void;
   playSalvoAlert: () => void;
+  playSectorWarningPing: () => void;
+  playBarrageRocketLaunch: () => void;
+  playAirburst: (pan?: number) => void;
+  playFlareSizzle: () => void;
   toggleMute: () => boolean;
   readonly isMuted: boolean;
 }
@@ -1423,6 +1427,188 @@ export function createSoundSystem(): SoundSystem {
     }
   };
 
+  /**
+   * Мягкий тактический импульс предупреждения о секторе обстрела
+   */
+  const playSectorWarningPing = (): void => {
+    if (isMuted) return;
+    const audioCtx = getContext();
+    if (!audioCtx) return;
+
+    const now = audioCtx.currentTime;
+    const masterDest = getMasterIn(audioCtx);
+
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(540, now);
+    osc.frequency.exponentialRampToValueAtTime(510, now + 0.12);
+
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.linearRampToValueAtTime(0.14, now + 0.006);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
+
+    osc.connect(gain);
+    gain.connect(masterDest);
+
+    osc.start(now);
+    osc.stop(now + 0.13);
+    osc.onended = () => {
+      osc.disconnect();
+      gain.disconnect();
+    };
+  };
+
+  /**
+   * Раскатистый низкий гул множественного старта заградительных ракет
+   */
+  const playBarrageRocketLaunch = (): void => {
+    if (isMuted) return;
+    const audioCtx = getContext();
+    if (!audioCtx) return;
+
+    const now = audioCtx.currentTime;
+    const masterDest = getMasterIn(audioCtx);
+    const noiseBuffer = getWhiteNoiseBuffer(audioCtx);
+
+    const noiseSource = audioCtx.createBufferSource();
+    noiseSource.buffer = noiseBuffer;
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.Q.value = 2.4;
+    filter.frequency.setValueAtTime(95, now);
+    filter.frequency.exponentialRampToValueAtTime(260, now + 0.65);
+
+    const noiseGain = audioCtx.createGain();
+    noiseGain.gain.setValueAtTime(0.001, now);
+    noiseGain.gain.linearRampToValueAtTime(0.24, now + 0.12);
+    noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.85);
+
+    const subOsc = audioCtx.createOscillator();
+    subOsc.type = 'sawtooth';
+    subOsc.frequency.setValueAtTime(58, now);
+    subOsc.frequency.exponentialRampToValueAtTime(44, now + 0.7);
+
+    const subGain = audioCtx.createGain();
+    subGain.gain.setValueAtTime(0.001, now);
+    subGain.gain.linearRampToValueAtTime(0.18, now + 0.08);
+    subGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.75);
+
+    noiseSource.connect(filter);
+    filter.connect(noiseGain);
+    noiseGain.connect(masterDest);
+
+    subOsc.connect(subGain);
+    subGain.connect(masterDest);
+
+    noiseSource.start(now);
+    noiseSource.stop(now + 0.86);
+    subOsc.start(now);
+    subOsc.stop(now + 0.76);
+
+    noiseSource.onended = () => {
+      noiseSource.disconnect();
+      filter.disconnect();
+      noiseGain.disconnect();
+      subOsc.disconnect();
+      subGain.disconnect();
+    };
+  };
+
+  /**
+   * Хлёсткий высотный разрыв заградительной ракеты (Airburst Pop)
+   */
+  const playAirburst = (pan?: number): void => {
+    if (isMuted) return;
+    const audioCtx = getContext();
+    if (!audioCtx) return;
+
+    const now = audioCtx.currentTime;
+    const route = createOutputRoute(audioCtx, pan, now);
+
+    const noiseBuffer = getWhiteNoiseBuffer(audioCtx);
+    const noise = audioCtx.createBufferSource();
+    noise.buffer = noiseBuffer;
+
+    const bpf = audioCtx.createBiquadFilter();
+    bpf.type = 'bandpass';
+    bpf.frequency.value = 1100 + Math.random() * 300;
+    bpf.Q.value = 3.2;
+
+    const noiseGain = audioCtx.createGain();
+    noiseGain.gain.setValueAtTime(0.001, now);
+    noiseGain.gain.linearRampToValueAtTime(0.22, now + 0.004);
+    noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
+
+    const thump = audioCtx.createOscillator();
+    thump.type = 'sine';
+    thump.frequency.setValueAtTime(130, now);
+    thump.frequency.exponentialRampToValueAtTime(45, now + 0.12);
+
+    const thumpGain = audioCtx.createGain();
+    thumpGain.gain.setValueAtTime(0.001, now);
+    thumpGain.gain.linearRampToValueAtTime(0.20, now + 0.006);
+    thumpGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
+
+    noise.connect(bpf);
+    bpf.connect(noiseGain);
+    noiseGain.connect(route.destination);
+
+    thump.connect(thumpGain);
+    thumpGain.connect(route.destination);
+
+    noise.start(now);
+    noise.stop(now + 0.09);
+    thump.start(now);
+    thump.stop(now + 0.13);
+
+    noise.onended = () => {
+      noise.disconnect();
+      bpf.disconnect();
+      noiseGain.disconnect();
+      thump.disconnect();
+      thumpGain.disconnect();
+    };
+  };
+
+  /**
+   * Тихое шипение / треск горящих фаеров в атмосфере
+   */
+  const playFlareSizzle = (): void => {
+    if (isMuted) return;
+    const audioCtx = getContext();
+    if (!audioCtx) return;
+
+    const now = audioCtx.currentTime;
+    const masterDest = getMasterIn(audioCtx);
+    const noiseBuffer = getWhiteNoiseBuffer(audioCtx);
+
+    const noise = audioCtx.createBufferSource();
+    noise.buffer = noiseBuffer;
+
+    const hpf = audioCtx.createBiquadFilter();
+    hpf.type = 'highpass';
+    hpf.frequency.value = 3400;
+
+    const gain = audioCtx.createGain();
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(0.045, now + 0.08);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.55);
+
+    noise.connect(hpf);
+    hpf.connect(gain);
+    gain.connect(masterDest);
+
+    noise.start(now);
+    noise.stop(now + 0.56);
+    noise.onended = () => {
+      noise.disconnect();
+      hpf.disconnect();
+      gain.disconnect();
+    };
+  };
+
   const toggleMute = (): boolean => {
     isMuted = !isMuted;
     if (masterGain && ctx) {
@@ -1441,6 +1627,10 @@ export function createSoundSystem(): SoundSystem {
     playDroneBurst,
     playWaveTransition,
     playSalvoAlert,
+    playSectorWarningPing,
+    playBarrageRocketLaunch,
+    playAirburst,
+    playFlareSizzle,
     toggleMute,
     get isMuted() {
       return isMuted;

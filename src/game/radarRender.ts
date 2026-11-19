@@ -9,6 +9,7 @@ import {
   type InterceptorUnit,
   type SweeperDroneManager,
   type DogfightRescueManager,
+  type BarrageSalvoManager,
 } from './units';
 
 /**
@@ -25,6 +26,7 @@ export interface RadarRenderData {
   explosions: ExplosionEffect[];
   sweeperDrone?: SweeperDroneManager;
   dogfightRescue?: DogfightRescueManager;
+  barrageSalvo?: BarrageSalvoManager;
   warningArc?: { angle: number; phase: 'warning' | 'active' } | null;
 }
 
@@ -668,6 +670,9 @@ export function createRadarRender(
 
     // 6.8. Воздушный бой и спасение союзника
     data.dogfightRescue?.render(dynamicGraphics);
+
+    // 6.9. Заградительный ракетный налёт и осветительные фаеры
+    data.barrageSalvo?.render(dynamicGraphics);
 
     // 7. Эффекты взрывов и ударных волн
     renderExplosions(dynamicGraphics, data.explosions);
