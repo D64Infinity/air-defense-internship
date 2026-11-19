@@ -21,6 +21,10 @@ export const BARRAGE_CONFIG = {
   flareCountMax: 7, // макс. количество фаеров на один воздушный разрыв
   flareLifeMin: 2.4, // мин. время горения фаера (сек)
   flareLifeMax: 4.2, // макс. время горения фаера (сек)
+  flareTracerLenMin: 4, // мин. длина трассера при медленном дрейфе вниз (px)
+  flareTracerLenMax: 19, // макс. длина трассера на высокой скорости разлёта (px)
+  sectorBloomFadeSpeed: 1.4, // скорость затухания фонового засвета сектора (сек^-1)
+  sectorBloomMaxAlpha: 0.07, // макс. мягкая яркость засвета сектора на ЭЛТ (7% непрозрачности)
   colors: {
     warningDot: 0xf97316, // янтарно-оранжевый луч
     warningDotBright: 0xffedd5, // белое ядро точек луча
@@ -106,6 +110,7 @@ export function createBarrageSalvoManager(): BarrageSalvoManager {
 
   let pingTimer = 0;
   let flareSoundPlayed = false;
+  let sectorBloomIntensity = 0;
 
   const rockets: BarrageRocket[] = [];
   const flares: BarrageFlare[] = [];
@@ -117,6 +122,7 @@ export function createBarrageSalvoManager(): BarrageSalvoManager {
     phaseTimer = 0;
     pingTimer = 0;
     flareSoundPlayed = false;
+    sectorBloomIntensity = 0;
     rockets.length = 0;
     flares.length = 0;
     flashes.length = 0;
@@ -242,6 +248,9 @@ export function createBarrageSalvoManager(): BarrageSalvoManager {
           alpha: 1.0,
         });
 
+        // Импульс фонового янтарного засвета сектора
+        sectorBloomIntensity = Math.min(1.0, sectorBloomIntensity + 0.35);
+
         // Звук разрыва со стерео-панорамой
         const pan = Phaser.Math.Clamp((r.x - GAME_CONFIG.radarX) / GAME_CONFIG.radarRadius, -1, 1);
         playAirburst?.(pan);
@@ -299,8 +308,16 @@ export function createBarrageSalvoManager(): BarrageSalvoManager {
       }
     }
 
-    // Завершение ивента, когда все ракеты и фаеры рассеялись
-    if (allRocketsDone && flares.length === 0 && flashes.length === 0) {
+    // 5. ЗАТУХАНИЕ ЗАСВЕТА СЕКТОРА ЛЮМИНОФОРА
+    if (sectorBloomIntensity > 0) {
+      sectorBloomIntensity = Math.max(
+        0,
+        sectorBloomIntensity - dt * BARRAGE_CONFIG.sectorBloomFadeSpeed,
+      );
+    }
+
+    // Завершение ивента, когда все ракеты, фаеры и эффекты рассеялись
+    if (allRocketsDone && flares.length === 0 && flashes.length === 0 && sectorBloomIntensity <= 0.01) {
       active = false;
       phase = 'idle';
     }
@@ -311,6 +328,46 @@ export function createBarrageSalvoManager(): BarrageSalvoManager {
    */
   const render = (graphics: Phaser.GameObjects.Graphics): void => {
     if (!active) return;
+
+    // 0. МЯГКИЙ ЯНТАРНЫЙ ЗАСВЕТ СЕКТОРА (Phosphor Horizon Bloom)
+    if (sectorBloomIntensity > 0.005) {
+      const bloomAlpha = sectorBloomIntensity * BARRAGE_CONFIG.sectorBloomMaxAlpha;
+
+      // Полупрозрачный теплый фон 180° дуги между базой и кромкой радара
+      graphics.fillStyle(BARRAGE_CONFIG.colors.warningDot, bloomAlpha);
+      graphics.beginPath();
+      graphics.arc(
+        GAME_CONFIG.radarX,
+        GAME_CONFIG.radarY,
+        GAME_CONFIG.radarRadius * 0.98,
+        warningAngle1,
+        warningAngle2,
+        false,
+      );
+      graphics.arc(
+        GAME_CONFIG.radarX,
+        GAME_CONFIG.radarY,
+        GAME_CONFIG.baseRadius + 8,
+        warningAngle2,
+        warningAngle1,
+        true,
+      );
+      graphics.closePath();
+      graphics.fillPath();
+
+      // Деликатная светящаяся линия по внешней кромке
+      graphics.lineStyle(2.0, BARRAGE_CONFIG.colors.warningDot, sectorBloomIntensity * 0.22);
+      graphics.beginPath();
+      graphics.arc(
+        GAME_CONFIG.radarX,
+        GAME_CONFIG.radarY,
+        GAME_CONFIG.radarRadius * 0.98,
+        warningAngle1,
+        warningAngle2,
+        false,
+      );
+      graphics.strokePath();
+    }
 
     // 1. ПРЕДУПРЕЖДАЮЩИЙ СЕКТОР (мигающие точки вдоль двух ограничительных радиусов 180° полудуги)
     if (phase === 'warning') {
@@ -387,12 +444,44 @@ export function createBarrageSalvoManager(): BarrageSalvoManager {
       graphics.lineBetween(r.x, r.y, noseX, noseY);
     }
 
-    // 4. ОТРИСОВКА ОСВЕТИТЕЛЬНЫХ ФАЕРОВ (парящие горящие искры)
+    // 4. ОТРИСОВКА ОСВЕТИТЕЛЬНЫХ ФАЕРОВ (парящие горящие искры и трассеры)
     for (const f of flares) {
       const lifeRatio = f.life / f.maxLife;
       // Лёгкое естественное мерцание пламени
       const twinkle = 0.85 + 0.15 * Math.sin(phaseTimer * 14 + f.twinkleOffset);
       const alpha = Math.min(1, lifeRatio * 1.3) * twinkle;
+
+      // Тонкий линейный трассер (векторная нить шлейфа против вектора движения)
+      const speed = Math.hypot(f.vx, f.vy);
+      if (speed > 1.5) {
+        const nx = f.vx / speed;
+        const ny = f.vy / speed;
+        // Длина трассера от 4px при вертикальном дрейфе до 19px на пиковой скорости разлёта
+        const trailLen = Phaser.Math.Clamp(
+          speed * 0.30,
+          BARRAGE_CONFIG.flareTracerLenMin,
+          BARRAGE_CONFIG.flareTracerLenMax,
+        );
+
+        const tailX = f.x - nx * trailLen;
+        const tailY = f.y - ny * trailLen;
+        const midX = f.x - nx * (trailLen * 0.45);
+        const midY = f.y - ny * (trailLen * 0.45);
+
+        // Хвостовая часть (тонкая, плавно угасающая нить 0.8px)
+        graphics.lineStyle(0.8, BARRAGE_CONFIG.colors.flareHalo, alpha * 0.45);
+        graphics.lineBetween(tailX, tailY, midX, midY);
+
+        // Головная часть (яркая оранжевая линия 1.3px)
+        graphics.lineStyle(1.3, BARRAGE_CONFIG.colors.flareGlow, alpha * 0.85);
+        graphics.lineBetween(midX, midY, f.x, f.y);
+
+        // Раскалённая белая сердцевина трассера у основания фаера
+        if (alpha > 0.35) {
+          graphics.lineStyle(0.8, BARRAGE_CONFIG.colors.flareCore, alpha * 0.9);
+          graphics.lineBetween(f.x - nx * (trailLen * 0.25), f.y - ny * (trailLen * 0.25), f.x, f.y);
+        }
+      }
 
       // Внешнее рассеянное гало
       graphics.fillStyle(BARRAGE_CONFIG.colors.flareHalo, alpha * 0.35);
