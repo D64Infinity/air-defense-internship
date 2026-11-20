@@ -50,6 +50,9 @@ import {
   createJammerAircraftManager,
   type JammerAircraftManager,
   JAMMER_CONFIG,
+  createTerrainHuggerManager,
+  type TerrainHuggerManager,
+  TERRAIN_HUGGER_CONFIG,
 } from './units';
 
 
@@ -80,6 +83,7 @@ export class GameScene extends Phaser.Scene {
   private dogfightRescue: DogfightRescueManager = createDogfightRescueManager();
   private barrageSalvo: BarrageSalvoManager = createBarrageSalvoManager();
   private jammerAircraft: JammerAircraftManager = createJammerAircraftManager();
+  private terrainHugger: TerrainHuggerManager = createTerrainHuggerManager();
 
   // Тайминги и контроль частоты заградительного налёта
   private barrageTimer = 0;
@@ -90,6 +94,11 @@ export class GameScene extends Phaser.Scene {
   private jammerTimer = 0;
   private nextJammerDelay = -1;
   private hadJammerLastWave = false;
+
+  // Тайминги и контроль появления штурмовика ПМВ «Стриж»
+  private terrainHuggerTimer = 0;
+  private nextTerrainHuggerDelay = -1;
+  private hadTerrainHuggerLastWave = false;
 
   // Состояние игры
   private baseHealth = GAME_CONFIG.maxBaseHealth;
@@ -139,6 +148,10 @@ export class GameScene extends Phaser.Scene {
     this.jammerTimer = 0;
     this.nextJammerDelay = -1;
     this.hadJammerLastWave = false;
+    this.terrainHugger.reset();
+    this.terrainHuggerTimer = 0;
+    this.nextTerrainHuggerDelay = -1;
+    this.hadTerrainHuggerLastWave = false;
     this.selectedTarget = null;
     this.explosions = [];
     this.interceptorManager.reset();
@@ -178,6 +191,26 @@ export class GameScene extends Phaser.Scene {
     this.gameOverOverlay = createGameOverOverlay(this, () => this.restartGame());
     setupGameInputs(this, {
       onSelectRadarTarget: (x, y) => {
+        // Проверка клика по штурмовику ПМВ в тени рельефа
+        if (
+          this.terrainHugger.isActive &&
+          this.terrainHugger.isSubmerged &&
+          !this.terrainHugger.isPermanentlyRevealed
+        ) {
+          const hugger = this.terrainHugger.activeTarget;
+          if (
+            hugger &&
+            Math.hypot(hugger.x - x, hugger.y - y) < GAME_CONFIG.selectionHitRadius * 1.6
+          ) {
+            this.soundSystem.playDenyClick();
+            this.showFeedback(
+              '[ОТКАЗ] НЕТ ПРЯМОГО КОНТАКТА! ЦЕЛЬ В ТЕНИ РЕЛЬЕФА',
+              GAME_CONFIG.colors.text.warning,
+            );
+            return;
+          }
+        }
+
         const found = findTargetNear(this.targets, x, y);
         if (found && this.jammerAircraft.isTargetJammed(found)) {
           this.soundSystem.playDenyClick();
@@ -325,6 +358,23 @@ export class GameScene extends Phaser.Scene {
 
     this.jammerAircraft.update(dt);
 
+    // Низковысотный штурмовик ПМВ «Стриж» (огибание рельефа и слепая экстраполяция)
+    if (!this.terrainHugger.isActive && this.nextTerrainHuggerDelay > 0) {
+      this.terrainHuggerTimer += dt;
+      if (this.terrainHuggerTimer >= this.nextTerrainHuggerDelay) {
+        this.nextTerrainHuggerDelay = -1; // строго один штурмовик на волну максимум
+        const thTarget = this.terrainHugger.spawn(this.wave);
+        this.targets.push(thTarget);
+        this.soundSystem.playSectorWarningPing();
+        this.hud.showNotification(
+          '[ ТРЕВОГА: В СЕКТОРЕ ОБНАРУЖЕН ШТУРМОВИК НА ПРЕДЕЛЬНО МАЛОЙ ВЫСОТЕ! ]',
+          4.5,
+        );
+      }
+    }
+
+    this.terrainHugger.update(dt, () => this.soundSystem.playTerrainHuggerPopUp());
+
     updateExplosions(this.explosions, dt);
     this.radarRender.renderDynamic({
       baseFlashTimer: this.baseFlashTimer,
@@ -338,6 +388,7 @@ export class GameScene extends Phaser.Scene {
       dogfightRescue: this.dogfightRescue,
       barrageSalvo: this.barrageSalvo,
       jammerAircraft: this.jammerAircraft,
+      terrainHugger: this.terrainHugger,
       explosions: this.explosions,
       warningArc: eventResult.warningArc,
     });
@@ -396,6 +447,29 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
+   * Назначение вылета штурмовика ПМВ «Стриж» на волну
+   */
+  private scheduleTerrainHuggerForWave(): void {
+    this.terrainHugger.reset();
+    this.terrainHuggerTimer = 0;
+
+    // Волна 2+: шанс 30%, если в прошлой волне штурмовика не было
+    const canTrigger = this.wave >= TERRAIN_HUGGER_CONFIG.minWave && !this.hadTerrainHuggerLastWave;
+    const willTrigger = canTrigger && Math.random() < TERRAIN_HUGGER_CONFIG.waveChance;
+
+    if (willTrigger) {
+      this.nextTerrainHuggerDelay = Phaser.Math.FloatBetween(
+        TERRAIN_HUGGER_CONFIG.delayMin,
+        TERRAIN_HUGGER_CONFIG.delayMax,
+      );
+      this.hadTerrainHuggerLastWave = true;
+    } else {
+      this.nextTerrainHuggerDelay = -1;
+      this.hadTerrainHuggerLastWave = false;
+    }
+  }
+
+  /**
    * Запуск боевого дежурства (старт спавна и появление первых целей)
    */
   private startCombat(): void {
@@ -414,8 +488,10 @@ export class GameScene extends Phaser.Scene {
     this.dogfightRescue.reset();
     this.hadBarrageLastWave = false;
     this.hadJammerLastWave = false;
+    this.hadTerrainHuggerLastWave = false;
     this.scheduleBarrageForWave();
     this.scheduleJammerForWave();
+    this.scheduleTerrainHuggerForWave();
     this.soundSystem.playWaveTransition(false);
     this.showWaveBanner('ВОЛНА 1\nБОЕВОЕ ДЕЖУРСТВО');
     this.hud.showNotification(
@@ -521,6 +597,10 @@ export class GameScene extends Phaser.Scene {
     this.jammerTimer = 0;
     this.nextJammerDelay = -1;
     this.hadJammerLastWave = false;
+    this.terrainHugger.reset();
+    this.terrainHuggerTimer = 0;
+    this.nextTerrainHuggerDelay = -1;
+    this.hadTerrainHuggerLastWave = false;
     this.ambientBg.reset();
     this.pauseOverlay.hide();
     this.briefingOverlay.hide();
@@ -542,6 +622,7 @@ export class GameScene extends Phaser.Scene {
     }
     this.armory.cancelScanIfTarget(target);
     this.jammerAircraft.onTargetDestroyed(target.id);
+    this.terrainHugger.onTargetDestroyed(target.id);
     this.checkWaveProgress();
   }
 
@@ -611,6 +692,13 @@ export class GameScene extends Phaser.Scene {
     const res = this.armory.updateScanning(dt, this.targets);
     if (!res) return;
     if (res.completed && res.message && res.color) {
+      if (res.target?.type === 'terrain_hugger') {
+        this.terrainHugger.onTargetScanned(res.target.id);
+        this.hud.showNotification(
+          '[ СУО: ДОПЛЕРОВСКИЙ ЗАХВАТ УСТАНОВЛЕН — МАСКИРОВКА РЕЛЬЕФА СНЯТА! ]',
+          4.0,
+        );
+      }
       this.showFeedback(res.message, res.color);
     }
     this.updateTargetSelectionUI();
@@ -777,6 +865,32 @@ export class GameScene extends Phaser.Scene {
         isLongRange,
       });
       this.jammerAircraft.onTargetDestroyed(target.id);
+    } else if (target.type === 'terrain_hugger') {
+      const distToBase = getDistToBase(target.x, target.y);
+      const { points, isLongRange } = this.scoring.addThreatScore(
+        distToBase,
+        GAME_CONFIG.radarRadius,
+      );
+      const bonusScore = points + 250;
+      const creditsReward = 150;
+      this.armory.addCredits(creditsReward);
+      this.scoring.addDirectScore(250);
+      this.stats.recordBomberIntercept();
+      this.showFeedback(
+        `[ВЕРНО!] ШТУРМОВИК «СТРИЖ» СБИТ (+${bonusScore}, +${creditsReward} CR)`,
+        GAME_CONFIG.colors.text.success,
+      );
+      this.hud.showNotification(
+        '[ РЛС: НИЗКОВЫСОТНЫЙ ШТУРМОВИК УНИЧТОЖЕН ]',
+        4.0,
+      );
+      this.alerts.showInterceptAlert({
+        unitType: 'terrain_hugger',
+        points: bonusScore,
+        credits: creditsReward,
+        isLongRange,
+      });
+      this.terrainHugger.onTargetDestroyed(target.id);
     } else if (target.type === 'friend') {
       // Огонь по своим
       this.stats.recordFriendlyFire();
@@ -888,7 +1002,11 @@ export class GameScene extends Phaser.Scene {
    */
   private hasActiveThreats(): boolean {
     return this.targets.some(
-      (t) => t.type === 'missile' || t.type === 'bomber' || t.type === 'jammer',
+      (t) =>
+        t.type === 'missile' ||
+        t.type === 'bomber' ||
+        t.type === 'jammer' ||
+        t.type === 'terrain_hugger',
     );
   }
 
@@ -1156,6 +1274,17 @@ export class GameScene extends Phaser.Scene {
         );
         break;
 
+      case 'terrain_hugger_hit':
+        this.stats.recordThreatMissed();
+        this.waveHadFlaws = true;
+        this.scoring.resetStreak();
+        this.applyBaseDamage(
+          TERRAIN_HUGGER_CONFIG.damage,
+          `[ПРОРЫВ!] ШТУРМОВИК С ПМВ АТАКОВАЛ БАЗУ! (-${TERRAIN_HUGGER_CONFIG.damage} HP)`,
+        );
+        this.terrainHugger.onTargetDestroyed(ev.target.id);
+        break;
+
       case 'friend_landed':
         if (this.dogfightRescue.isCombatActive) break;
         this.handleFriendCompletion(ev.target, true);
@@ -1187,6 +1316,8 @@ export class GameScene extends Phaser.Scene {
             '[ РЛС: САМОЛЁТ РЭБ ПОКИНУЛ СЕКТОР ]',
             3.5,
           );
+        } else if (ev.target.type === 'terrain_hugger') {
+          this.terrainHugger.onTargetDestroyed(ev.target.id);
         }
         break;
     }
@@ -1236,6 +1367,7 @@ export class GameScene extends Phaser.Scene {
       // Запланировать редкий заградительный налёт в новой волне
       this.scheduleBarrageForWave();
       this.scheduleJammerForWave();
+      this.scheduleTerrainHuggerForWave();
 
       // Пополнение боекомплекта перехватчиков, зарядов сканирования и начисление кредитов за волну
       let { addedAmmo, waveCredits } = this.armory.refillForWave(this.wave);

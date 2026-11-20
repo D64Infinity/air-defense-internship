@@ -11,6 +11,7 @@ import {
   type DogfightRescueManager,
   type BarrageSalvoManager,
   type JammerAircraftManager,
+  type TerrainHuggerManager,
 } from './units';
 
 /**
@@ -29,6 +30,7 @@ export interface RadarRenderData {
   dogfightRescue?: DogfightRescueManager;
   barrageSalvo?: BarrageSalvoManager;
   jammerAircraft?: JammerAircraftManager;
+  terrainHugger?: TerrainHuggerManager;
   warningArc?: { angle: number; phase: 'warning' | 'active' } | null;
 }
 
@@ -562,8 +564,8 @@ export function createRadarRender(
 
     // 4. Метки целей (люминофор)
     for (const target of data.targets) {
-      // Самолёт РЭБ уже отрисован специализированным маркером в jammerAircraft.render
-      if (target.isJammer) continue;
+      // Самолёт РЭБ и штурмовик ПМВ отрисовываются собственными менеджерами
+      if (target.isJammer || target.isTerrainHugger) continue;
 
       // Проверка на экранирование конусом помех РЭБ
       const isJammed = data.jammerAircraft?.isTargetJammed(target);
@@ -694,6 +696,9 @@ export function createRadarRender(
 
     // 6.9. Заградительный ракетный налёт и осветительные фаеры
     data.barrageSalvo?.render(dynamicGraphics);
+
+    // 6.95. Низковысотный штурмовик ПМВ («Стриж»)
+    data.terrainHugger?.render(dynamicGraphics);
 
     // 7. Эффекты взрывов и ударных волн
     renderExplosions(dynamicGraphics, data.explosions);

@@ -21,6 +21,9 @@ export function findTargetNear(
   let minD = minDist;
 
   for (const target of targets) {
+    // Цели в тени рельефа не могут быть выбраны курсором до выхода из тени
+    if (target.isSubmerged && !target.isScanned) continue;
+
     if (target.alpha > 0.04) {
       const d = Math.hypot(target.x - x, target.y - y);
       if (d < minD) {
@@ -75,6 +78,7 @@ export const TARGET_MANEUVERS: Record<TargetType, (target: GameTarget) => void> 
         target.headingRad + Phaser.Math.FloatBetween(-0.5, 0.5);
     }
   },
+  terrain_hugger: () => {},
 };
 
 /**
@@ -98,8 +102,8 @@ export function disengageTarget(target: GameTarget): void {
  * Обновление физики движения, доворота курса и затухания люминофора цели
  */
 export function updateTargetMotion(target: GameTarget, dt: number): void {
-  // Самолёт РЭБ управляется своим менеджером (орбита или уход из сектора)
-  if (target.isJammer) {
+  // Самолёт РЭБ и штурмовик ПМВ управляются собственными изолированными менеджерами
+  if (target.isJammer || target.isTerrainHugger) {
     if (target.alpha > 0) {
       target.alpha = Math.max(0, target.alpha - dt / GAME_CONFIG.blipFadeDuration);
     }
@@ -172,6 +176,7 @@ export function updateTargetMotion(target: GameTarget, dt: number): void {
 export type TargetSimulationEvent =
   | { type: 'missile_hit'; target: GameTarget }
   | { type: 'bomber_bomb'; target: GameTarget }
+  | { type: 'terrain_hugger_hit'; target: GameTarget }
   | { type: 'friend_landed'; target: GameTarget }
   | { type: 'friend_exited'; target: GameTarget }
   | { type: 'decoy_passed_base'; target: GameTarget }
@@ -215,6 +220,9 @@ export function updateTargetsSimulation(
           disengageTarget(target);
           events.push({ type: 'bomber_bomb', target });
         }
+      } else if (target.type === 'terrain_hugger') {
+        events.push({ type: 'terrain_hugger_hit', target });
+        targetsToRemove.push(target);
       } else if (target.type === 'friend') {
         events.push({ type: 'friend_landed', target });
         targetsToRemove.push(target);

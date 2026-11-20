@@ -19,6 +19,7 @@ export interface SoundSystem {
   playAirburst: (pan?: number) => void;
   playFlareSizzle: () => void;
   playJammerShutdown: (pan?: number) => void;
+  playTerrainHuggerPopUp: () => void;
   toggleMute: () => boolean;
   readonly isMuted: boolean;
 }
@@ -1073,6 +1074,98 @@ export function createSoundSystem(): SoundSystem {
   };
 
   /**
+   * 6. ШТУРМОВИК ПМВ «СТРИЖ» (150 CR):
+   * Скоростной кинетический разрыв титанового фюзеляжа на бреющем полёте (0.75 сек):
+   * - Хлёсткая ударная волна детонации ракеты;
+   * - Грохот взрыва спаренных турбин и авиатоплива (коричневый шум 720 -> 40 Гц);
+   * - Свистящий скрежет разрушающегося компрессора двигателя (440 -> 75 Гц).
+   */
+  const playTerrainHuggerExplosion = (
+    audioCtx: AudioContext,
+    route: AudioOutputRoute,
+    now: number,
+  ): void => {
+    const duration = 0.75;
+
+    // Слой 1: Ударная волна Фридлендера (сверхзвуковой хлёсткий хлопок)
+    const shock = audioCtx.createBufferSource();
+    shock.buffer = getFriedlanderMissileBuffer(audioCtx);
+
+    const shockGain = audioCtx.createGain();
+    shockGain.gain.setValueAtTime(0.88, now);
+
+    shock.connect(shockGain);
+    shockGain.connect(route.destination);
+    if (route.skyEcho) {
+      shockGain.connect(route.skyEcho);
+    }
+
+    // Слой 2: Раскатистый грохот керосинового шара (коричневый шум)
+    const blastNoise = audioCtx.createBufferSource();
+    blastNoise.buffer = getBrownNoiseBuffer(audioCtx);
+
+    const blastFilter = audioCtx.createBiquadFilter();
+    blastFilter.type = 'lowpass';
+    blastFilter.frequency.setValueAtTime(720, now);
+    blastFilter.frequency.exponentialRampToValueAtTime(40, now + duration);
+    blastFilter.Q.value = 2.2;
+
+    const blastGain = audioCtx.createGain();
+    blastGain.gain.setValueAtTime(0.0001, now);
+    blastGain.gain.linearRampToValueAtTime(0.64, now + 0.003);
+    blastGain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+
+    blastNoise.connect(blastFilter);
+    blastFilter.connect(blastGain);
+    blastGain.connect(route.destination);
+    if (route.skyEcho) {
+      blastGain.connect(route.skyEcho);
+    }
+
+    // Слой 3: Срыв компрессора форсированных двигателей (свистящий спад с 440 Гц)
+    const engineOsc = audioCtx.createOscillator();
+    engineOsc.type = 'sawtooth';
+    engineOsc.frequency.setValueAtTime(440, now);
+    engineOsc.frequency.exponentialRampToValueAtTime(75, now + 0.32);
+
+    const engineFilter = audioCtx.createBiquadFilter();
+    engineFilter.type = 'lowpass';
+    engineFilter.frequency.setValueAtTime(650, now);
+    engineFilter.frequency.exponentialRampToValueAtTime(120, now + 0.32);
+    engineFilter.Q.value = 2.0;
+
+    const engineGain = audioCtx.createGain();
+    engineGain.gain.setValueAtTime(0.0001, now);
+    engineGain.gain.linearRampToValueAtTime(0.40, now + 0.005);
+    engineGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.34);
+
+    engineOsc.connect(engineFilter);
+    engineFilter.connect(engineGain);
+    engineGain.connect(route.destination);
+
+    shock.start(now);
+    shock.stop(now + 0.14);
+
+    blastNoise.start(now);
+    blastNoise.stop(now + duration);
+
+    engineOsc.start(now);
+    engineOsc.stop(now + 0.35);
+
+    blastNoise.onended = () => {
+      shock.disconnect();
+      shockGain.disconnect();
+      blastNoise.disconnect();
+      blastFilter.disconnect();
+      blastGain.disconnect();
+      engineOsc.disconnect();
+      engineFilter.disconnect();
+      engineGain.disconnect();
+      route.cleanup();
+    };
+  };
+
+  /**
    * Синтез звука детонации цели с дифференциацией по типу и стерео-панорамированием (pan: -1.0 .. +1.0)
    */
   const playExplosion = (targetType: TargetType, pan?: number): void => {
@@ -1095,6 +1188,9 @@ export function createSoundSystem(): SoundSystem {
         break;
       case 'jammer':
         playJammerExplosion(audioCtx, route, now);
+        break;
+      case 'terrain_hugger':
+        playTerrainHuggerExplosion(audioCtx, route, now);
         break;
       case 'friend':
         playFriendExplosion(audioCtx, route, now);
@@ -1740,6 +1836,65 @@ export function createSoundSystem(): SoundSystem {
     playExplosion('jammer', pan);
   };
 
+  /**
+   * Свистящий турбинный форсаж при выходе штурмовика ПМВ из тени рельефа (Pop-up cue)
+   */
+  const playTerrainHuggerPopUp = (): void => {
+    if (isMuted) return;
+    const audioCtx = getContext();
+    if (!audioCtx) return;
+
+    const now = audioCtx.currentTime;
+    const masterDest = masterIn || audioCtx.destination;
+
+    // 1. Поток рассекаемого воздуха на форсаже (воздушный шквал)
+    const noise = audioCtx.createBufferSource();
+    noise.buffer = getWhiteNoiseBuffer(audioCtx);
+
+    const bpf = audioCtx.createBiquadFilter();
+    bpf.type = 'bandpass';
+    bpf.frequency.setValueAtTime(600, now);
+    bpf.frequency.exponentialRampToValueAtTime(1400, now + 0.12);
+    bpf.frequency.exponentialRampToValueAtTime(750, now + 0.25);
+    bpf.Q.value = 2.4;
+
+    const noiseGain = audioCtx.createGain();
+    noiseGain.gain.setValueAtTime(0.0001, now);
+    noiseGain.gain.linearRampToValueAtTime(0.18, now + 0.08);
+    noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
+
+    noise.connect(bpf);
+    bpf.connect(noiseGain);
+    noiseGain.connect(masterDest);
+
+    // 2. Свист раскрутки турбин
+    const osc = audioCtx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(220, now);
+    osc.frequency.exponentialRampToValueAtTime(420, now + 0.14);
+
+    const oscGain = audioCtx.createGain();
+    oscGain.gain.setValueAtTime(0.0001, now);
+    oscGain.gain.linearRampToValueAtTime(0.14, now + 0.06);
+    oscGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
+
+    osc.connect(oscGain);
+    oscGain.connect(masterDest);
+
+    noise.start(now);
+    noise.stop(now + 0.26);
+    osc.start(now);
+    osc.stop(now + 0.24);
+
+    noise.onended = () => {
+      noise.disconnect();
+      bpf.disconnect();
+      noiseGain.disconnect();
+      osc.disconnect();
+      oscGain.disconnect();
+    };
+  };
+
   const toggleMute = (): boolean => {
     isMuted = !isMuted;
     if (masterGain && ctx) {
@@ -1763,6 +1918,7 @@ export function createSoundSystem(): SoundSystem {
     playAirburst,
     playFlareSizzle,
     playJammerShutdown,
+    playTerrainHuggerPopUp,
     toggleMute,
     get isMuted() {
       return isMuted;

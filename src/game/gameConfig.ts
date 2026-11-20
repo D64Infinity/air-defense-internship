@@ -117,6 +117,14 @@ export const GAME_CONFIG = {
       signalRange: [85, 95],
       headingJitter: 0.0,
     },
+    terrain_hugger: {
+      label: 'Штурмовик ПМВ',
+      category: 'threat',
+      weight: 0, // Не спавнится общим рандомом, управляется модулем TerrainHuggerManager
+      speedRange: [32, 36],
+      signalRange: [75, 90],
+      headingJitter: 0.0,
+    },
   },
 
   // Цветовая палитра CRT-радара
@@ -269,5 +277,7 @@ export interface GameTarget {
   isSalvo?: boolean; // Флаг: ракета принадлежит массированному тактическому налёту
   isJammer?: boolean; // Флаг: самолёт радиоэлектронной борьбы (постановщик помех)
   isEgressing?: boolean; // Флаг: самолёт РЭБ завершил дежурство и уходит из сектора
+  isTerrainHugger?: boolean; // Флаг: низковысотный штурмовик огибания рельефа (ПМВ)
+  isSubmerged?: boolean; // Флаг: цель находится в мёртвой зоне рельефа
   eventTriggered?: boolean; // Флаг: для цели уже отработал мини-ивент развязки волны
 }

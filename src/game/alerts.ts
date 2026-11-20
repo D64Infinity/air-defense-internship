@@ -168,6 +168,15 @@ export function createAlertManager(scene: Phaser.Scene): AlertManager {
       bgColor = alerts.bgInfo;
       borderColor = 0xd97706;
       pipColor = 0xf59e0b;
+    } else if (data.unitType === 'terrain_hugger') {
+      title = '[ ПЕРЕХВАТ ] ШТУРМОВИК ПМВ «СТРИЖ»';
+      const rangeTag = data.isLongRange ? ' | ДАЛЬНИЙ РУБЕЖ' : '';
+      outcome = `+${data.points} ОЧК  |  +${data.credits} CR${rangeTag}`;
+      titleColor = text.info;
+      outcomeColor = text.friendlyBonus;
+      bgColor = alerts.bgInfo;
+      borderColor = 0x0284c7;
+      pipColor = 0x38bdf8;
     } else if (data.unitType === 'friend') {
       title = '[ ТРЕВОГА ] ОГОНЬ ПО СВОИМ: СОЮЗНИК!';
       outcome = `${data.points} ОЧК  |  ${data.credits} CR  |  СЕРИЯ СБРОШЕНА`;
