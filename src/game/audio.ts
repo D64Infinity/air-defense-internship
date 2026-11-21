@@ -21,6 +21,9 @@ export interface SoundSystem {
   playJammerShutdown: (pan?: number) => void;
   playTerrainHuggerPopUp: () => void;
   playThunderClap: (pan?: number) => void;
+  playMenuHover: () => void;
+  playMenuSelect: () => void;
+  playDegauss: () => void;
   toggleMute: () => boolean;
   readonly isMuted: boolean;
 }
@@ -1960,6 +1963,122 @@ export function createSoundSystem(): SoundSystem {
     };
   };
 
+  /**
+   * Сухой тактильный микрощелчок реле при наведении на клавишу пульта
+   */
+  const playMenuHover = (): void => {
+    if (isMuted) return;
+    const audioCtx = getContext();
+    if (!audioCtx) return;
+
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(1600, now);
+    osc.frequency.exponentialRampToValueAtTime(700, now + 0.012);
+
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.linearRampToValueAtTime(0.045, now + 0.002);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.014);
+
+    osc.connect(gain);
+    gain.connect(getMasterIn(audioCtx));
+
+    osc.start(now);
+    osc.stop(now + 0.016);
+    osc.onended = () => {
+      osc.disconnect();
+      gain.disconnect();
+    };
+  };
+
+  /**
+   * Тяжёлый индустриальный «клак» срабатывания соленоида кнопки пульта
+   */
+  const playMenuSelect = (): void => {
+    if (isMuted) return;
+    const audioCtx = getContext();
+    if (!audioCtx) return;
+
+    const now = audioCtx.currentTime;
+    const masterDest = getMasterIn(audioCtx);
+
+    // 1. Металлический удар клавиши
+    const thump = audioCtx.createOscillator();
+    thump.type = 'triangle';
+    thump.frequency.setValueAtTime(280, now);
+    thump.frequency.exponentialRampToValueAtTime(80, now + 0.038);
+
+    const thumpGain = audioCtx.createGain();
+    thumpGain.gain.setValueAtTime(0.0001, now);
+    thumpGain.gain.linearRampToValueAtTime(0.20, now + 0.003);
+    thumpGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.05);
+
+    thump.connect(thumpGain);
+    thumpGain.connect(masterDest);
+
+    // 2. Механический контактный щелчок
+    const click = audioCtx.createOscillator();
+    click.type = 'square';
+    click.frequency.setValueAtTime(950, now);
+    click.frequency.exponentialRampToValueAtTime(240, now + 0.015);
+
+    const clickGain = audioCtx.createGain();
+    clickGain.gain.setValueAtTime(0.0001, now);
+    clickGain.gain.linearRampToValueAtTime(0.08, now + 0.002);
+    clickGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.02);
+
+    click.connect(clickGain);
+    clickGain.connect(masterDest);
+
+    thump.start(now);
+    thump.stop(now + 0.055);
+    click.start(now);
+    click.stop(now + 0.025);
+
+    thump.onended = () => {
+      thump.disconnect();
+      thumpGain.disconnect();
+      click.disconnect();
+      clickGain.disconnect();
+    };
+  };
+
+  /**
+   * Размагничивание кинескопа ЭЛТ при пуске комплекса (CRT Degauss Thump)
+   */
+  const playDegauss = (): void => {
+    if (isMuted) return;
+    const audioCtx = getContext();
+    if (!audioCtx) return;
+
+    const now = audioCtx.currentTime;
+    const masterDest = getMasterIn(audioCtx);
+
+    // Низкочастотный затухающий волновой спад катушки размагничивания
+    const degauss = audioCtx.createOscillator();
+    degauss.type = 'sine';
+    degauss.frequency.setValueAtTime(85, now);
+    degauss.frequency.exponentialRampToValueAtTime(34, now + 0.65);
+
+    const degaussGain = audioCtx.createGain();
+    degaussGain.gain.setValueAtTime(0.0001, now);
+    degaussGain.gain.linearRampToValueAtTime(0.35, now + 0.04);
+    degaussGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.70);
+
+    degauss.connect(degaussGain);
+    degaussGain.connect(masterDest);
+
+    degauss.start(now);
+    degauss.stop(now + 0.72);
+    degauss.onended = () => {
+      degauss.disconnect();
+      degaussGain.disconnect();
+    };
+  };
+
   const toggleMute = (): boolean => {
     isMuted = !isMuted;
     if (masterGain && ctx) {
@@ -1985,6 +2104,9 @@ export function createSoundSystem(): SoundSystem {
     playJammerShutdown,
     playTerrainHuggerPopUp,
     playThunderClap,
+    playMenuHover,
+    playMenuSelect,
+    playDegauss,
     toggleMute,
     get isMuted() {
       return isMuted;

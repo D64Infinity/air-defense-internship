@@ -54,6 +54,7 @@ export interface GameInputActions {
   isGameOver: () => boolean;
   isPaused: () => boolean;
   isBriefingOpen?: () => boolean;
+  isGameStarted?: () => boolean;
 }
 
 /**
@@ -66,6 +67,7 @@ export function setupGameInputs(
   // Клик по экрану радара (зона левее консоли x < 640, исключая кнопку меню в левом верхнем углу)
   const onPointerDown = (pointer: Phaser.Input.Pointer) => {
     if (
+      actions.isGameStarted?.() === false ||
       actions.isGameOver() ||
       actions.isPaused() ||
       actions.isBriefingOpen?.() ||
@@ -88,6 +90,7 @@ export function setupGameInputs(
   };
 
   const canAct = () =>
+    actions.isGameStarted?.() !== false &&
     !actions.isGameOver() &&
     !actions.isPaused() &&
     !actions.isBriefingOpen?.();
@@ -100,6 +103,7 @@ export function setupGameInputs(
 
   // Тактическая пауза / меню (P / Esc)
   const handleTogglePause = () => {
+    if (actions.isGameStarted?.() === false) return;
     if (actions.isBriefingOpen?.()) {
       if (actions.isPaused()) {
         actions.onCloseBriefing?.();

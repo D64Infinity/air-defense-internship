@@ -700,6 +700,7 @@ export function createBriefingOverlay(
 export interface ButtonItem {
   bg: Phaser.GameObjects.Rectangle;
   text: Phaser.GameObjects.Text;
+  elements?: Phaser.GameObjects.GameObject[];
   setEnabled: (enabled: boolean) => void;
 }
 
@@ -752,6 +753,8 @@ export interface HudManager {
   updateWaveBanner: (dt: number) => void;
   showNotification: (text: string, duration?: number) => void;
   updateNotification: (dt: number) => void;
+  setVisible: (visible: boolean) => void;
+  slideIn: (duration?: number) => void;
 }
 
 /**
@@ -832,6 +835,12 @@ export function createHud(
   const panelY = 32;
   const panelW = 295;
   const panelH = 576;
+
+  const hudContainer = scene.add.container(0, 0);
+  hudContainer.setDepth(20);
+
+  const menuBtnContainer = scene.add.container(0, 0);
+  menuBtnContainer.setDepth(21);
 
   const hudGraphics = scene.add.graphics();
 
@@ -1125,6 +1134,9 @@ export function createHud(
   };
 
   // 2. Кнопка меню в левом верхнем углу (на фоне позади радара)
+  let menuBtnRef: Phaser.GameObjects.Rectangle | null = null;
+  let menuTextRef: Phaser.GameObjects.Text | null = null;
+
   if (callbacks.onTogglePause) {
     const btnX = 82;
     const btnY = 38;
@@ -1156,6 +1168,9 @@ export function createHud(
       menuText.setColor('#38bdf8');
     });
     menuBtn.on('pointerdown', () => callbacks.onTogglePause?.());
+
+    menuBtnRef = menuBtn;
+    menuTextRef = menuText;
   }
 
   // 3. Текстовые элементы консоли
@@ -1341,7 +1356,7 @@ export function createHud(
       text.setAlpha(enabled ? 1.0 : 0.3);
     };
 
-    return { bg, text, setEnabled };
+    return { bg, text, elements: [bg, text], setEnabled };
   }
 
   function createSupplyButton(
@@ -1410,7 +1425,7 @@ export function createHud(
       costText.setAlpha(alpha);
     };
 
-    return { bg, text: prefix, setEnabled };
+    return { bg, text: prefix, elements: [bg, prefix, icon, costText], setEnabled };
   }
 
   const startY = 306;
@@ -1483,7 +1498,7 @@ export function createHud(
   // 4.5. Приборный блок наглядного отображения боезапаса и сканеров под кнопками взаимодействия
   // Левая секция: Ракеты-перехватчики
   const missileIcon = scene.add.image(ammoCardX + 18, ammoCardY + 24, 'icon_hud_missile');
-  scene.add.text(ammoCardX + 36, ammoCardY + 8, 'БОЕКОМПЛЕКТ', {
+  const ammoTitle = scene.add.text(ammoCardX + 36, ammoCardY + 8, 'БОЕКОМПЛЕКТ', {
     ...monoStyle,
     fontSize: '10px',
     color: '#94a3b8',
@@ -1504,7 +1519,7 @@ export function createHud(
   // Правая секция: Сканеры
   const scanColX = ammoCardX + leftW + 6;
   const scanIcon = scene.add.image(scanColX + 18, ammoCardY + 24, 'icon_hud_scan');
-  scene.add.text(scanColX + 36, ammoCardY + 8, 'СКАНЕРЫ', {
+  const scanTitle = scene.add.text(scanColX + 36, ammoCardY + 8, 'СКАНЕРЫ', {
     ...monoStyle,
     fontSize: '10px',
     color: '#94a3b8',
@@ -1521,6 +1536,38 @@ export function createHud(
       fontStyle: 'bold',
     },
   );
+
+  hudContainer.add([
+    hudGraphics,
+    missileHighlight,
+    scanHighlight,
+    healthText,
+    scoreText,
+    highScoreText,
+    creditsText,
+    waveText,
+    streakText,
+    targetTelemetryTitle,
+    targetTelemetryType,
+    targetTelemetryText,
+    feedbackText,
+    ...(buttons.friend.elements ?? [buttons.friend.bg, buttons.friend.text]),
+    ...(buttons.threat.elements ?? [buttons.threat.bg, buttons.threat.text]),
+    ...(buttons.ignore.elements ?? [buttons.ignore.bg, buttons.ignore.text]),
+    ...(buttons.scan.elements ?? [buttons.scan.bg, buttons.scan.text]),
+    ...(buttons.buyMissile.elements ?? [buttons.buyMissile.bg, buttons.buyMissile.text]),
+    ...(buttons.buyScan.elements ?? [buttons.buyScan.bg, buttons.buyScan.text]),
+    missileIcon,
+    ammoTitle,
+    ammoCountText,
+    scanIcon,
+    scanTitle,
+    scanCountText,
+  ]);
+
+  if (menuBtnRef && menuTextRef) {
+    menuBtnContainer.add([menuBtnRef, menuTextRef]);
+  }
 
   // 5. Отрисовка полосы здоровья
   const drawHealthBar = (baseHealth: number) => {
@@ -1976,6 +2023,33 @@ export function createHud(
     }
   };
 
+  const setVisible = (visible: boolean) => {
+    hudContainer.setVisible(visible);
+    menuBtnContainer.setVisible(visible);
+  };
+
+  const slideIn = (duration = 450) => {
+    hudContainer.setVisible(true);
+    hudContainer.setAlpha(0);
+    hudContainer.x = 80;
+    menuBtnContainer.setVisible(true);
+    menuBtnContainer.setAlpha(0);
+
+    scene.tweens.add({
+      targets: hudContainer,
+      x: 0,
+      alpha: 1,
+      duration,
+      ease: 'Cubic.easeOut',
+    });
+    scene.tweens.add({
+      targets: menuBtnContainer,
+      alpha: 1,
+      duration,
+      ease: 'Quad.easeOut',
+    });
+  };
+
   return {
     drawHealthBar,
     updateScoreBoard,
@@ -1987,6 +2061,8 @@ export function createHud(
     updateWaveBanner,
     showNotification,
     updateNotification,
+    setVisible,
+    slideIn,
   };
 }
 

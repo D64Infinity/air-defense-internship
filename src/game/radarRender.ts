@@ -49,6 +49,7 @@ export interface RadarRender {
   updateBeam: (dt: number, targets?: GameTarget[]) => void;
   renderStaticGrid: () => void;
   renderDynamic: (data: RadarRenderData) => void;
+  setVisible: (visible: boolean) => void;
 }
 
 /**
@@ -727,5 +728,9 @@ export function createRadarRender(
     updateBeam,
     renderStaticGrid,
     renderDynamic,
+    setVisible: (visible: boolean) => {
+      staticGraphics.setVisible(visible);
+      dynamicGraphics.setVisible(visible);
+    },
   };
 }

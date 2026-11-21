@@ -42,6 +42,14 @@ export class AmbientBackground {
   }
 
   /**
+   * Управление видимостью амбиентного корпуса и отблесков
+   */
+  setVisible(visible: boolean): void {
+    this.staticGraphics.setVisible(visible);
+    this.dynamicGraphics.setVisible(visible);
+  }
+
+  /**
    * Отрисовка постоянной физической панели консоли и фаски козырька
    */
   private renderStaticHousing(): void {

@@ -20,6 +20,7 @@ import {
   type HudManager,
 } from './ui';
 import { createAlertManager, type AlertManager } from './alerts';
+import { createMainMenu, type MainMenuManager } from './mainMenu';
 import { setupGameInputs } from './input';
 import { createRadarRender, type RadarRender } from './radarRender';
 import { createSpawner, type TargetSpawner } from './spawner';
@@ -69,6 +70,7 @@ export class GameScene extends Phaser.Scene {
   private gameOverOverlay!: GameOverOverlay;
   private pauseOverlay!: PauseOverlay;
   private briefingOverlay!: BriefingOverlay;
+  private mainMenu!: MainMenuManager;
   private spawner: TargetSpawner = createSpawner();
   private tacticalEvents: TacticalEventManager = createTacticalEventsManager(this.spawner);
   private scoring: ScoreTracker = createScoreTracker();
@@ -125,7 +127,7 @@ export class GameScene extends Phaser.Scene {
     super('GameScene');
   }
 
-  create(): void {
+  create(data?: { autoStartCombat?: boolean }): void {
     this.isGameOver = false;
     this.isPaused = false;
     this.isGameStarted = false;
@@ -202,6 +204,25 @@ export class GameScene extends Phaser.Scene {
     });
     this.briefingOverlay = createBriefingOverlay(this, () => this.handleBriefingClose());
     this.gameOverOverlay = createGameOverOverlay(this, () => this.restartGame());
+
+    // 4. Главное меню с аутентичным 2.5D радаром и светосигнальными табло-клавишами (Вариант А)
+    this.mainMenu = createMainMenu(this, {
+      onStartCombat: () => {
+        this.ambientBg.setVisible(true);
+        this.radarRender.setVisible(true);
+        this.hud.slideIn(450);
+        this.startCombat();
+      },
+      onOpenBriefing: () => this.openBriefing(),
+      onToggleSound: () => this.soundSystem.toggleMute(),
+      isMuted: () => this.soundSystem.isMuted,
+      getHighScore: () => this.highScore,
+      playHoverSound: () => this.soundSystem.playMenuHover(),
+      playSelectSound: () => this.soundSystem.playMenuSelect(),
+      playDegauss: () => this.soundSystem.playDegauss(),
+      isBriefingOpen: () => this.briefingOverlay.isVisible(),
+    });
+
     setupGameInputs(this, {
       onSelectRadarTarget: (x, y) => {
         // Проверка клика по штурмовику ПМВ в тени рельефа
@@ -246,15 +267,23 @@ export class GameScene extends Phaser.Scene {
       isGameOver: () => this.isGameOver,
       isPaused: () => this.isPaused,
       isBriefingOpen: () => this.briefingOverlay.isVisible(),
+      isGameStarted: () => this.isGameStarted,
     });
 
-    if (!GameScene.hasSeenBriefing) {
+    if (data?.autoStartCombat) {
+      this.ambientBg.setVisible(true);
+      this.radarRender.setVisible(true);
+      this.hud.setVisible(true);
+      this.mainMenu.hide();
+      this.startCombat();
+    } else {
       this.isGameStarted = false;
-      this.briefingOverlay.show(true);
+      this.ambientBg.setVisible(false);
+      this.radarRender.setVisible(false);
+      this.hud.setVisible(false);
+      this.mainMenu.show();
       this.updateScoreBoard();
       this.drawHealthBar();
-    } else {
-      this.startCombat();
     }
   }
 
@@ -262,19 +291,9 @@ export class GameScene extends Phaser.Scene {
     const dt = Math.min(delta / 1000, 0.1);
 
     if (!this.isGameStarted) {
-      this.ambientBg.update(dt * 0.5);
-      this.ambientBg.render(this.radarRender.beamAngle);
-      this.radarRender.updateBeam(dt * 0.5);
-      this.radarRender.renderDynamic({
-        baseFlashTimer: 0,
-        targets: [],
-        selectedTarget: null,
-        isScanning: false,
-        scanningTarget: null,
-        timeNow: this.time.now,
-        interceptors: [],
-        explosions: [],
-      });
+      if (this.mainMenu && this.mainMenu.isVisible()) {
+        this.mainMenu.update(dt);
+      }
       return;
     }
 
@@ -592,12 +611,14 @@ export class GameScene extends Phaser.Scene {
    */
   private handleBriefingClose(): void {
     this.soundSystem.resume();
+    this.briefingOverlay.hide();
     if (!this.isGameStarted) {
+      if (this.mainMenu && this.mainMenu.isVisible()) {
+        return;
+      }
       GameScene.hasSeenBriefing = true;
-      this.briefingOverlay.hide();
       this.startCombat();
     } else {
-      this.briefingOverlay.hide();
       this.isPaused = false;
       this.pauseOverlay.hide();
     }
@@ -659,7 +680,7 @@ export class GameScene extends Phaser.Scene {
   /**
    * Перезапуск игры
    */
-  private restartGame(): void {
+  private restartGame(autoStartCombat = true): void {
     this.isPaused = false;
     this.explosions = [];
     this.interceptorManager.reset();
@@ -685,7 +706,7 @@ export class GameScene extends Phaser.Scene {
     this.pauseOverlay.hide();
     this.briefingOverlay.hide();
     this.gameOverOverlay.hide();
-    this.scene.restart();
+    this.scene.restart({ autoStartCombat });
   }
 
   /**
