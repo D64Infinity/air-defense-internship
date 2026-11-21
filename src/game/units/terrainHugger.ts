@@ -28,13 +28,16 @@ export const TERRAIN_HUGGER_CONFIG = {
   // Экстраполяция СУО (Dead Reckoning)
   predictionPipsCount: 5, // количество точек прогнозируемого вектора
 
-  // Цвета рендера
+  // Цвета рендера (аутентичная палитра люминофора CRT-радара)
   colors: {
-    body: 0x38bdf8, // Голубой тактический силуэт (морская штурмовая авиация)
-    core: 0xffedd5, // Яркое белое сопло
-    predictionPip: 0x0284c7, // Пунктирные точки инерционного прогноза СУО
-    predictionBracket: 0xfacc15, // Пульсирующая рамка расчетной зоны выхода [ ? ]
-    groundClutter: 0x0ea5e9, // Стохастическая рябь помех рельефа
+    blipHalo: 0x00ff66, // Зелёный ореол люминофора P43
+    blipCore: 0xd4ffea, // Беловато-изумрудное ядро отметки
+    wingAccent: 0x00ff66, // Тонкие тактические штрихи стреловидного крыла
+    predictionPip: 0x00cc55, // Деликатные точки инерционного вектора СУО
+    predictionBracket: 0x22c55e, // Тонкие зеленые скобки расчетной зоны выхода [ ? ]
+    groundClutter: 0x00aa44, // Приглушённые помехи подстилающей поверхности
+    tagThreat: 0xef4444, // Красный ромб опознанной угрозы
+    targetLocked: 0xf59e0b, // Янтарные скобки перехвата
   },
 };
 
@@ -309,39 +312,41 @@ export function createTerrainHuggerManager(): TerrainHuggerManager {
     if (!active || !targetRef) return;
 
     const { colors } = TERRAIN_HUGGER_CONFIG;
+    const tx = targetRef.x;
+    const ty = targetRef.y;
 
     // 1. КОГДА БОРТ В ТЕНИ РЕЛЬЕФА: ПУНКТИР ИНЕРЦИОННОГО ПРОГНОЗА СУО
     if (isSubmerged && !isPermanentlyRevealed) {
       // 1.1. Едва заметная рябь помех рельефа в реальной точке борта (Ground Clutter)
-      if (Math.random() < 0.40) {
-        const jx = targetRef.x + (Math.random() - 0.5) * 8;
-        const jy = targetRef.y + (Math.random() - 0.5) * 8;
-        graphics.fillStyle(colors.groundClutter, 0.22);
-        graphics.fillCircle(jx, jy, 1.4);
+      if (Math.random() < 0.35) {
+        const jx = tx + (Math.random() - 0.5) * 6;
+        const jy = ty + (Math.random() - 0.5) * 6;
+        graphics.fillStyle(colors.groundClutter, 0.16);
+        graphics.fillCircle(jx, jy, 1.2);
       }
 
-      // 1.2. Пунктирные точки инерционной экстраполяции СУО (Dead Reckoning)
+      // 1.2. Деликатные точки инерционной экстраполяции СУО (Dead Reckoning)
       for (let i = 0; i < predictionPips.length; i++) {
         const pip = predictionPips[i];
-        const pipAlpha = 0.35 + (i / predictionPips.length) * 0.45;
+        const pipAlpha = 0.22 + (i / predictionPips.length) * 0.40;
         graphics.fillStyle(colors.predictionPip, pipAlpha);
-        graphics.fillCircle(pip.x, pip.y, 2.0);
+        graphics.fillCircle(pip.x, pip.y, 1.5);
       }
 
       // 1.3. Пульсирующая тактическая рамка расчетной зоны выхода [ ? ]
-      const bracketPulse = 0.5 + 0.5 * Math.sin(cycleTimer * 10);
+      const bracketPulse = 0.5 + 0.5 * Math.sin(cycleTimer * 8);
       const ex = estimatedEmergencePoint.x;
       const ey = estimatedEmergencePoint.y;
-      const bSize = 6;
+      const bSize = 5;
 
-      graphics.lineStyle(1.4, colors.predictionBracket, 0.45 + bracketPulse * 0.45);
+      graphics.lineStyle(1.2, colors.predictionBracket, 0.35 + bracketPulse * 0.35);
       // Угловые засечки рамки [ ? ]
       graphics.beginPath();
-      // Левый угол
+      // Левый верхний
       graphics.moveTo(ex - bSize, ey - bSize + 2);
       graphics.lineTo(ex - bSize, ey - bSize);
       graphics.lineTo(ex - bSize + 2, ey - bSize);
-      // Правый угол
+      // Правый верхний
       graphics.moveTo(ex + bSize, ey - bSize + 2);
       graphics.lineTo(ex + bSize, ey - bSize);
       graphics.lineTo(ex + bSize - 2, ey - bSize);
@@ -359,57 +364,75 @@ export function createTerrainHuggerManager(): TerrainHuggerManager {
     }
 
     // 2. КОГДА БОРТ НАД ХОЛМАМИ (ИЛИ ПОЛНОСТЬЮ РАСКРЫТ СКАНЕРОМ)
-    const tx = targetRef.x;
-    const ty = targetRef.y;
-    const h = targetRef.headingRad;
+    const alpha = targetRef.alpha;
+    if (alpha <= 0.02) return;
 
-    // Векторы ориентации стреловидного силуэта
+    const blipRadius = GAME_CONFIG.blipRadius;
+
+    // 2.1. Стандартный радарный блип люминофора (гармонирует с общим экраном)
+    graphics.fillStyle(colors.blipHalo, alpha * 0.38);
+    graphics.fillCircle(tx, ty, blipRadius * 2.4);
+
+    graphics.fillStyle(colors.blipCore, alpha);
+    graphics.fillCircle(tx, ty, blipRadius);
+
+    // 2.2. Лаконичные тактические стреловидные штрихи крыла РЛС (угол 45° назад по курсу)
+    const h = targetRef.headingRad;
     const forwardX = Math.cos(h);
     const forwardY = Math.sin(h);
     const rightX = -forwardY;
     const rightY = forwardX;
+    const wingSpan = 5.0;
+    const backOffset = 3.5;
 
-    // Силуэт хищного штурмовика переменной стреловидности (Su-24 / Tornado IDS)
-    const noseLen = 7;
-    const tailLen = 5;
-    const wingSpan = 6.5;
-
-    graphics.lineStyle(1.6, colors.body, 0.95);
+    graphics.lineStyle(1.2, colors.wingAccent, alpha * 0.85);
     graphics.beginPath();
-    // Нос
-    graphics.moveTo(tx + forwardX * noseLen, ty + forwardY * noseLen);
     // Правое крыло
+    graphics.moveTo(tx, ty);
     graphics.lineTo(
-      tx - forwardX * (tailLen * 0.3) + rightX * wingSpan,
-      ty - forwardY * (tailLen * 0.3) + rightY * wingSpan,
-    );
-    // Правый хвостовой срез
-    graphics.lineTo(
-      tx - forwardX * tailLen + rightX * 2,
-      ty - forwardY * tailLen + rightY * 2,
-    );
-    // Хвост / сопло
-    graphics.lineTo(tx - forwardX * tailLen, ty - forwardY * tailLen);
-    // Левый хвостовой срез
-    graphics.lineTo(
-      tx - forwardX * tailLen - rightX * 2,
-      ty - forwardY * tailLen - rightY * 2,
+      tx - forwardX * backOffset + rightX * wingSpan,
+      ty - forwardY * backOffset + rightY * wingSpan,
     );
     // Левое крыло
+    graphics.moveTo(tx, ty);
     graphics.lineTo(
-      tx - forwardX * (tailLen * 0.3) - rightX * wingSpan,
-      ty - forwardY * (tailLen * 0.3) - rightY * wingSpan,
+      tx - forwardX * backOffset - rightX * wingSpan,
+      ty - forwardY * backOffset - rightY * wingSpan,
     );
-    graphics.closePath();
     graphics.strokePath();
 
-    // Яркое белое сопло форсажа в хвосте
-    graphics.fillStyle(colors.core, 0.95);
-    graphics.fillCircle(
-      tx - forwardX * (tailLen + 1),
-      ty - forwardY * (tailLen + 1),
-      1.8,
-    );
+    // 2.3. Индикатор опознанной цели (сканирование)
+    if (targetRef.isScanned) {
+      const size = 18;
+      graphics.lineStyle(2, colors.tagThreat, alpha * 0.95);
+      graphics.beginPath();
+      graphics.moveTo(tx, ty - size);
+      graphics.lineTo(tx + size, ty);
+      graphics.lineTo(tx, ty + size);
+      graphics.lineTo(tx - size, ty);
+      graphics.closePath();
+      graphics.strokePath();
+    }
+
+    // 2.4. Индикатор захвата ПВО
+    if (targetRef.isTargeted) {
+      const s = 14;
+      graphics.lineStyle(1.5, colors.targetLocked, alpha * 0.95);
+      graphics.beginPath();
+      graphics.moveTo(tx - s, ty - s + 4);
+      graphics.lineTo(tx - s, ty - s);
+      graphics.lineTo(tx - s + 4, ty - s);
+      graphics.moveTo(tx + s - 4, ty - s);
+      graphics.lineTo(tx + s, ty - s);
+      graphics.lineTo(tx + s, ty - s + 4);
+      graphics.moveTo(tx - s, ty + s - 4);
+      graphics.lineTo(tx - s, ty + s);
+      graphics.lineTo(tx - s + 4, ty + s);
+      graphics.moveTo(tx + s - 4, ty + s);
+      graphics.lineTo(tx + s, ty + s);
+      graphics.lineTo(tx + s, ty + s - 4);
+      graphics.strokePath();
+    }
   };
 
   return {

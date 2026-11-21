@@ -12,6 +12,7 @@ import {
   type BarrageSalvoManager,
   type JammerAircraftManager,
   type TerrainHuggerManager,
+  type WeatherFrontManager,
 } from './units';
 
 /**
@@ -31,6 +32,7 @@ export interface RadarRenderData {
   barrageSalvo?: BarrageSalvoManager;
   jammerAircraft?: JammerAircraftManager;
   terrainHugger?: TerrainHuggerManager;
+  weatherFront?: WeatherFrontManager;
   warningArc?: { angle: number; phase: 'warning' | 'active' } | null;
 }
 
@@ -561,6 +563,10 @@ export function createRadarRender(
 
     // 3.5. Конус радиопомех самолёта РЭБ («Шумовой Строб»)
     data.jammerAircraft?.render(dynamicGraphics);
+
+    // 3.6. Ионизационный грозовой фронт (Rain Clutter, молнии и вторичное эхо целей)
+    data.weatherFront?.render(dynamicGraphics);
+    data.weatherFront?.renderGhostEchoes(dynamicGraphics, data.targets);
 
     // 4. Метки целей (люминофор)
     for (const target of data.targets) {

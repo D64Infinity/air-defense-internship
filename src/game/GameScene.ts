@@ -53,6 +53,9 @@ import {
   createTerrainHuggerManager,
   type TerrainHuggerManager,
   TERRAIN_HUGGER_CONFIG,
+  createWeatherFrontManager,
+  type WeatherFrontManager,
+  WEATHER_FRONT_CONFIG,
 } from './units';
 
 
@@ -84,6 +87,7 @@ export class GameScene extends Phaser.Scene {
   private barrageSalvo: BarrageSalvoManager = createBarrageSalvoManager();
   private jammerAircraft: JammerAircraftManager = createJammerAircraftManager();
   private terrainHugger: TerrainHuggerManager = createTerrainHuggerManager();
+  private weatherFront: WeatherFrontManager = createWeatherFrontManager();
 
   // Тайминги и контроль частоты заградительного налёта
   private barrageTimer = 0;
@@ -99,6 +103,11 @@ export class GameScene extends Phaser.Scene {
   private terrainHuggerTimer = 0;
   private nextTerrainHuggerDelay = -1;
   private hadTerrainHuggerLastWave = false;
+
+  // Тайминги и контроль прохождения ионизационного грозового фронта
+  private weatherFrontTimer = 0;
+  private nextWeatherFrontDelay = -1;
+  private hadWeatherFrontLastWave = false;
 
   // Состояние игры
   private baseHealth = GAME_CONFIG.maxBaseHealth;
@@ -152,6 +161,10 @@ export class GameScene extends Phaser.Scene {
     this.terrainHuggerTimer = 0;
     this.nextTerrainHuggerDelay = -1;
     this.hadTerrainHuggerLastWave = false;
+    this.weatherFront.reset();
+    this.weatherFrontTimer = 0;
+    this.nextWeatherFrontDelay = -1;
+    this.hadWeatherFrontLastWave = false;
     this.selectedTarget = null;
     this.explosions = [];
     this.interceptorManager.reset();
@@ -365,15 +378,28 @@ export class GameScene extends Phaser.Scene {
         this.nextTerrainHuggerDelay = -1; // строго один штурмовик на волну максимум
         const thTarget = this.terrainHugger.spawn(this.wave);
         this.targets.push(thTarget);
-        this.soundSystem.playSectorWarningPing();
-        this.hud.showNotification(
-          '[ ТРЕВОГА: В СЕКТОРЕ ОБНАРУЖЕН ШТУРМОВИК НА ПРЕДЕЛЬНО МАЛОЙ ВЫСОТЕ! ]',
-          4.5,
-        );
       }
     }
 
     this.terrainHugger.update(dt, () => this.soundSystem.playTerrainHuggerPopUp());
+
+    // Ионизационный грозовой фронт (метеопомехи, молнии и вторичное эхо)
+    if (!this.weatherFront.isActive && this.nextWeatherFrontDelay > 0) {
+      this.weatherFrontTimer += dt;
+      if (this.weatherFrontTimer >= this.nextWeatherFrontDelay) {
+        this.nextWeatherFrontDelay = -1; // строго один фронт на волну максимум
+        this.weatherFront.trigger();
+        this.soundSystem.playSectorWarningPing();
+        this.hud.showNotification(
+          '[ МЕТЕОСЛУЖБА: В СЕКТОРЕ ОБНАРУЖЕН ИОНИЗАЦИОННЫЙ ГРОЗОВОЙ ФРОНТ! ]',
+          5.0,
+        );
+      }
+    }
+
+    this.weatherFront.update(dt, this.radarRender.beamAngle, (pan) => {
+      this.soundSystem.playThunderClap(pan);
+    });
 
     updateExplosions(this.explosions, dt);
     this.radarRender.renderDynamic({
@@ -389,6 +415,7 @@ export class GameScene extends Phaser.Scene {
       barrageSalvo: this.barrageSalvo,
       jammerAircraft: this.jammerAircraft,
       terrainHugger: this.terrainHugger,
+      weatherFront: this.weatherFront,
       explosions: this.explosions,
       warningArc: eventResult.warningArc,
     });
@@ -410,6 +437,12 @@ export class GameScene extends Phaser.Scene {
     this.barrageSalvo.reset();
     this.barrageTimer = 0;
 
+    // В особой волне любые побочные события и спец-юниты строго отключены
+    if (this.isSpecialWaveCurrent) {
+      this.nextBarrageDelay = -1;
+      return;
+    }
+
     // Волна 1: отключен (обучение). Волна 2+: шанс 35%, если в прошлой волне налёта не было
     const canTrigger = this.wave >= BARRAGE_CONFIG.minWave && !this.hadBarrageLastWave;
     const willTrigger = canTrigger && Math.random() < BARRAGE_CONFIG.waveChance;
@@ -429,6 +462,12 @@ export class GameScene extends Phaser.Scene {
   private scheduleJammerForWave(): void {
     this.jammerAircraft.reset();
     this.jammerTimer = 0;
+
+    // В особой волне любые побочные события и спец-юниты строго отключены
+    if (this.isSpecialWaveCurrent) {
+      this.nextJammerDelay = -1;
+      return;
+    }
 
     // Волна 3+: шанс 28%, если в прошлой волне РЭБ не было
     const canTrigger = this.wave >= JAMMER_CONFIG.minWave && !this.hadJammerLastWave;
@@ -453,6 +492,12 @@ export class GameScene extends Phaser.Scene {
     this.terrainHugger.reset();
     this.terrainHuggerTimer = 0;
 
+    // В особой волне любые побочные события и спец-юниты строго отключены
+    if (this.isSpecialWaveCurrent) {
+      this.nextTerrainHuggerDelay = -1;
+      return;
+    }
+
     // Волна 2+: шанс 30%, если в прошлой волне штурмовика не было
     const canTrigger = this.wave >= TERRAIN_HUGGER_CONFIG.minWave && !this.hadTerrainHuggerLastWave;
     const willTrigger = canTrigger && Math.random() < TERRAIN_HUGGER_CONFIG.waveChance;
@@ -466,6 +511,35 @@ export class GameScene extends Phaser.Scene {
     } else {
       this.nextTerrainHuggerDelay = -1;
       this.hadTerrainHuggerLastWave = false;
+    }
+  }
+
+  /**
+   * Назначение прохождения ионизационного грозового фронта на волну
+   */
+  private scheduleWeatherFrontForWave(): void {
+    this.weatherFront.reset();
+    this.weatherFrontTimer = 0;
+
+    // В особой волне любые побочные события и спец-юниты строго отключены
+    if (this.isSpecialWaveCurrent) {
+      this.nextWeatherFrontDelay = -1;
+      return;
+    }
+
+    // Волна 4+: шанс 35%, если в прошлой волне грозового фронта не было
+    const canTrigger = this.wave >= WEATHER_FRONT_CONFIG.minWave && !this.hadWeatherFrontLastWave;
+    const willTrigger = canTrigger && Math.random() < WEATHER_FRONT_CONFIG.waveChance;
+
+    if (willTrigger) {
+      this.nextWeatherFrontDelay = Phaser.Math.FloatBetween(
+        WEATHER_FRONT_CONFIG.delayMin,
+        WEATHER_FRONT_CONFIG.delayMax,
+      );
+      this.hadWeatherFrontLastWave = true;
+    } else {
+      this.nextWeatherFrontDelay = -1;
+      this.hadWeatherFrontLastWave = false;
     }
   }
 
@@ -489,9 +563,11 @@ export class GameScene extends Phaser.Scene {
     this.hadBarrageLastWave = false;
     this.hadJammerLastWave = false;
     this.hadTerrainHuggerLastWave = false;
+    this.hadWeatherFrontLastWave = false;
     this.scheduleBarrageForWave();
     this.scheduleJammerForWave();
     this.scheduleTerrainHuggerForWave();
+    this.scheduleWeatherFrontForWave();
     this.soundSystem.playWaveTransition(false);
     this.showWaveBanner('ВОЛНА 1\nБОЕВОЕ ДЕЖУРСТВО');
     this.hud.showNotification(
@@ -601,6 +677,10 @@ export class GameScene extends Phaser.Scene {
     this.terrainHuggerTimer = 0;
     this.nextTerrainHuggerDelay = -1;
     this.hadTerrainHuggerLastWave = false;
+    this.weatherFront.reset();
+    this.weatherFrontTimer = 0;
+    this.nextWeatherFrontDelay = -1;
+    this.hadWeatherFrontLastWave = false;
     this.ambientBg.reset();
     this.pauseOverlay.hide();
     this.briefingOverlay.hide();
@@ -854,10 +934,6 @@ export class GameScene extends Phaser.Scene {
         `[ВЕРНО!] САМОЛЁТ РЭБ СБИТ! ЭФИР РАСЧИЩЕН (+${bonusScore}, +${creditsReward} CR)`,
         GAME_CONFIG.colors.text.success,
       );
-      this.hud.showNotification(
-        '[ РЛС: ПОСТАНОВЩИК РЭБ УНИЧТОЖЕН — ЭФИР РАСЧИЩЕН ]',
-        4.0,
-      );
       this.alerts.showInterceptAlert({
         unitType: 'jammer',
         points: bonusScore,
@@ -879,10 +955,6 @@ export class GameScene extends Phaser.Scene {
       this.showFeedback(
         `[ВЕРНО!] ШТУРМОВИК «СТРИЖ» СБИТ (+${bonusScore}, +${creditsReward} CR)`,
         GAME_CONFIG.colors.text.success,
-      );
-      this.hud.showNotification(
-        '[ РЛС: НИЗКОВЫСОТНЫЙ ШТУРМОВИК УНИЧТОЖЕН ]',
-        4.0,
       );
       this.alerts.showInterceptAlert({
         unitType: 'terrain_hugger',
@@ -1368,6 +1440,7 @@ export class GameScene extends Phaser.Scene {
       this.scheduleBarrageForWave();
       this.scheduleJammerForWave();
       this.scheduleTerrainHuggerForWave();
+      this.scheduleWeatherFrontForWave();
 
       // Пополнение боекомплекта перехватчиков, зарядов сканирования и начисление кредитов за волну
       let { addedAmmo, waveCredits } = this.armory.refillForWave(this.wave);

@@ -46,21 +46,21 @@ export function createAlertManager(scene: Phaser.Scene): AlertManager {
   alertContainer.setVisible(false);
 
   const alertBg = scene.add.graphics();
-  const alertTitleText = scene.add.text(0, -9, '', {
+  const alertTitleText = scene.add.text(0, -10, '', {
     fontFamily: '"Cascadia Mono", Consolas, monospace',
-    fontSize: '15px',
+    fontSize: '14px',
     color: GAME_CONFIG.colors.text.white,
     fontStyle: 'bold',
-    padding: { left: 2, right: 2, top: 1, bottom: 1 },
+    padding: { left: 4, right: 4, top: 1, bottom: 1 },
     resolution: GAME_CONFIG.textResolution,
   }).setOrigin(0.5);
 
-  const alertOutcomeText = scene.add.text(0, 13, '', {
+  const alertOutcomeText = scene.add.text(0, 12, '', {
     fontFamily: '"Cascadia Mono", Consolas, monospace',
-    fontSize: '13px',
+    fontSize: '12px',
     color: GAME_CONFIG.colors.text.friendlyBonus,
     fontStyle: 'bold',
-    padding: { left: 2, right: 2, top: 1, bottom: 1 },
+    padding: { left: 4, right: 4, top: 1, bottom: 1 },
     resolution: GAME_CONFIG.textResolution,
   }).setOrigin(0.5);
 
@@ -77,9 +77,9 @@ export function createAlertManager(scene: Phaser.Scene): AlertManager {
     bgColor: number,
     borderColor: number,
     pipColor: number,
-    boxW = 380,
+    boxW = 430,
   ) => {
-    const boxH = 64;
+    const boxH = 62;
     const halfW = boxW / 2;
     const halfH = boxH / 2;
 
@@ -162,7 +162,7 @@ export function createAlertManager(scene: Phaser.Scene): AlertManager {
     } else if (data.unitType === 'jammer') {
       title = '[ ПЕРЕХВАТ ] САМОЛЁТ РЭБ «СТРОБ»';
       const rangeTag = data.isLongRange ? ' | ДАЛЬНИЙ РУБЕЖ' : '';
-      outcome = `+${data.points} ОЧК  |  +${data.credits} CR  |  ЭФИР ЧИСТ${rangeTag}`;
+      outcome = `+${data.points} ОЧК | +${data.credits} CR | ЭФИР ЧИСТ${rangeTag}`;
       titleColor = text.gold;
       outcomeColor = text.friendlyBonus;
       bgColor = alerts.bgInfo;
@@ -171,15 +171,15 @@ export function createAlertManager(scene: Phaser.Scene): AlertManager {
     } else if (data.unitType === 'terrain_hugger') {
       title = '[ ПЕРЕХВАТ ] ШТУРМОВИК ПМВ «СТРИЖ»';
       const rangeTag = data.isLongRange ? ' | ДАЛЬНИЙ РУБЕЖ' : '';
-      outcome = `+${data.points} ОЧК  |  +${data.credits} CR${rangeTag}`;
-      titleColor = text.info;
+      outcome = `+${data.points} ОЧК | +${data.credits} CR${rangeTag}`;
+      titleColor = text.success;
       outcomeColor = text.friendlyBonus;
-      bgColor = alerts.bgInfo;
-      borderColor = 0x0284c7;
-      pipColor = 0x38bdf8;
+      bgColor = alerts.bgSuccess;
+      borderColor = alerts.borderSuccess;
+      pipColor = alerts.pipSuccess;
     } else if (data.unitType === 'friend') {
       title = '[ ТРЕВОГА ] ОГОНЬ ПО СВОИМ: СОЮЗНИК!';
-      outcome = `${data.points} ОЧК  |  ${data.credits} CR  |  СЕРИЯ СБРОШЕНА`;
+      outcome = `${data.points} ОЧК | ${data.credits} CR | СЕРИЯ СБРОШЕНА`;
       titleColor = text.criticalPenalty;
       outcomeColor = text.redLight;
       bgColor = alerts.bgDanger;
@@ -188,8 +188,8 @@ export function createAlertManager(scene: Phaser.Scene): AlertManager {
     } else {
       // decoy
       title = '[ ЛОЖНАЯ ЦЕЛЬ ] ПЕРЕХВАТ ВПУСТУЮ';
-      const ammoStr = data.ammoLeft !== undefined ? `  |  РАКЕТ: ${data.ammoLeft}` : '';
-      outcome = `0 ОЧК  |  СЕРИЯ СБРОШЕНА${ammoStr}`;
+      const ammoStr = data.ammoLeft !== undefined ? ` | РАКЕТ: ${data.ammoLeft}` : '';
+      outcome = `0 ОЧК | СЕРИЯ СБРОШЕНА${ammoStr}`;
       titleColor = text.warning;
       outcomeColor = text.amberLight;
       bgColor = alerts.bgWarning;
@@ -197,7 +197,7 @@ export function createAlertManager(scene: Phaser.Scene): AlertManager {
       pipColor = alerts.pipWarning;
     }
 
-    renderAlert(title, outcome, titleColor, outcomeColor, bgColor, borderColor, pipColor, 380);
+    renderAlert(title, outcome, titleColor, outcomeColor, bgColor, borderColor, pipColor, 430);
   };
 
   const showSupplyAlert = (data: SupplyAlertData) => {
@@ -269,7 +269,7 @@ export function createAlertManager(scene: Phaser.Scene): AlertManager {
       }
     }
 
-    renderAlert(title, outcome, titleColor, outcomeColor, bgColor, borderColor, pipColor, 380);
+    renderAlert(title, outcome, titleColor, outcomeColor, bgColor, borderColor, pipColor, 430);
   };
 
   const update = (dt: number) => {

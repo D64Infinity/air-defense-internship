@@ -20,6 +20,7 @@ export interface SoundSystem {
   playFlareSizzle: () => void;
   playJammerShutdown: (pan?: number) => void;
   playTerrainHuggerPopUp: () => void;
+  playThunderClap: (pan?: number) => void;
   toggleMute: () => boolean;
   readonly isMuted: boolean;
 }
@@ -1895,6 +1896,70 @@ export function createSoundSystem(): SoundSystem {
     };
   };
 
+  /**
+   * Процедурный раскат грома ионизационного фронта (Thunderclap & Tropospheric Rumble)
+   */
+  const playThunderClap = (pan?: number): void => {
+    if (isMuted) return;
+    const audioCtx = getContext();
+    if (!audioCtx) return;
+
+    const now = audioCtx.currentTime;
+    const route = createOutputRoute(audioCtx, pan, now);
+
+    // 1. Начальный треск статики в приёмнике (Static Discharge Crackle)
+    const crackle = audioCtx.createBufferSource();
+    crackle.buffer = getWhiteNoiseBuffer(audioCtx);
+
+    const crackleFilter = audioCtx.createBiquadFilter();
+    crackleFilter.type = 'bandpass';
+    crackleFilter.frequency.value = 2400 + Math.random() * 400;
+    crackleFilter.Q.value = 3.5;
+
+    const crackleGain = audioCtx.createGain();
+    crackleGain.gain.setValueAtTime(0.0001, now);
+    crackleGain.gain.linearRampToValueAtTime(0.12, now + 0.003);
+    crackleGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.035);
+
+    crackle.connect(crackleFilter);
+    crackleFilter.connect(crackleGain);
+    crackleGain.connect(route.destination);
+
+    crackle.start(now);
+    crackle.stop(now + 0.04);
+
+    // 2. Глубокий раскат грома (Low-Frequency Tropospheric Rumble)
+    const rumble = audioCtx.createBufferSource();
+    rumble.buffer = getBrownNoiseBuffer(audioCtx);
+
+    const rumbleFilter = audioCtx.createBiquadFilter();
+    rumbleFilter.type = 'lowpass';
+    rumbleFilter.frequency.setValueAtTime(145, now);
+    rumbleFilter.frequency.exponentialRampToValueAtTime(45, now + 1.2);
+    rumbleFilter.Q.value = 2.2;
+
+    const rumbleGain = audioCtx.createGain();
+    rumbleGain.gain.setValueAtTime(0.0001, now);
+    rumbleGain.gain.linearRampToValueAtTime(0.28, now + 0.05);
+    rumbleGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.4);
+
+    rumble.connect(rumbleFilter);
+    rumbleFilter.connect(rumbleGain);
+    rumbleGain.connect(route.destination);
+
+    rumble.start(now);
+    rumble.stop(now + 1.45);
+
+    rumble.onended = () => {
+      crackle.disconnect();
+      crackleFilter.disconnect();
+      crackleGain.disconnect();
+      rumble.disconnect();
+      rumbleFilter.disconnect();
+      rumbleGain.disconnect();
+    };
+  };
+
   const toggleMute = (): boolean => {
     isMuted = !isMuted;
     if (masterGain && ctx) {
@@ -1919,6 +1984,7 @@ export function createSoundSystem(): SoundSystem {
     playFlareSizzle,
     playJammerShutdown,
     playTerrainHuggerPopUp,
+    playThunderClap,
     toggleMute,
     get isMuted() {
       return isMuted;
