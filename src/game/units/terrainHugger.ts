@@ -85,7 +85,6 @@ export function createTerrainHuggerManager(): TerrainHuggerManager {
   let startAngle = 0;
   let flankDirection = 1; // 1 = по часовой, -1 = против
   let baseHeading = 0;
-  let hasTurned = false;
 
   // Данные инерционной экстраполяции СУО (Dead Reckoning)
   let lastObservedPos = { x: 0, y: 0 };
@@ -103,7 +102,6 @@ export function createTerrainHuggerManager(): TerrainHuggerManager {
     startAngle = 0;
     flankDirection = 1;
     baseHeading = 0;
-    hasTurned = false;
     predictionPips.length = 0;
   };
 
@@ -137,7 +135,6 @@ export function createTerrainHuggerManager(): TerrainHuggerManager {
     cycleTimer = 0;
     isSubmerged = false;
     isPermanentlyRevealed = false;
-    hasTurned = false;
 
     // Случайный сектор старта
     startAngle = Phaser.Math.FloatBetween(0, Math.PI * 2);
@@ -212,7 +209,6 @@ export function createTerrainHuggerManager(): TerrainHuggerManager {
       TERRAIN_HUGGER_CONFIG.flankDuration + TERRAIN_HUGGER_CONFIG.turnDuration
     ) {
       // Фаза 2: Резкий тактический излом курса в ущелье (Dogleg Turn к базе)
-      hasTurned = true;
       baseHeading = Phaser.Math.Angle.RotateTo(
         baseHeading,
         toBaseAngle,

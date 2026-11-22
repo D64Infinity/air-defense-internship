@@ -516,8 +516,8 @@ export function createMainMenu(
       radar3dGfx.strokeEllipse(cx, cy, rx * fraction * 2, ry * fraction * 2);
     });
 
-    // 6. Зона ближней опасности (Danger Close Ring, radius 70, из radarRender.ts)
-    const dangerFrac = 70 / combatRadarRadius;
+    // 6. Зона ближней опасности (Danger Close Ring из GAME_CONFIG)
+    const dangerFrac = GAME_CONFIG.dangerCloseRadius / combatRadarRadius;
     radar3dGfx.lineStyle(1, colors.dangerRing, 0.32 * breathing);
     radar3dGfx.strokeEllipse(cx, cy, rx * dangerFrac * 2, ry * dangerFrac * 2);
 

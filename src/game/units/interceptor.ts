@@ -2,6 +2,28 @@ import Phaser from 'phaser';
 import { GAME_CONFIG, type GameTarget } from '../gameConfig';
 
 /**
+ * Конфигурация противоракетного комплекса ПВО (Interceptors)
+ */
+export const INTERCEPTOR_CONFIG = {
+  // Параметры гиперзвукового полёта ракеты-перехватчика
+  minFlightDuration: 0.18, // базовая длительность полёта на ближней дистанции (сек)
+  flightDurationScale: 0.12, // добавка времени на максимальной дальности радара (сек)
+  accelerationExponent: 1.35, // нелинейный разгон твердотопливного ускорителя (t^1.35)
+
+  // Инверсионный след на люминофоре ЭЛТ
+  trailMaxLife: 0.35, // время таяния следа на экране (сек)
+  trailLineWidth: 1.8, // толщина линии следа (px)
+  trailMaxAlpha: 0.75, // максимальная яркость следа
+  trailAlphaThreshold: 0.02, // порог отсечки затухающего следа
+
+  // Геометрия боевой головной части
+  haloRadius: 4.5, // радиус бирюзового ореола ракеты (px)
+  haloAlpha: 0.55, // прозрачность ореола
+  coreRadius: 2.2, // радиус яркого ядра (px)
+  coreAlpha: 0.95, // непрозрачность ядра
+} as const;
+
+/**
  * Точка высокотемпературного инверсионного следа ракеты на люминофоре
  */
 export interface InterceptorTrailPoint {
@@ -57,8 +79,13 @@ export function createInterceptorManager(): InterceptorManager {
     const startY = GAME_CONFIG.radarY;
     const dist = Math.hypot(target.x - startX, target.y - startY);
 
-    // Гиперзвуковой расчёт времени полёта: от 0.20с на ближней дистанции до 0.28с на границе радара
-    const duration = 0.18 + Math.min(0.12, (dist / GAME_CONFIG.radarRadius) * 0.12);
+    // Гиперзвуковой расчёт времени полёта: от 0.18с на ближней дистанции до 0.30с на границе радара
+    const duration =
+      INTERCEPTOR_CONFIG.minFlightDuration +
+      Math.min(
+        INTERCEPTOR_CONFIG.flightDurationScale,
+        (dist / GAME_CONFIG.radarRadius) * INTERCEPTOR_CONFIG.flightDurationScale,
+      );
 
     units.push({
       id: nextId++,
@@ -94,7 +121,7 @@ export function createInterceptorManager(): InterceptorManager {
       if (!flight.isImpacted) {
         const progress = Math.min(1, flight.age / flight.duration);
         // Нелинейный разгон твердотопливного ускорителя (t^1.35)
-        const curvedProgress = Math.pow(progress, 1.35);
+        const curvedProgress = Math.pow(progress, INTERCEPTOR_CONFIG.accelerationExponent);
 
         flight.currentX =
           flight.startX + (flight.target.x - flight.startX) * curvedProgress;
@@ -106,7 +133,7 @@ export function createInterceptorManager(): InterceptorManager {
           x: flight.currentX,
           y: flight.currentY,
           age: 0,
-          maxLife: 0.35, // время таяния следа на люминофоре (0.35 сек)
+          maxLife: INTERCEPTOR_CONFIG.trailMaxLife,
         });
 
         // Момент встречи с целью
@@ -160,9 +187,9 @@ export function renderInterceptors(
       for (let k = 1; k < flight.trail.length; k++) {
         const p1 = flight.trail[k - 1];
         const p2 = flight.trail[k];
-        const alpha = Math.max(0, 1 - p2.age / p2.maxLife) * 0.75;
-        if (alpha > 0.02) {
-          graphics.lineStyle(1.8, colors.interceptorTrail, alpha);
+        const alpha = Math.max(0, 1 - p2.age / p2.maxLife) * INTERCEPTOR_CONFIG.trailMaxAlpha;
+        if (alpha > INTERCEPTOR_CONFIG.trailAlphaThreshold) {
+          graphics.lineStyle(INTERCEPTOR_CONFIG.trailLineWidth, colors.interceptorTrail, alpha);
           graphics.beginPath();
           graphics.moveTo(p1.x, p1.y);
           graphics.lineTo(p2.x, p2.y);
@@ -174,12 +201,12 @@ export function renderInterceptors(
     // 2. Головная часть противоракеты (боевой блок)
     if (!flight.isImpacted) {
       // Мягкий бирюзовый ореол
-      graphics.fillStyle(colors.interceptorHalo, 0.55);
-      graphics.fillCircle(flight.currentX, flight.currentY, 4.5);
+      graphics.fillStyle(colors.interceptorHalo, INTERCEPTOR_CONFIG.haloAlpha);
+      graphics.fillCircle(flight.currentX, flight.currentY, INTERCEPTOR_CONFIG.haloRadius);
 
       // Яркое белое ядро
-      graphics.fillStyle(colors.interceptorCore, 0.95);
-      graphics.fillCircle(flight.currentX, flight.currentY, 2.2);
+      graphics.fillStyle(colors.interceptorCore, INTERCEPTOR_CONFIG.coreAlpha);
+      graphics.fillCircle(flight.currentX, flight.currentY, INTERCEPTOR_CONFIG.coreRadius);
     }
   }
 }

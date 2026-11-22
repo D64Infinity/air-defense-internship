@@ -6,8 +6,8 @@ export function createGame(parent: string): Phaser.Game {
   const config: Phaser.Types.Core.GameConfig = {
     type: Phaser.AUTO,
     parent,
-    width: 960,
-    height: 640,
+    width: GAME_CONFIG.canvasWidth,
+    height: GAME_CONFIG.canvasHeight,
     roundPixels: true,
     backgroundColor: GAME_CONFIG.colors.canvasBg,
     scene: [GameScene],

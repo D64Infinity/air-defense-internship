@@ -3,6 +3,10 @@
  * Все ключевые числовые настройки, параметры целей и визуальная палитра.
  */
 export const GAME_CONFIG = {
+  // Разрешение холста и экрана
+  canvasWidth: 960,
+  canvasHeight: 640,
+
   // Разрешение растеризации шрифтов (суперсэмплинг для чёткости текста на мониторах)
   textResolution: typeof window !== 'undefined' ? Math.max(Math.ceil(window.devicePixelRatio || 1), 2) : 2,
 
@@ -10,6 +14,7 @@ export const GAME_CONFIG = {
   radarX: 345,
   radarY: 320,
   radarRadius: 265,
+  dangerCloseRadius: 70, // радиус рубежа ближней опасности (danger close ring)
 
   // Базовые параметры луча
   beamSpeedBase: 2.4, // базовая скорость вращения (~2.62 сек на полный оборот вместо 4.83 сек)

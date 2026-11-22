@@ -35,10 +35,7 @@ export interface JammerAircraftManager {
   readonly strobeHalfAngle: number;
   isTargetJammed: (target: GameTarget) => boolean;
   spawn: (wave: number) => GameTarget;
-  update: (
-    dt: number,
-    onJammerDestroyed?: () => void,
-  ) => void;
+  update: (dt: number) => void;
   render: (graphics: Phaser.GameObjects.Graphics) => void;
   reset: () => void;
   onTargetDestroyed: (targetId: number) => void;
@@ -140,10 +137,7 @@ export function createJammerAircraftManager(): JammerAircraftManager {
   /**
    * Обновление положения борта по орбите и физики конуса глушения
    */
-  const update = (
-    dt: number,
-    onJammerDestroyed?: () => void,
-  ): void => {
+  const update = (dt: number): void => {
     if (!jammerTarget) return;
 
     activeTimer += dt;

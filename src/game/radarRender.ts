@@ -229,7 +229,7 @@ export function createRadarRender(
 
     // Зона ближней опасности (danger close ring)
     staticGraphics.lineStyle(1, colors.dangerRing, 0.3);
-    staticGraphics.strokeCircle(radarX, radarY, 70);
+    staticGraphics.strokeCircle(radarX, radarY, GAME_CONFIG.dangerCloseRadius);
 
     // Оси
     staticGraphics.lineStyle(1, colors.gridAxis, 0.22);
