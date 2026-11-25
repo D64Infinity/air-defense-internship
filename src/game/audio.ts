@@ -24,6 +24,7 @@ export interface SoundSystem {
   playMenuHover: () => void;
   playMenuSelect: () => void;
   playDegauss: () => void;
+  stopAll: () => void;
   toggleMute: () => boolean;
   readonly isMuted: boolean;
 }
@@ -43,11 +44,13 @@ export function createSoundSystem(): SoundSystem {
   let masterIn: GainNode | null = null;
   let masterGain: GainNode | null = null;
   let skyEchoIn: GainNode | null = null;
+  let teardownMasterChain: (() => void) | null = null;
 
   /**
    * Инициализация студийного мастер-тракта обработки (Сатурация + Компрессор + Лимитер + Атмосферный диффузор)
    */
   const setupMasterChain = (audioCtx: AudioContext): void => {
+    teardownMasterChain?.();
     masterIn = audioCtx.createGain();
 
     // 1. Асимметричная аналоговая сатурация (WaveShaper):
@@ -114,13 +117,15 @@ export function createSoundSystem(): SoundSystem {
     feedbackR.connect(delayR);
 
     // Панорамирование эха: левое отражение слегка влево, правое — вправо
+    let pannerL: StereoPannerNode | null = null;
+    let pannerR: StereoPannerNode | null = null;
     if (typeof audioCtx.createStereoPanner === 'function') {
-      const pannerL = audioCtx.createStereoPanner();
+      pannerL = audioCtx.createStereoPanner();
       pannerL.pan.value = -0.65;
       dampL.connect(pannerL);
       pannerL.connect(masterIn);
 
-      const pannerR = audioCtx.createStereoPanner();
+      pannerR = audioCtx.createStereoPanner();
       pannerR.pan.value = 0.65;
       dampR.connect(pannerR);
       pannerR.connect(masterIn);
@@ -128,6 +133,25 @@ export function createSoundSystem(): SoundSystem {
       dampL.connect(masterIn);
       dampR.connect(masterIn);
     }
+
+    const currentMasterIn = masterIn;
+    const currentMasterGain = masterGain;
+    const currentSkyEchoIn = skyEchoIn;
+    teardownMasterChain = () => {
+      currentMasterIn.disconnect();
+      currentSkyEchoIn.disconnect();
+      delayL.disconnect();
+      dampL.disconnect();
+      feedbackL.disconnect();
+      delayR.disconnect();
+      dampR.disconnect();
+      feedbackR.disconnect();
+      pannerL?.disconnect();
+      pannerR?.disconnect();
+      saturator.disconnect();
+      compressor.disconnect();
+      currentMasterGain.disconnect();
+    };
   };
 
   const getContext = (): AudioContext | null => {
@@ -2079,6 +2103,19 @@ export function createSoundSystem(): SoundSystem {
     };
   };
 
+  const stopAll = (): void => {
+    lastPingTime = 0;
+    if (!ctx) return;
+
+    teardownMasterChain?.();
+    teardownMasterChain = null;
+    setupMasterChain(ctx);
+
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
+  };
+
   const toggleMute = (): boolean => {
     isMuted = !isMuted;
     if (masterGain && ctx) {
@@ -2107,6 +2144,7 @@ export function createSoundSystem(): SoundSystem {
     playMenuHover,
     playMenuSelect,
     playDegauss,
+    stopAll,
     toggleMute,
     get isMuted() {
       return isMuted;

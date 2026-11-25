@@ -54,7 +54,7 @@ export interface MainMenuCallbacks {
 export interface MainMenuManager {
   readonly container: Phaser.GameObjects.Container;
   show: () => void;
-  hide: (onComplete?: () => void) => void;
+  hide: (onComplete?: () => void, immediate?: boolean) => void;
   startTransition: (onComplete: () => void) => void;
   update: (dt: number) => void;
   isVisible: () => boolean;
@@ -1338,7 +1338,14 @@ export function createMainMenu(
     renderVolumetricRadar(scene.time.now, standbySweepAngle);
   };
 
-  const hide = (onComplete?: () => void) => {
+  const hide = (onComplete?: () => void, immediate = false) => {
+    isTransitioning = true;
+    if (immediate) {
+      container.setVisible(false);
+      container.setAlpha(0);
+      onComplete?.();
+      return;
+    }
     scene.tweens.add({
       targets: container,
       alpha: 0,

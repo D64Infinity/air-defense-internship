@@ -281,7 +281,7 @@ export class GameScene extends Phaser.Scene {
       this.ambientBg.setVisible(true);
       this.radarRender.setVisible(true);
       this.hud.setVisible(true);
-      this.mainMenu.hide();
+      this.mainMenu.hide(undefined, true);
       this.startCombat();
     } else {
       this.isGameStarted = false;
@@ -691,6 +691,7 @@ export class GameScene extends Phaser.Scene {
    */
   private restartGame(autoStartCombat = true): void {
     this.isPaused = false;
+    this.soundSystem.stopAll();
     this.explosions = [];
     this.interceptorManager.reset();
     this.sweeperDrone.reset();

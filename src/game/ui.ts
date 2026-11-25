@@ -1592,19 +1592,124 @@ export function createHud(
     cascadePeriodSec: 1.35,
     flashDecayRate: 3.6,
     rowGlowColors: [0x4ade80, 0xfbbf24, 0x94a3b8, 0x38bdf8] as const,
+    keycapLegends: ['1', '2', '3', '4'] as const,
+    keycapLegendColors: ['#86efac', '#fde047', '#cbd5e1', '#7dd3fc'] as const,
+    keycapX: 625, // левый край 3D-клавиши на стыке консоли (правее корпуса радара 625, левее кнопок 656)
+    keycapW: 24,
+    keycapH: 24,
+    keycapPressDepth: 1.6, // ход имитации нажатия клавиши при проходе волны
   } as const;
 
   const decisionHintGfx = scene.add.graphics();
   hudContainer.add(decisionHintGfx);
+
+  const keycapTexts: Phaser.GameObjects.Text[] = [];
+  if (!GAME_CONFIG.isMobile) {
+    for (let i = 0; i < 4; i++) {
+      const rowCenterY = startY + i * (btnH + gap) + btnH / 2;
+      const keyTxt = scene.add.text(
+        ACTION_HINT_CONFIG.keycapX + ACTION_HINT_CONFIG.keycapW / 2,
+        rowCenterY - 1,
+        ACTION_HINT_CONFIG.keycapLegends[i],
+        {
+          ...monoStyle,
+          fontSize: '11px',
+          color: ACTION_HINT_CONFIG.keycapLegendColors[i],
+          fontStyle: 'bold',
+        },
+      );
+      keyTxt.setOrigin(0.5);
+      keyTxt.setVisible(false);
+      keycapTexts.push(keyTxt);
+      hudContainer.add(keyTxt);
+    }
+  }
 
   let actionHintActive = false;
   let actionHintTime = 0;
   let actionHintFlash = 0;
   let actionHintEnabledRows: [boolean, boolean, boolean, boolean] = [false, false, false, false];
 
+  /**
+   * Отрисовка объёмной иконки-клавиши клавиатуры (только для ПК) с анимацией нажатия
+   */
+  const drawDesktopKeycap = (
+    rowIndex: number,
+    rowY: number,
+    glowColor: number,
+    waveBoost: number,
+  ) => {
+    const kx = ACTION_HINT_CONFIG.keycapX;
+    const kw = ACTION_HINT_CONFIG.keycapW;
+    const kh = ACTION_HINT_CONFIG.keycapH;
+    const ky = rowY + (btnH - kh) / 2;
+
+    const pressRatio = waveBoost > 0.35 ? (waveBoost - 0.35) / 0.65 : 0;
+    const pressY = pressRatio * ACTION_HINT_CONFIG.keycapPressDepth;
+    const capAlpha = Math.min(1, 0.72 + 0.28 * waveBoost + actionHintFlash * 0.3);
+
+    // 1. Внешний ореол клавиши при подсветке волной
+    if (waveBoost > 0.1 || actionHintFlash > 0.1) {
+      decisionHintGfx.lineStyle(
+        3,
+        glowColor,
+        Math.min(0.6, 0.35 * waveBoost + 0.45 * actionHintFlash),
+      );
+      decisionHintGfx.strokeRoundedRect(kx - 1.5, ky - 1.5, kw + 3, kh + 3, 5);
+    }
+
+    // 2. Тень и объёмный нижний бортик (юбка механической клавиши)
+    decisionHintGfx.fillStyle(0x000000, 0.55);
+    decisionHintGfx.fillRoundedRect(kx + 1, ky + 2, kw, kh, 4);
+
+    decisionHintGfx.fillStyle(0x09131d, 0.96);
+    decisionHintGfx.fillRoundedRect(kx, ky, kw, kh, 4);
+    decisionHintGfx.lineStyle(1.3, glowColor, capAlpha);
+    decisionHintGfx.strokeRoundedRect(kx, ky, kw, kh, 4);
+
+    // 3. Верхняя площадка клавиши (слегка опускается при имитации нажатия)
+    const faceW = kw - 4;
+    const faceH = kh - 6;
+    const faceX = kx + 2;
+    const faceY = ky + 1.5 + pressY;
+    const faceColor = waveBoost > 0.45 || actionHintFlash > 0.4 ? 0x163142 : 0x111f2d;
+
+    decisionHintGfx.fillStyle(faceColor, 0.98);
+    decisionHintGfx.fillRoundedRect(faceX, faceY, faceW, faceH, 3);
+    decisionHintGfx.lineStyle(1, 0xffffff, 0.22 + 0.35 * waveBoost);
+    decisionHintGfx.beginPath();
+    decisionHintGfx.moveTo(faceX + 2, faceY + 0.5);
+    decisionHintGfx.lineTo(faceX + faceW - 2, faceY + 0.5);
+    decisionHintGfx.strokePath();
+
+    // 4. Светодиодный проводник от клавиши к самой кнопке справа
+    const midY = rowY + btnH / 2;
+    const traceAlpha = Math.min(1, 0.4 + 0.6 * waveBoost + actionHintFlash * 0.4);
+    decisionHintGfx.lineStyle(1.4, glowColor, traceAlpha);
+    decisionHintGfx.lineBetween(kx + kw + 1, midY, btnX - 3, midY);
+    decisionHintGfx.fillStyle(glowColor, traceAlpha);
+    decisionHintGfx.fillTriangle(btnX - 5, midY - 2.5, btnX - 5, midY + 2.5, btnX - 1.5, midY);
+
+    // 5. Цифра на клавише (вспыхивает ярко-белым на пике нажатия)
+    const keyTxt = keycapTexts[rowIndex];
+    if (keyTxt) {
+      keyTxt.setY(Math.round(faceY + faceH / 2));
+      keyTxt.setColor(
+        waveBoost > 0.55 || actionHintFlash > 0.4
+          ? '#ffffff'
+          : ACTION_HINT_CONFIG.keycapLegendColors[rowIndex],
+      );
+      keyTxt.setAlpha(capAlpha);
+      keyTxt.setVisible(true);
+    }
+  };
+
   const renderActionHint = () => {
     decisionHintGfx.clear();
-    if (!actionHintActive) return;
+    if (!actionHintActive) {
+      for (const kt of keycapTexts) kt.setVisible(false);
+      return;
+    }
 
     const pulse = 0.5 + 0.5 * Math.sin(actionHintTime * 4.5);
     const groupTop = startY - ACTION_HINT_CONFIG.padY;
@@ -1632,10 +1737,13 @@ export function createHud(
     decisionHintGfx.lineTo(groupRight, groupBottom - corner);
     decisionHintGfx.strokePath();
 
-    // 2. Каскадная волна и акцентная подсветка доступных кнопок (с акцентом на [2] УГРОЗА и [4] СКАНЕР)
+    // 2. Каскадная волна и акцентная подсветка доступных кнопок (с клавишами-дубликатами для ПК)
     const wavePos = ((actionHintTime / ACTION_HINT_CONFIG.cascadePeriodSec) % 1) * 4;
     for (let i = 0; i < 4; i++) {
-      if (!actionHintEnabledRows[i]) continue;
+      if (!actionHintEnabledRows[i]) {
+        keycapTexts[i]?.setVisible(false);
+        continue;
+      }
 
       const rowY = startY + i * (btnH + gap);
       const isKeyAction = i === 1 || i === 3;
@@ -1657,18 +1765,22 @@ export function createHud(
         decisionHintGfx.fillRect(btnX, rowY, btnW, btnH);
       }
 
-      // Миниатюрный световой маркер-указатель слева от кнопки
-      const pipAlpha = Math.min(1, 0.35 + 0.65 * waveBoost + actionHintFlash * 0.4);
-      const midY = rowY + btnH / 2;
-      decisionHintGfx.fillStyle(glowColor, pipAlpha);
-      decisionHintGfx.fillTriangle(
-        btnX - 8,
-        midY - 3.5,
-        btnX - 8,
-        midY + 3.5,
-        btnX - 3,
-        midY,
-      );
+      if (!GAME_CONFIG.isMobile) {
+        drawDesktopKeycap(i, rowY, glowColor, waveBoost);
+      } else {
+        // На мобильных устройствах — только чистый световой указатель без иконки клавиатуры
+        const pipAlpha = Math.min(1, 0.35 + 0.65 * waveBoost + actionHintFlash * 0.4);
+        const midY = rowY + btnH / 2;
+        decisionHintGfx.fillStyle(glowColor, pipAlpha);
+        decisionHintGfx.fillTriangle(
+          btnX - 8,
+          midY - 3.5,
+          btnX - 8,
+          midY + 3.5,
+          btnX - 3,
+          midY,
+        );
+      }
     }
   };
 
