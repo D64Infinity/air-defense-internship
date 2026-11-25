@@ -251,7 +251,7 @@ export function createGameOverOverlay(
   const restartText = scene.add.text(
     cx,
     cy + 185,
-    'НАЧАТЬ ЗАНОВО (ПРОБЕЛ / R)',
+    GAME_CONFIG.isMobile ? 'НАЧАТЬ ЗАНОВО' : 'НАЧАТЬ ЗАНОВО (ПРОБЕЛ / R)',
     {
       ...modalTextStyle,
       fontSize: '15px',
@@ -385,7 +385,7 @@ export function createPauseOverlay(
   const resumeText = scene.add.text(
     width / 2,
     height / 2 - 28,
-    'ПРОДОЛЖИТЬ (P)',
+    GAME_CONFIG.isMobile ? 'ПРОДОЛЖИТЬ' : 'ПРОДОЛЖИТЬ (P)',
     {
       ...pauseTextStyle,
       fontSize: '13px',
@@ -443,7 +443,7 @@ export function createPauseOverlay(
   const restartText = scene.add.text(
     width / 2,
     height / 2 + 64,
-    'НАЧАТЬ ЗАНОВО (R)',
+    GAME_CONFIG.isMobile ? 'НАЧАТЬ ЗАНОВО' : 'НАЧАТЬ ЗАНОВО (R)',
     {
       ...pauseTextStyle,
       fontSize: '13px',
@@ -580,6 +580,7 @@ export function createBriefingOverlay(
   };
 
   const startX = cx - halfW + 30; // 190px при cx = 480
+  const isMobile = GAME_CONFIG.isMobile;
 
   // 1. Угрозы (красный акцент)
   addRow(startX, cy - 156, [
@@ -588,7 +589,7 @@ export function createBriefingOverlay(
   ]);
   addRow(startX, cy - 132, [
     { text: '  ДЕЙСТВИЕ: ', color: '#94a3b8' },
-    { text: 'УНИЧТОЖИТЬ [2]', color: '#f87171', bold: true },
+    { text: isMobile ? 'УНИЧТОЖИТЬ' : 'УНИЧТОЖИТЬ [2]', color: '#f87171', bold: true },
     { text: ' (требует боекомплект)', color: '#94a3b8' },
   ]);
 
@@ -599,7 +600,7 @@ export function createBriefingOverlay(
   ]);
   addRow(startX, cy - 78, [
     { text: '  ДЕЙСТВИЕ: ПОМЕТКА ', color: '#94a3b8' },
-    { text: 'СОЮЗНИК [1]', color: '#4ade80', bold: true },
+    { text: isMobile ? 'СОЮЗНИК' : 'СОЮЗНИК [1]', color: '#4ade80', bold: true },
     { text: ' (огонь по своим карается ', color: '#94a3b8' },
     { text: `ШТРАФОМ ${GAME_CONFIG.creditsFriendlyFirePenalty} CR`, color: '#f87171', bold: true },
     { text: '!)', color: '#94a3b8' },
@@ -612,26 +613,31 @@ export function createBriefingOverlay(
   ]);
   addRow(startX, cy - 24, [
     { text: '  ДЕЙСТВИЕ: ПОМЕТКА ', color: '#94a3b8' },
-    { text: 'ЛОВУШКА [3]', color: '#cbd5e1', bold: true },
+    { text: isMobile ? 'ЛОВУШКА' : 'ЛОВУШКА [3]', color: '#cbd5e1', bold: true },
     { text: ' (не упускайте пустышки)', color: '#94a3b8' },
   ]);
 
   // 4. Сенсоры и снабжение (голубой / бирюзовый акцент)
   addRow(startX, cy + 6, [
     { text: '• СЕНСОРЫ: ', color: '#38bdf8', bold: true },
-    { text: 'Клавиша ', color: '#e2e8f0' },
-    { text: '[4] СКАН', color: '#38bdf8', bold: true },
+    { text: isMobile ? 'Кнопка ' : 'Клавиша ', color: '#e2e8f0' },
+    { text: isMobile ? 'СКАНЕР' : '[4] СКАН', color: '#38bdf8', bold: true },
     { text: ` раскрывает тип цели за ${GAME_CONFIG.scanDuration} с `, color: '#e2e8f0' },
     { text: `(требует сканер).`, color: '#94a3b8' },
   ]);
-  addRow(startX, cy + 34, [
-    { text: '• СНАБЖЕНИЕ: ', color: '#2dd4bf', bold: true },
-    { text: 'Докупка ракет ', color: '#e2e8f0' },
-    { text: '[5]', color: '#facc15', bold: true },
-    { text: ` (${GAME_CONFIG.interceptorCost} CR)   |   Докупка сканов `, color: '#e2e8f0' },
-    { text: '[6]', color: '#facc15', bold: true },
-    { text: ` (${GAME_CONFIG.scanCost} CR)`, color: '#e2e8f0' },
-  ]);
+  addRow(startX, cy + 34, isMobile
+    ? [
+        { text: '• СНАБЖЕНИЕ: ', color: '#2dd4bf', bold: true },
+        { text: `Докупка ракет (${GAME_CONFIG.interceptorCost} CR)   |   Докупка сканов (${GAME_CONFIG.scanCost} CR)`, color: '#e2e8f0' },
+      ]
+    : [
+        { text: '• СНАБЖЕНИЕ: ', color: '#2dd4bf', bold: true },
+        { text: 'Докупка ракет ', color: '#e2e8f0' },
+        { text: '[5]', color: '#facc15', bold: true },
+        { text: ` (${GAME_CONFIG.interceptorCost} CR)   |   Докупка сканов `, color: '#e2e8f0' },
+        { text: '[6]', color: '#facc15', bold: true },
+        { text: ` (${GAME_CONFIG.scanCost} CR)`, color: '#e2e8f0' },
+      ]);
 
   // 5. Панель быстрого управления (жёлтый акцент)
   const cmdPanel = scene.add.rectangle(cx, cy + 96, 580, 36, GAME_CONFIG.colors.modal.panelDark, 0.95);
@@ -641,7 +647,9 @@ export function createBriefingOverlay(
   const cmdText = scene.add.text(
     cx,
     cy + 96,
-    'УПРАВЛЕНИЕ (КЛАВИАТУРА): [1] СВОЙ  [2] УГРОЗА  [3] ЛОЖНАЯ ЦЕЛЬ  [4] СКАН  [P] ПАУЗА',
+    isMobile
+      ? 'УПРАВЛЕНИЕ: ТАП ПО МЕТКЕ НА РАДАРЕ → ВЫБОР ДЕЙСТВИЯ НА ПАНЕЛИ СПРАВА'
+      : 'УПРАВЛЕНИЕ (КЛАВИАТУРА): [1] СВОЙ  [2] УГРОЗА  [3] ЛОЖНАЯ ЦЕЛЬ  [4] СКАН  [P] ПАУЗА',
     {
       ...briefingTextStyle,
       fontSize: '11.5px',
@@ -663,7 +671,9 @@ export function createBriefingOverlay(
   actionBtn.setStrokeStyle(1.5, GAME_CONFIG.colors.modal.btnRestartBorder, 1);
   actionBtn.setInteractive({ useHandCursor: true });
 
-  const actionText = scene.add.text(cx, cy + 186, 'ЗАСТУПИТЬ НА СМЕНУ (ПРОБЕЛ)', {
+  const startLabel = isMobile ? 'ЗАСТУПИТЬ НА СМЕНУ' : 'ЗАСТУПИТЬ НА СМЕНУ (ПРОБЕЛ)';
+  const resumeLabel = isMobile ? 'ВЕРНУТЬСЯ В ИГРУ' : 'ВЕРНУТЬСЯ В ИГРУ (ПРОБЕЛ)';
+  const actionText = scene.add.text(cx, cy + 186, startLabel, {
     ...briefingTextStyle,
     fontSize: '14px',
     color: '#ffffff',
@@ -686,7 +696,7 @@ export function createBriefingOverlay(
   return {
     container,
     show: (isFirstTime = false) => {
-      actionText.setText(isFirstTime ? 'ЗАСТУПИТЬ НА СМЕНУ (ПРОБЕЛ)' : 'ВЕРНУТЬСЯ В ИГРУ (ПРОБЕЛ)');
+      actionText.setText(isFirstTime ? startLabel : resumeLabel);
       container.setVisible(true);
     },
     hide: () => container.setVisible(false),
@@ -730,6 +740,7 @@ export interface TargetSelectionData {
   interceptors: number;
   scansAvailable: number;
   isScanning: boolean;
+  showActionHint?: boolean;
 }
 
 export interface TelemetryData {
@@ -1148,7 +1159,11 @@ export function createHud(
     menuBtn.setDepth(20);
     menuBtn.setInteractive({ useHandCursor: true });
 
-    const menuText = scene.add.text(btnX, btnY, 'МЕНЮ (P)', {
+    const menuText = scene.add.text(
+      btnX,
+      btnY,
+      GAME_CONFIG.isMobile ? 'МЕНЮ' : 'МЕНЮ (P)',
+      {
       fontFamily: '"Cascadia Mono", Consolas, monospace',
       fontSize: '13px',
       color: '#38bdf8',
@@ -1383,7 +1398,8 @@ export function createHud(
       resolution: GAME_CONFIG.textResolution,
     };
 
-    const prefix = scene.add.text(0, y + h / 2, `[${keyNum}] +1`, btnTextStyle);
+    const prefixStr = GAME_CONFIG.isMobile ? '+1' : `[${keyNum}] +1`;
+    const prefix = scene.add.text(0, y + h / 2, prefixStr, btnTextStyle);
     prefix.setOrigin(0, 0.5);
 
     const icon = scene.add.image(0, y + h / 2, iconKey);
@@ -1434,13 +1450,16 @@ export function createHud(
   const btnH = 30;
   const gap = 7;
 
+  const formatHudBtnLabel = (hotkey: string, label: string): string =>
+    GAME_CONFIG.isMobile ? label : `[${hotkey}] ${label}`;
+
   const buttons = {
     friend: createButton(
       btnX,
       startY,
       btnW,
       btnH,
-      '[1] СОЮЗНИК (ПОМЕТИТЬ)',
+      formatHudBtnLabel('1', 'СОЮЗНИК (ПОМЕТИТЬ)'),
       GAME_CONFIG.colors.btnFriend,
       () => callbacks.onDecision('friend'),
     ),
@@ -1449,7 +1468,7 @@ export function createHud(
       startY + (btnH + gap),
       btnW,
       btnH,
-      '[2] УГРОЗА (УНИЧТОЖИТЬ)',
+      formatHudBtnLabel('2', 'УГРОЗА (УНИЧТОЖИТЬ)'),
       GAME_CONFIG.colors.btnThreat,
       () => callbacks.onDecision('threat'),
     ),
@@ -1458,7 +1477,7 @@ export function createHud(
       startY + (btnH + gap) * 2,
       btnW,
       btnH,
-      '[3] ЛОВУШКА (ОТМЕТИТЬ)',
+      formatHudBtnLabel('3', 'ЛОВУШКА (ОТМЕТИТЬ)'),
       GAME_CONFIG.colors.btnIgnore,
       () => callbacks.onDecision('ignore'),
     ),
@@ -1467,7 +1486,7 @@ export function createHud(
       startY + (btnH + gap) * 3,
       btnW,
       btnH,
-      `[4] ПРИМЕНИТЬ СКАНЕР (${GAME_CONFIG.scanDuration} сек.)`,
+      formatHudBtnLabel('4', `ПРИМЕНИТЬ СКАНЕР (${GAME_CONFIG.scanDuration} сек.)`),
       GAME_CONFIG.colors.btnScan,
       () => callbacks.onScan(),
     ),
@@ -1564,6 +1583,94 @@ export function createHud(
     scanTitle,
     scanCountText,
   ]);
+
+  // Слой визуальной подсветки-подсказки кнопок решений [1]–[4] после первого захвата цели
+  const ACTION_HINT_CONFIG = {
+    padX: 5,
+    padY: 5,
+    cornerLen: 8,
+    cascadePeriodSec: 1.35,
+    flashDecayRate: 3.6,
+    rowGlowColors: [0x4ade80, 0xfbbf24, 0x94a3b8, 0x38bdf8] as const,
+  } as const;
+
+  const decisionHintGfx = scene.add.graphics();
+  hudContainer.add(decisionHintGfx);
+
+  let actionHintActive = false;
+  let actionHintTime = 0;
+  let actionHintFlash = 0;
+  let actionHintEnabledRows: [boolean, boolean, boolean, boolean] = [false, false, false, false];
+
+  const renderActionHint = () => {
+    decisionHintGfx.clear();
+    if (!actionHintActive) return;
+
+    const pulse = 0.5 + 0.5 * Math.sin(actionHintTime * 4.5);
+    const groupTop = startY - ACTION_HINT_CONFIG.padY;
+    const groupBottom = startY + (btnH + gap) * 3 + btnH + ACTION_HINT_CONFIG.padY;
+    const groupLeft = btnX - ACTION_HINT_CONFIG.padX;
+    const groupRight = btnX + btnW + ACTION_HINT_CONFIG.padX;
+    const corner = ACTION_HINT_CONFIG.cornerLen;
+
+    // 1. Объединяющие тактические угловые скобки вокруг блока кнопок решений [1]–[4]
+    const groupAlpha = Math.min(1, 0.55 + 0.35 * pulse + actionHintFlash * 0.45);
+    const groupColor = actionHintFlash > 0.35 ? 0xfef08a : 0xfacc15;
+    decisionHintGfx.lineStyle(1.8, groupColor, groupAlpha);
+    decisionHintGfx.beginPath();
+    decisionHintGfx.moveTo(groupLeft, groupTop + corner);
+    decisionHintGfx.lineTo(groupLeft, groupTop);
+    decisionHintGfx.lineTo(groupLeft + corner, groupTop);
+    decisionHintGfx.moveTo(groupRight - corner, groupTop);
+    decisionHintGfx.lineTo(groupRight, groupTop);
+    decisionHintGfx.lineTo(groupRight, groupTop + corner);
+    decisionHintGfx.moveTo(groupLeft, groupBottom - corner);
+    decisionHintGfx.lineTo(groupLeft, groupBottom);
+    decisionHintGfx.lineTo(groupLeft + corner, groupBottom);
+    decisionHintGfx.moveTo(groupRight - corner, groupBottom);
+    decisionHintGfx.lineTo(groupRight, groupBottom);
+    decisionHintGfx.lineTo(groupRight, groupBottom - corner);
+    decisionHintGfx.strokePath();
+
+    // 2. Каскадная волна и акцентная подсветка доступных кнопок (с акцентом на [2] УГРОЗА и [4] СКАНЕР)
+    const wavePos = ((actionHintTime / ACTION_HINT_CONFIG.cascadePeriodSec) % 1) * 4;
+    for (let i = 0; i < 4; i++) {
+      if (!actionHintEnabledRows[i]) continue;
+
+      const rowY = startY + i * (btnH + gap);
+      const isKeyAction = i === 1 || i === 3;
+      const waveDist = Math.min(Math.abs(wavePos - i), 4 - Math.abs(wavePos - i));
+      const waveBoost = Math.max(0, 1 - waveDist / 1.15);
+      const glowColor = actionHintFlash > 0.4 ? 0xfef08a : ACTION_HINT_CONFIG.rowGlowColors[i];
+
+      const borderAlpha = Math.min(
+        1,
+        (isKeyAction ? 0.48 : 0.24) + 0.48 * waveBoost + actionHintFlash * 0.5,
+      );
+      decisionHintGfx.lineStyle(isKeyAction ? 2.0 : 1.4, glowColor, borderAlpha);
+      decisionHintGfx.strokeRoundedRect(btnX - 1, rowY - 1, btnW + 2, btnH + 2, 3);
+
+      // Мягкий внешний ореол на волне каскада
+      if (waveBoost > 0.05 || actionHintFlash > 0.05) {
+        const fillAlpha = 0.08 * waveBoost + 0.16 * actionHintFlash;
+        decisionHintGfx.fillStyle(glowColor, fillAlpha);
+        decisionHintGfx.fillRect(btnX, rowY, btnW, btnH);
+      }
+
+      // Миниатюрный световой маркер-указатель слева от кнопки
+      const pipAlpha = Math.min(1, 0.35 + 0.65 * waveBoost + actionHintFlash * 0.4);
+      const midY = rowY + btnH / 2;
+      decisionHintGfx.fillStyle(glowColor, pipAlpha);
+      decisionHintGfx.fillTriangle(
+        btnX - 8,
+        midY - 3.5,
+        btnX - 8,
+        midY + 3.5,
+        btnX - 3,
+        midY,
+      );
+    }
+  };
 
   if (menuBtnRef && menuTextRef) {
     menuBtnContainer.add([menuBtnRef, menuTextRef]);
@@ -1705,16 +1812,30 @@ export function createHud(
       !data.isScanning;
     buttons.scan.setEnabled(canScan);
 
+    const nextHintActive = Boolean(data.showActionHint && isSelected);
+    actionHintEnabledRows = [
+      isSelected,
+      isSelected && data.interceptors > 0,
+      isSelected,
+      canScan,
+    ];
+    if (nextHintActive && !actionHintActive) {
+      actionHintTime = 0;
+      actionHintFlash = 1.0;
+    }
+    actionHintActive = nextHintActive;
+    renderActionHint();
+
     if (!isSelected) {
       targetTelemetryTitle.setText('ОБЪЕКТ СЛЕЖЕНИЯ: НЕТ');
       targetTelemetryTitle.setColor('#94a3b8');
       targetTelemetryType.setText('');
       targetTelemetryText.setY(195);
       targetTelemetryText.setText(
-        'Кликните по вспыхнувшей\n' +
-          'зелёной точке на радаре,\n' +
-          'чтобы захватить объект\n' +
-          'для классификации.',
+        'Выберите вспыхнувшую\n' +
+          'зелёной точкой цель\n' +
+          'на радаре для захвата\n' +
+          'и классификации.',
       );
     }
   };
@@ -1832,6 +1953,13 @@ export function createHud(
       if (feedbackTimer <= 0) {
         feedbackText.setText('');
       }
+    }
+    if (actionHintActive) {
+      actionHintTime += dt;
+      if (actionHintFlash > 0) {
+        actionHintFlash = Math.max(0, actionHintFlash - dt * ACTION_HINT_CONFIG.flashDecayRate);
+      }
+      renderActionHint();
     }
     updateResourceAlerts(dt);
   };

@@ -22,7 +22,7 @@ import {
 import { createAlertManager, type AlertManager } from './alerts';
 import { createMainMenu, type MainMenuManager } from './mainMenu';
 import { setupGameInputs } from './input';
-import { createRadarRender, type RadarRender } from './radarRender';
+import { createRadarRender, type OnboardingStage, type RadarRender } from './radarRender';
 import { createSpawner, type TargetSpawner } from './spawner';
 import {
   createTacticalEventsManager,
@@ -119,6 +119,8 @@ export class GameScene extends Phaser.Scene {
   private isSpecialWaveCurrent = false;
   private isGameOver = false;
   private highScore = 0;
+  private hasSelectedAnyTarget = false;
+  private hasCompletedFirstAction = false;
 
   // Таймеры эффектов
   private baseFlashTimer = 0;
@@ -131,6 +133,8 @@ export class GameScene extends Phaser.Scene {
     this.isGameOver = false;
     this.isPaused = false;
     this.isGameStarted = false;
+    this.hasSelectedAnyTarget = false;
+    this.hasCompletedFirstAction = false;
     this.baseHealth = GAME_CONFIG.maxBaseHealth;
     this.scoring.reset();
     this.armory.reset();
@@ -255,6 +259,9 @@ export class GameScene extends Phaser.Scene {
           return;
         }
         this.selectedTarget = found;
+        if (found && !this.hasSelectedAnyTarget) {
+          this.hasSelectedAnyTarget = true;
+        }
         this.updateTargetSelectionUI();
       },
       onTogglePause: () => this.togglePause(),
@@ -325,6 +332,7 @@ export class GameScene extends Phaser.Scene {
         this.wave,
         this.targets.length,
         this.waveTargetsToSpawn,
+        this.radarRender.beamAngle,
       );
       if (newTarget) {
         this.targets.push(newTarget);
@@ -420,6 +428,10 @@ export class GameScene extends Phaser.Scene {
       this.soundSystem.playThunderClap(pan);
     });
 
+    const onboardingStage: OnboardingStage = !this.hasSelectedAnyTarget
+      ? 'acquire'
+      : 'none';
+
     updateExplosions(this.explosions, dt);
     this.radarRender.renderDynamic({
       baseFlashTimer: this.baseFlashTimer,
@@ -437,6 +449,7 @@ export class GameScene extends Phaser.Scene {
       weatherFront: this.weatherFront,
       explosions: this.explosions,
       warningArc: eventResult.warningArc,
+      onboardingStage,
     });
     this.hud.updateFeedback(dt);
     this.updateTelemetry();
@@ -589,10 +602,6 @@ export class GameScene extends Phaser.Scene {
     this.scheduleWeatherFrontForWave();
     this.soundSystem.playWaveTransition(false);
     this.showWaveBanner('ВОЛНА 1\nБОЕВОЕ ДЕЖУРСТВО');
-    this.hud.showNotification(
-      '[ ПОДСКАЗКА: ОПЦИИ МОЖНО АКТИВИРОВАТЬ ЦИФРАМИ 1–6 НА КЛАВИАТУРЕ ]',
-      5.0,
-    );
     this.updateTargetSelectionUI();
     this.updateScoreBoard();
     this.drawHealthBar();
@@ -743,6 +752,7 @@ export class GameScene extends Phaser.Scene {
     const res = this.armory.startScan(this.selectedTarget);
     this.showFeedback(res.message, res.color);
     if (res.success) {
+      this.hasCompletedFirstAction = true;
       this.updateScoreBoard();
       this.updateTargetSelectionUI();
     }
@@ -753,6 +763,7 @@ export class GameScene extends Phaser.Scene {
     const res = this.armory.buyInterceptor();
     this.showFeedback(res.message, res.color);
     if (res.success) {
+      this.hasCompletedFirstAction = true;
       this.updateScoreBoard();
       this.updateTargetSelectionUI();
     }
@@ -772,6 +783,7 @@ export class GameScene extends Phaser.Scene {
     const res = this.armory.buyScan();
     this.showFeedback(res.message, res.color);
     if (res.success) {
+      this.hasCompletedFirstAction = true;
       this.updateScoreBoard();
       this.updateTargetSelectionUI();
     }
@@ -831,6 +843,7 @@ export class GameScene extends Phaser.Scene {
         return;
       }
       target.markedAs = choice;
+      this.hasCompletedFirstAction = true;
       if (choice === 'friend') {
         this.showFeedback(
           '[МЕТКА] ЦЕЛЬ ПРИНЯТА КАК СОЮЗНИК',
@@ -870,6 +883,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     target.isTargeted = true;
+    this.hasCompletedFirstAction = true;
     this.soundSystem.playLaunch();
     this.showFeedback(
       '[ПУСК] ПЕРЕХВАТЧИК В ВОЗДУХЕ!',
@@ -1311,6 +1325,7 @@ export class GameScene extends Phaser.Scene {
       interceptors: this.armory.interceptors,
       scansAvailable: this.armory.scansAvailable,
       isScanning: this.armory.isScanning,
+      showActionHint: this.selectedTarget !== null && !this.hasCompletedFirstAction,
     });
   }
 

@@ -16,6 +16,25 @@ import {
 } from './units';
 
 /**
+ * Стадия ненавязчивой экранной подсказки СУО на куполе радара
+ */
+export type OnboardingStage = 'none' | 'acquire';
+
+/**
+ * Параметры экранного целеуказателя СУО для первых секунд сессии
+ */
+const RADAR_ONBOARDING_CONFIG = {
+  ringMinRadius: 10, // минимальный радиус сходящейся воронки (px)
+  ringMaxRadius: 28, // стартовый радиус воронки (px)
+  ringPeriodSec: 1.15, // период одного сходящегося импульса (сек)
+  reticleInner: 12, // внутренний край 4 направляющих рисок (px)
+  reticleOuter: 18, // внешний край 4 направляющих рисок (px)
+  elbowOffset: 16, // вылет наклонного колена выноски (px)
+  shelfLength: 92, // минимальная ширина горизонтальной полки выноски (px)
+  acquireText: '▸ ЗАХВАТ ЦЕЛИ',
+} as const;
+
+/**
  * Данные текущего кадра для отрисовки динамических объектов радара
  */
 export interface RadarRenderData {
@@ -34,6 +53,7 @@ export interface RadarRenderData {
   terrainHugger?: TerrainHuggerManager;
   weatherFront?: WeatherFrontManager;
   warningArc?: { angle: number; phase: 'warning' | 'active' } | null;
+  onboardingStage?: OnboardingStage;
 }
 
 /**
@@ -80,6 +100,16 @@ export function createRadarRender(
 ): RadarRender {
   const staticGraphics = scene.add.graphics();
   const dynamicGraphics = scene.add.graphics();
+  const hintLabelText = scene.add.text(0, 0, '', {
+    fontFamily: '"Cascadia Mono", Consolas, monospace',
+    fontSize: '10px',
+    color: '#fde047',
+    fontStyle: 'bold',
+    letterSpacing: 1,
+    resolution: GAME_CONFIG.textResolution,
+  });
+  hintLabelText.setDepth(5);
+  hintLabelText.setVisible(false);
 
   let beamAngle = 0;
   let currentBeamSpeed = GAME_CONFIG.beamSpeedBase;
@@ -203,6 +233,7 @@ export function createRadarRender(
     crtSpecks.length = 0;
     arcDisplayState.alpha = 0;
     lastDynamicTime = 0;
+    hintLabelText.setVisible(false);
   };
 
   /**
@@ -709,6 +740,86 @@ export function createRadarRender(
 
     // 7. Эффекты взрывов и ударных волн
     renderExplosions(dynamicGraphics, data.explosions);
+
+    // 8. Аутентичный экранный целеуказатель СУО для первого контакта (телефон + ПК)
+    renderOnboardingCallout(data);
+  };
+
+  /**
+   * Отрисовка сходящейся воронки автосопровождения и радиальной выноски внутри купола радара
+   */
+  const renderOnboardingCallout = (data: RadarRenderData): void => {
+    if (data.onboardingStage !== 'acquire') {
+      hintLabelText.setVisible(false);
+      return;
+    }
+
+    const { radarX, radarY, colors } = GAME_CONFIG;
+    const focusTarget =
+      data.targets.find(
+        (t) => !t.isJammer && !t.isTerrainHugger && !t.isTargeted && t.alpha > 0.05,
+      ) ?? null;
+
+    if (!focusTarget) {
+      hintLabelText.setVisible(false);
+      return;
+    }
+
+    const fadeAlpha = Math.min(1, focusTarget.alpha * 1.35);
+    const tx = focusTarget.x;
+    const ty = focusTarget.y;
+
+    const cycle = ((data.timeNow * 0.001) / RADAR_ONBOARDING_CONFIG.ringPeriodSec) % 1;
+    const ringR = Phaser.Math.Linear(
+      RADAR_ONBOARDING_CONFIG.ringMaxRadius,
+      RADAR_ONBOARDING_CONFIG.ringMinRadius,
+      cycle,
+    );
+    const ringAlpha = Math.sin(cycle * Math.PI) * 0.85 * fadeAlpha;
+
+    dynamicGraphics.lineStyle(1.4, colors.selectedBox, ringAlpha);
+    dynamicGraphics.strokeCircle(tx, ty, ringR);
+
+    // 4 диагональные риски прицеливания под 45°
+    const rIn = RADAR_ONBOARDING_CONFIG.reticleInner;
+    const rOut = RADAR_ONBOARDING_CONFIG.reticleOuter;
+    dynamicGraphics.lineStyle(1.4, colors.blipCore, 0.72 * fadeAlpha);
+    dynamicGraphics.beginPath();
+    for (let i = 0; i < 4; i++) {
+      const a = Math.PI * 0.25 + (i * Math.PI) / 2;
+      dynamicGraphics.moveTo(tx + Math.cos(a) * rIn, ty + Math.sin(a) * rIn);
+      dynamicGraphics.lineTo(tx + Math.cos(a) * rOut, ty + Math.sin(a) * rOut);
+    }
+    dynamicGraphics.strokePath();
+
+    hintLabelText.setText(RADAR_ONBOARDING_CONFIG.acquireText);
+    hintLabelText.setColor('#fde047');
+
+    // Внутренняя выноска-лидер всегда направлена к центру круга, чтобы оставаться внутри купола
+    const dirX = tx >= radarX ? -1 : 1;
+    const dirY = ty >= radarY ? -1 : 1;
+    const elbowX = tx + dirX * RADAR_ONBOARDING_CONFIG.elbowOffset;
+    const elbowY = ty + dirY * RADAR_ONBOARDING_CONFIG.elbowOffset;
+    const shelfLen = Math.max(
+      RADAR_ONBOARDING_CONFIG.shelfLength,
+      Math.ceil(hintLabelText.width) + 10,
+    );
+    const shelfEndX = elbowX + dirX * shelfLen;
+
+    dynamicGraphics.lineStyle(1.2, colors.selectedBox, 0.75 * fadeAlpha);
+    dynamicGraphics.beginPath();
+    dynamicGraphics.moveTo(tx + dirX * 9, ty + dirY * 9);
+    dynamicGraphics.lineTo(elbowX, elbowY);
+    dynamicGraphics.lineTo(shelfEndX, elbowY);
+    dynamicGraphics.strokePath();
+
+    hintLabelText.setOrigin(dirX > 0 ? 0 : 1, 1);
+    hintLabelText.setPosition(
+      Math.round(elbowX + dirX * 4),
+      Math.round(elbowY - 3),
+    );
+    hintLabelText.setAlpha(0.92 * fadeAlpha);
+    hintLabelText.setVisible(true);
   };
 
   // Отрисовываем сетку сразу при создании
@@ -731,6 +842,7 @@ export function createRadarRender(
     setVisible: (visible: boolean) => {
       staticGraphics.setVisible(visible);
       dynamicGraphics.setVisible(visible);
+      if (!visible) hintLabelText.setVisible(false);
     },
   };
 }

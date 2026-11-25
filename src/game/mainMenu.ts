@@ -2,6 +2,38 @@ import Phaser from 'phaser';
 import { GAME_CONFIG } from './gameConfig';
 
 /**
+ * Конфигурация стартовых 0–3 секунд главного меню (живой дежурный радар и отклик приборов)
+ */
+const MENU_STANDBY_CONFIG = {
+  sectorTagText: 'СЕКТОР «РУБЕЖ»',
+  contactMinRFrac: 0.2, // минимальная дистанция подхода метки к центру (доля радиуса)
+  contactMaxRFrac: 0.9, // внешняя граница появления метки на краю экрана
+  contactAlertThreshold: 0.5, // порог дистанции, ближе которого контакт подсвечивается тревогой
+  contactFadeSpeed: 0.48, // скорость затухания люминофора дежурной метки (1/сек)
+  sweepTriggerSpan: 0.16, // угловой сектор мгновенной засветки при проходе луча (рад)
+  needleHoverBoostRad: 0.11, // скачок стрелки вольтметра при наведении на тумблер меню
+  needleBoostDecaySpeed: 4.5, // скорость возврата стрелки вольтметра (1/сек)
+
+  // Главная кнопка пуска [1] и эффекты наведения / нажатия
+  startSheenDurationMs: 320, // время пробега светового блика по стеклу при наведении
+  startSheenWidth: 54, // ширина световой полосы блика (px)
+  startSheenSlant: 22, // наклон блика (px)
+  startBracketExpandPx: 4, // раздвижение угловых скобок наружу при наведении (px)
+  startPressHoldMs: 105, // короткая фиксация вспышки перед разлётом меню (мс)
+  startWaveDurationMs: 280, // время расхождения импульсной волны пуска (мс)
+  startZoomOutScale: 1.07, // масштаб приближения кнопки старта навстречу камере
+} as const;
+
+interface StandbyContact {
+  angle: number;
+  rFrac: number;
+  radialSpeed: number;
+  angularSpeed: number;
+  alpha: number;
+  isAlert: boolean;
+}
+
+/**
  * Колбэки действий главного меню
  */
 export interface MainMenuCallbacks {
@@ -161,6 +193,14 @@ export function createMainMenu(
   let isTransitioning = false;
   let hasTriggeredDegauss = false;
   let standbySweepAngle = 0;
+  let needleHoverOffset = 0;
+
+  const createInitialContacts = (): StandbyContact[] => [
+    { angle: 0.85, rFrac: 0.62, radialSpeed: 0.022, angularSpeed: 0.035, alpha: 0.85, isAlert: true },
+    { angle: 2.45, rFrac: 0.44, radialSpeed: 0.015, angularSpeed: -0.02, alpha: 0.5, isAlert: false },
+    { angle: 4.15, rFrac: 0.80, radialSpeed: 0.019, angularSpeed: 0.025, alpha: 0.35, isAlert: false },
+  ];
+  let standbyContacts: StandbyContact[] = createInitialContacts();
 
   /**
    * Отрисовка детализированной военной станции 1РЛ-134 (Mike Klubnika aesthetic):
@@ -329,9 +369,9 @@ export function createMainMenu(
         );
       }
 
-      // Стрелка прибора с лёгким аналоговым дрожанием (гальванометр)
+      // Стрелка прибора с лёгким аналоговым дрожанием и откликом на наведение
       const needleJitter = Math.sin(timeNow * 0.016) * 0.045;
-      const needleAngle = Math.PI * 1.38 + needleJitter;
+      const needleAngle = Math.PI * 1.38 + needleJitter + needleHoverOffset;
       radar3dGfx.lineStyle(1.6, 0xf59e0b, 0.98 * pedestalA);
       radar3dGfx.beginPath();
       radar3dGfx.moveTo(gaugeX, gaugeY + 2);
@@ -578,23 +618,20 @@ export function createMainMenu(
       radar3dGfx.lineTo(beamX, beamY);
       radar3dGfx.strokePath();
 
-      // Дежурные фосфорные метки целей в режиме ожидания
-      const standbyEchoes = [
-        { angle: 0.85, rFrac: 0.65 },
-        { angle: 2.45, rFrac: 0.42 },
-        { angle: 4.15, rFrac: 0.78 },
-      ];
-      for (const echo of standbyEchoes) {
-        const diff = Math.abs(Phaser.Math.Angle.ShortestBetween(beamAngle, echo.angle));
-        if (diff < 0.6) {
-          const echoAlpha = (1 - diff / 0.6) * 0.85 * breathing;
-          const ex = cx + Math.cos(echo.angle) * rx * echo.rFrac;
-          const ey = cy + Math.sin(echo.angle) * ry * echo.rFrac;
-          radar3dGfx.fillStyle(colors.blipCore, echoAlpha);
-          radar3dGfx.fillCircle(ex, ey, 2.2);
-          radar3dGfx.fillStyle(colors.blipHalo, echoAlpha * 0.4);
-          radar3dGfx.fillCircle(ex, ey, 5.0);
-        }
+      // Живые дрейфующие фосфорные эхо-контакты на дежурном экране
+      for (const contact of standbyContacts) {
+        if (contact.alpha <= 0.03) continue;
+        const echoAlpha = contact.alpha * breathing;
+        const ex = cx + Math.cos(contact.angle) * rx * contact.rFrac;
+        const ey = cy + Math.sin(contact.angle) * ry * contact.rFrac;
+        const isDanger = contact.isAlert && contact.rFrac <= MENU_STANDBY_CONFIG.contactAlertThreshold;
+        const haloColor = isDanger ? colors.dangerRing : colors.blipHalo;
+        const coreColor = isDanger ? 0xfca5a5 : colors.blipCore;
+
+        radar3dGfx.fillStyle(haloColor, echoAlpha * (isDanger ? 0.55 : 0.4));
+        radar3dGfx.fillCircle(ex, ey, isDanger ? 6.5 : 5.0);
+        radar3dGfx.fillStyle(coreColor, echoAlpha);
+        radar3dGfx.fillCircle(ex, ey, 2.3);
       }
 
       // Накал нити катода в центре кинескопа
@@ -676,7 +713,7 @@ export function createMainMenu(
     titlePlaque.strokePath();
   }
 
-  const placeholderTag = scene.add.text(0, -19, '// МЕСТО ДЛЯ НАЗВАНИЯ ИГРЫ //', {
+  const sectorTag = scene.add.text(0, -19, MENU_STANDBY_CONFIG.sectorTagText, {
     fontFamily: '"Cascadia Mono", Consolas, monospace',
     fontSize: '11px',
     color: '#f59e0b',
@@ -700,7 +737,7 @@ export function createMainMenu(
     letterSpacing: 1,
   }).setOrigin(0.5);
 
-  titleContainer.add([titlePlaque, placeholderTag, mainTitleText, titleSubText]);
+  titleContainer.add([titlePlaque, sectorTag, mainTitleText, titleSubText]);
 
   // Б. Контейнеры клавиш управления (Вариант А)
   interface IndicatorButton {
@@ -712,10 +749,13 @@ export function createMainMenu(
     action: () => void;
   }
 
+  const formatMenuLabel = (hotkey: string, title: string): string =>
+    GAME_CONFIG.isMobile ? title : `[ ${hotkey} ] ${title}`;
+
   const buttonsData: IndicatorButton[] = [
     {
       hotkey: '1',
-      label: '[ 1 ] ЗАСТУПИТЬ НА ДЕЖУРСТВО',
+      label: formatMenuLabel('1', 'ЗАСТУПИТЬ НА ДЕЖУРСТВО'),
       sublabel: 'ПУСК КОМПЛЕКСА РЛС • СТАРТ БОЕВОЙ СМЕНЫ',
       colorHex: 0x22c55e,
       colorText: '#4ade80',
@@ -723,7 +763,7 @@ export function createMainMenu(
     },
     {
       hotkey: '2',
-      label: '[ 2 ] БОЕВОЙ РЕГЛАМЕНТ',
+      label: formatMenuLabel('2', 'БОЕВОЙ РЕГЛАМЕНТ'),
       sublabel: 'ИНСТРУКЦИЯ ОПЕРАТОРА • ТАКТИЧЕСКИЕ ПРАВИЛА',
       colorHex: 0xf59e0b,
       colorText: '#fbbf24',
@@ -731,7 +771,7 @@ export function createMainMenu(
     },
     {
       hotkey: '3',
-      label: '[ 3 ] АРХИВ ДЕЖУРСТВ',
+      label: formatMenuLabel('3', 'АРХИВ ДЕЖУРСТВ'),
       sublabel: `ЛУЧШИЙ РЕКОРД СТАНЦИИ: ${callbacks.getHighScore()} ОЧК`,
       colorHex: 0x0ea5e9,
       colorText: '#38bdf8',
@@ -739,7 +779,7 @@ export function createMainMenu(
     },
     {
       hotkey: '4',
-      label: '[ 4 ] ЗВУКОВОЙ ТРАКТ: [ВКЛ]',
+      label: formatMenuLabel('4', 'ЗВУКОВОЙ ТРАКТ: [ВКЛ]'),
       sublabel: 'ТУМБЛЕР АКУСТИЧЕСКОГО КОНТРОЛЯ СВЯЗИ',
       colorHex: 0xa855f7,
       colorText: '#c084fc',
@@ -758,16 +798,95 @@ export function createMainMenu(
   const btnContainers: Phaser.GameObjects.Container[] = [];
   let soundBtnLabelRef: Phaser.GameObjects.Text | null = null;
   let recordSubLabelRef: Phaser.GameObjects.Text | null = null;
+  let primaryBtnRedraw: ((isHovered: boolean, isPressed: boolean, isIgnited?: boolean) => void) | null = null;
+  let primaryBtnLabelRef: Phaser.GameObjects.Text | null = null;
+  let primaryLedGlowGfx: Phaser.GameObjects.Graphics | null = null;
+  let primarySheenGfx: Phaser.GameObjects.Graphics | null = null;
+  let primarySheenTween: Phaser.Tweens.Tween | null = null;
+
+  const launchWaveGfx = scene.add.graphics();
+  container.add(launchWaveGfx);
+
+  /**
+   * Отрисовка 4 тактических угловых скобок вокруг прямоугольной кнопки
+   */
+  const drawCornerBrackets = (
+    gfx: Phaser.GameObjects.Graphics,
+    halfW: number,
+    halfH: number,
+    yOffset: number,
+    cornerLen: number,
+    color: number,
+    alpha: number,
+  ) => {
+    gfx.lineStyle(1.8, color, alpha);
+    gfx.beginPath();
+    // Левый верхний
+    gfx.moveTo(-halfW, -halfH + yOffset + cornerLen);
+    gfx.lineTo(-halfW, -halfH + yOffset);
+    gfx.lineTo(-halfW + cornerLen, -halfH + yOffset);
+    // Правый верхний
+    gfx.moveTo(halfW - cornerLen, -halfH + yOffset);
+    gfx.lineTo(halfW, -halfH + yOffset);
+    gfx.lineTo(halfW, -halfH + yOffset + cornerLen);
+    // Левый нижний
+    gfx.moveTo(-halfW, halfH + yOffset - cornerLen);
+    gfx.lineTo(-halfW, halfH + yOffset);
+    gfx.lineTo(-halfW + cornerLen, halfH + yOffset);
+    // Правый нижний
+    gfx.moveTo(halfW - cornerLen, halfH + yOffset);
+    gfx.lineTo(halfW, halfH + yOffset);
+    gfx.lineTo(halfW, halfH + yOffset - cornerLen);
+    gfx.strokePath();
+  };
+
+  /**
+   * Отрисовка наклонного светового блика, строго обрезанного по стеклу кнопки
+   */
+  const drawButtonSheen = (gfx: Phaser.GameObjects.Graphics, progress: number) => {
+    gfx.clear();
+    const minX = -btnW / 2 + 3;
+    const maxX = btnW / 2 - 3;
+    const minY = -btnH / 2 + 2;
+    const maxY = btnH / 2 - 2;
+    const slant = MENU_STANDBY_CONFIG.startSheenSlant;
+    const width = MENU_STANDBY_CONFIG.startSheenWidth;
+
+    const travelStart = minX - width - slant;
+    const travelEnd = maxX + width + slant;
+    const leadX = Phaser.Math.Linear(travelStart, travelEnd, progress);
+
+    const xTopLeft = Phaser.Math.Clamp(leadX - width, minX, maxX);
+    const xTopRight = Phaser.Math.Clamp(leadX, minX, maxX);
+    const xBotRight = Phaser.Math.Clamp(leadX - slant, minX, maxX);
+    const xBotLeft = Phaser.Math.Clamp(leadX - width - slant, minX, maxX);
+
+    if (xTopRight <= xTopLeft && xBotRight <= xBotLeft) return;
+
+    const fade = Math.sin(progress * Math.PI);
+    gfx.fillStyle(0xd4ffea, 0.22 * fade);
+    gfx.beginPath();
+    gfx.moveTo(xTopLeft, minY);
+    gfx.lineTo(xTopRight, minY);
+    gfx.lineTo(xBotRight, maxY);
+    gfx.lineTo(xBotLeft, maxY);
+    gfx.closePath();
+    gfx.fillPath();
+  };
 
   const updateSoundButtonLabel = (isEnabled: boolean) => {
     if (soundBtnLabelRef) {
       soundBtnLabelRef.setText(
-        isEnabled ? '[ 4 ] ЗВУКОВОЙ ТРАКТ: [ВКЛ]' : '[ 4 ] ЗВУКОВОЙ ТРАКТ: [ОТКЛ]',
+        formatMenuLabel(
+          '4',
+          isEnabled ? 'ЗВУКОВОЙ ТРАКТ: [ВКЛ]' : 'ЗВУКОВОЙ ТРАКТ: [ОТКЛ]',
+        ),
       );
     }
   };
 
   buttonsData.forEach((btn, index) => {
+    const isPrimary = index === 0;
     const btnY = startBtnY + index * btnGap;
     const btnContainer = scene.add.container(menuCenterX, btnY);
     container.add(btnContainer);
@@ -775,14 +894,78 @@ export function createMainMenu(
 
     const btnGfx = scene.add.graphics();
     const glowGfx = scene.add.graphics();
+    const ledGlowGfx = isPrimary ? scene.add.graphics() : null;
+    const sheenGfx = isPrimary ? scene.add.graphics() : null;
 
-    const drawButton = (isHovered: boolean, isPressed: boolean) => {
+    if (isPrimary) {
+      primaryLedGlowGfx = ledGlowGfx;
+      primarySheenGfx = sheenGfx;
+    }
+
+    const drawButton = (isHovered: boolean, isPressed: boolean, isIgnited = false) => {
       btnGfx.clear();
       glowGfx.clear();
+      ledGlowGfx?.clear();
 
       const halfW = btnW / 2;
       const halfH = btnH / 2;
       const yOffset = isPressed ? 2 : 0;
+
+      if (isPrimary) {
+        // Благородный многослойный контурный ореол (rim glow) без грубой сплошной заливки
+        if (isIgnited) {
+          glowGfx.lineStyle(6, 0x4ade80, 0.45);
+          glowGfx.strokeRoundedRect(-halfW - 4, -halfH - 4 + yOffset, btnW + 8, btnH + 8, 8);
+          glowGfx.lineStyle(2.5, 0xd4ffea, 0.85);
+          glowGfx.strokeRoundedRect(-halfW - 1, -halfH - 1 + yOffset, btnW + 2, btnH + 2, 6);
+        } else if (isHovered) {
+          glowGfx.lineStyle(5, btn.colorHex, 0.22);
+          glowGfx.strokeRoundedRect(-halfW - 4, -halfH - 4 + yOffset, btnW + 8, btnH + 8, 8);
+          glowGfx.lineStyle(2.5, 0x4ade80, 0.42);
+          glowGfx.strokeRoundedRect(-halfW - 1, -halfH - 1 + yOffset, btnW + 2, btnH + 2, 6);
+        } else {
+          glowGfx.lineStyle(4, btn.colorHex, 0.12);
+          glowGfx.strokeRoundedRect(-halfW - 3, -halfH - 3 + yOffset, btnW + 6, btnH + 6, 7);
+        }
+
+        // Тёмно-изумрудное полупрозрачное стекло (ярко выделяется на фоне остальных кнопок)
+        const baseColor = isIgnited ? 0x164430 : isHovered ? 0x0f2e21 : 0x0a2118;
+        const baseAlpha = isIgnited ? 0.98 : isHovered ? 0.94 : 0.90;
+        btnGfx.fillStyle(baseColor, baseAlpha);
+        btnGfx.fillRoundedRect(-halfW, -halfH + yOffset, btnW, btnH, 5);
+
+        const borderColor = isIgnited ? 0xd4ffea : isHovered ? 0x4ade80 : btn.colorHex;
+        btnGfx.lineStyle(isHovered || isIgnited ? 2.0 : 1.6, borderColor, isHovered || isIgnited ? 0.98 : 0.72);
+        btnGfx.strokeRoundedRect(-halfW, -halfH + yOffset, btnW, btnH, 5);
+
+        // Тактические угловые скобки (при наведении изящно раздвигаются наружу)
+        const expand = isHovered || isIgnited ? MENU_STANDBY_CONFIG.startBracketExpandPx : 0;
+        drawCornerBrackets(
+          glowGfx,
+          halfW + expand,
+          halfH + expand,
+          yOffset,
+          10,
+          isIgnited ? 0xffffff : isHovered ? 0x86efac : 0x4ade80,
+          isIgnited ? 1.0 : isHovered ? 0.95 : 0.65,
+        );
+
+        // Живой светодиод-индикатор слева (ореол + яркий сердечник)
+        if (ledGlowGfx) {
+          ledGlowGfx.fillStyle(btn.colorHex, isHovered || isIgnited ? 0.45 : 0.32);
+          ledGlowGfx.fillRoundedRect(-halfW + 1, -halfH + 2 + yOffset, 9, btnH - 4, 3);
+        }
+        btnGfx.fillStyle(isIgnited ? 0xffffff : isHovered ? 0x86efac : btn.colorHex, 1.0);
+        btnGfx.fillRoundedRect(-halfW + 4, -halfH + 5 + yOffset, 4, btnH - 10, 2);
+
+        // Чёткая светлая верхняя 3D-фаска
+        btnGfx.lineStyle(1.2, 0xd4ffea, isIgnited ? 0.85 : isHovered ? 0.55 : 0.28);
+        btnGfx.beginPath();
+        btnGfx.moveTo(-halfW + 6, -halfH + 1 + yOffset);
+        btnGfx.lineTo(halfW - 6, -halfH + 1 + yOffset);
+        btnGfx.strokePath();
+        return;
+      }
 
       if (isHovered) {
         glowGfx.fillStyle(btn.colorHex, 0.24);
@@ -812,15 +995,23 @@ export function createMainMenu(
       btnGfx.strokePath();
     };
 
+    if (isPrimary) {
+      primaryBtnRedraw = drawButton;
+    }
+
     drawButton(false, false);
 
     const mainLabel = scene.add.text(0, -9, btn.label, {
       fontFamily: '"Cascadia Mono", Consolas, monospace',
       fontSize: '14px',
-      color: '#f8fafc',
+      color: isPrimary ? '#ecfdf5' : '#f8fafc',
       fontStyle: 'bold',
       letterSpacing: 1.5,
     }).setOrigin(0.5);
+
+    if (isPrimary) {
+      primaryBtnLabelRef = mainLabel;
+    }
 
     const subLabel = scene.add.text(0, 12, btn.sublabel, {
       fontFamily: '"Cascadia Mono", Consolas, monospace',
@@ -845,11 +1036,31 @@ export function createMainMenu(
     hitZone.on('pointerover', () => {
       if (isTransitioning) return;
       drawButton(true, false);
+      needleHoverOffset = MENU_STANDBY_CONFIG.needleHoverBoostRad;
+      if (isPrimary && sheenGfx) {
+        mainLabel.setColor('#ffffff');
+        primarySheenTween?.stop();
+        const sheenState = { progress: 0 };
+        primarySheenTween = scene.tweens.add({
+          targets: sheenState,
+          progress: 1,
+          duration: MENU_STANDBY_CONFIG.startSheenDurationMs,
+          ease: 'Cubic.easeOut',
+          onUpdate: () => drawButtonSheen(sheenGfx, sheenState.progress),
+          onComplete: () => sheenGfx.clear(),
+        });
+      }
       callbacks.playHoverSound?.();
     });
 
     hitZone.on('pointerout', () => {
+      if (isTransitioning) return;
       drawButton(false, false);
+      if (isPrimary) {
+        mainLabel.setColor('#ecfdf5');
+        primarySheenTween?.stop();
+        sheenGfx?.clear();
+      }
     });
 
     hitZone.on('pointerdown', () => {
@@ -864,7 +1075,12 @@ export function createMainMenu(
       btn.action();
     });
 
-    btnContainer.add([glowGfx, btnGfx, mainLabel, subLabel, hitZone]);
+    const btnChildren: Phaser.GameObjects.GameObject[] = [glowGfx];
+    if (ledGlowGfx) btnChildren.push(ledGlowGfx);
+    btnChildren.push(btnGfx);
+    if (sheenGfx) btnChildren.push(sheenGfx);
+    btnChildren.push(mainLabel, subLabel, hitZone);
+    btnContainer.add(btnChildren);
   });
 
   // =========================================================================
@@ -877,22 +1093,65 @@ export function createMainMenu(
 
     callbacks.playSelectSound?.();
 
-    // 1. МЕНЮ РАЗБЕГАЕТСЯ В СТОРОНЫ (380 мс)
+    // 0. ИМПУЛЬС ПУСКА (Вариант 1): короткая вспышка кнопки + энергетическая волна
+    primarySheenTween?.stop();
+    primarySheenGfx?.clear();
+    primaryBtnRedraw?.(true, true, true);
+    primaryBtnLabelRef?.setColor('#ffffff');
+
+    const startCenterY = btnContainers[0]?.y ?? startBtnY;
+    const waveState = { progress: 0 };
+    scene.tweens.add({
+      targets: waveState,
+      progress: 1,
+      duration: MENU_STANDBY_CONFIG.startWaveDurationMs,
+      ease: 'Cubic.easeOut',
+      onUpdate: () => {
+        const p = waveState.progress;
+        const alpha = 1 - p;
+        const curW = btnW + 140 * p;
+        const curH = btnH + 64 * p;
+        launchWaveGfx.clear();
+        launchWaveGfx.lineStyle(2.5, 0x4ade80, 0.75 * alpha);
+        launchWaveGfx.strokeRoundedRect(
+          menuCenterX - curW / 2,
+          startCenterY - curH / 2,
+          curW,
+          curH,
+          6 + 8 * p,
+        );
+        launchWaveGfx.lineStyle(1.2, 0xd4ffea, 0.9 * alpha);
+        launchWaveGfx.strokeRoundedRect(
+          menuCenterX - (curW - 4) / 2,
+          startCenterY - (curH - 4) / 2,
+          curW - 4,
+          curH - 4,
+          5 + 8 * p,
+        );
+      },
+      onComplete: () => launchWaveGfx.clear(),
+    });
+
+    const holdDelay = MENU_STANDBY_CONFIG.startPressHoldMs;
+
+    // 1. МЕНЮ РАЗБЕГАЕТСЯ В СТОРОНЫ, А КНОПКА ПУСКА ПРИБЛИЖАЕТСЯ НАВСТРЕЧУ КАМЕРЕ
     scene.tweens.add({
       targets: titleContainer,
       y: -140,
       alpha: 0,
+      delay: holdDelay,
       duration: 380,
       ease: 'Quad.easeIn',
     });
 
     scene.tweens.add({
       targets: btnContainers[0],
-      x: menuCenterX - 340,
-      y: btnContainers[0].y - 20,
+      scaleX: MENU_STANDBY_CONFIG.startZoomOutScale,
+      scaleY: MENU_STANDBY_CONFIG.startZoomOutScale,
       alpha: 0,
-      duration: 380,
-      ease: 'Back.easeIn',
+      delay: holdDelay,
+      duration: 320,
+      ease: 'Quad.easeOut',
     });
 
     scene.tweens.add({
@@ -900,6 +1159,7 @@ export function createMainMenu(
       x: menuCenterX + 340,
       y: btnContainers[1].y - 20,
       alpha: 0,
+      delay: holdDelay,
       duration: 400,
       ease: 'Back.easeIn',
     });
@@ -909,6 +1169,7 @@ export function createMainMenu(
       x: menuCenterX - 380,
       y: btnContainers[2].y + 40,
       alpha: 0,
+      delay: holdDelay,
       duration: 420,
       ease: 'Back.easeIn',
     });
@@ -918,6 +1179,7 @@ export function createMainMenu(
       x: menuCenterX + 380,
       y: btnContainers[3].y + 40,
       alpha: 0,
+      delay: holdDelay,
       duration: 440,
       ease: 'Back.easeIn',
     });
@@ -926,6 +1188,7 @@ export function createMainMenu(
     scene.tweens.add({
       targets: [ambientRoomGfx, stencilText],
       alpha: 0,
+      delay: holdDelay,
       duration: 380,
       ease: 'Quad.easeOut',
     });
@@ -935,6 +1198,7 @@ export function createMainMenu(
     scene.tweens.add({
       targets: transitionObj,
       progress: 1.0,
+      delay: holdDelay,
       duration: 1350,
       ease: 'Cubic.easeInOut',
       onUpdate: () => {
@@ -1038,6 +1302,8 @@ export function createMainMenu(
     currentVisorDepth = menuVisorDepth;
     currentPedestalAlpha = 1.0;
     currentIgnitionProgress = 0.0;
+    needleHoverOffset = 0;
+    standbyContacts = createInitialContacts();
 
     // Сброс позиций заголовка и клавиш
     titleContainer.setY(76);
@@ -1046,8 +1312,14 @@ export function createMainMenu(
     btnContainers.forEach((bc, idx) => {
       bc.setX(menuCenterX);
       bc.setY(startBtnY + idx * btnGap);
+      bc.setScale(1);
       bc.setAlpha(1);
     });
+    primarySheenTween?.stop();
+    primarySheenGfx?.clear();
+    launchWaveGfx.clear();
+    primaryBtnRedraw?.(false, false);
+    primaryBtnLabelRef?.setColor('#ecfdf5');
 
     ambientRoomGfx.setAlpha(1);
     stencilText.setAlpha(1);
@@ -1080,12 +1352,40 @@ export function createMainMenu(
   };
 
   const update = (dt: number) => {
-    // Вращение дежурного луча и дыхание люминофора
+    // Вращение дежурного луча и плавный откат стрелки вольтметра
     standbySweepAngle = (standbySweepAngle + dt * 1.15) % (Math.PI * 2);
+    if (needleHoverOffset > 0) {
+      needleHoverOffset *= Math.max(0, 1 - dt * MENU_STANDBY_CONFIG.needleBoostDecaySpeed);
+      if (needleHoverOffset < 0.001) needleHoverOffset = 0;
+    }
 
     if (!isTransitioning) {
+      // Дрейф дежурных контактов и их засветка при проходе луча
+      for (const contact of standbyContacts) {
+        contact.rFrac -= contact.radialSpeed * dt;
+        contact.angle = (contact.angle + contact.angularSpeed * dt) % (Math.PI * 2);
+        if (contact.rFrac < MENU_STANDBY_CONFIG.contactMinRFrac) {
+          contact.rFrac = MENU_STANDBY_CONFIG.contactMaxRFrac;
+          contact.angle = (contact.angle + 2.1) % (Math.PI * 2);
+          contact.alpha = 0;
+        }
+
+        const sweepDiff = Math.abs(
+          Phaser.Math.Angle.ShortestBetween(standbySweepAngle, contact.angle),
+        );
+        if (sweepDiff < MENU_STANDBY_CONFIG.sweepTriggerSpan) {
+          contact.alpha = 1.0;
+        } else if (contact.alpha > 0) {
+          contact.alpha = Math.max(
+            0,
+            contact.alpha - dt * MENU_STANDBY_CONFIG.contactFadeSpeed,
+          );
+        }
+      }
+
       renderVolumetricRadar(scene.time.now, standbySweepAngle);
-      placeholderTag.setAlpha(0.65 + 0.35 * Math.sin(scene.time.now * 0.004));
+      sectorTag.setAlpha(0.65 + 0.35 * Math.sin(scene.time.now * 0.004));
+      primaryLedGlowGfx?.setAlpha(0.65 + 0.35 * Math.sin(scene.time.now * 0.005));
     }
   };
 

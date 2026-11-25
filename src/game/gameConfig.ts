@@ -1,8 +1,26 @@
 /**
+ * Определение сенсорного/мобильного устройства без мыши и клавиатуры
+ * (для адаптации интерфейса и скрытия клавиатурных хоткеев на телефонах).
+ */
+export function detectMobileDevice(): boolean {
+  if (typeof window === 'undefined') return false;
+  const hasCoarseNoHover =
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(pointer: coarse) and (hover: none)').matches;
+  if (hasCoarseNoHover) return true;
+
+  const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua);
+}
+
+/**
  * КОНФИГУРАЦИЯ БАЛАНСА И ПАРАМЕТРОВ ИГРЫ
  * Все ключевые числовые настройки, параметры целей и визуальная палитра.
  */
 export const GAME_CONFIG = {
+  // Флаг мобильного устройства (определяется на клиенте при загрузке)
+  isMobile: detectMobileDevice(),
+
   // Разрешение холста и экрана
   canvasWidth: 960,
   canvasHeight: 640,

@@ -21,7 +21,8 @@ export const EVENT_CONFIG = {
   general: {
     maneuverSwarm: {
       minWave: 4, // Доступно с 4-й волны
-      chance: 0.12, // Фиксированный шанс 12%
+      cooldownWaves: 3, // Минимальный перерыв между особыми секторами (волн)
+      chance: 0.12, // Фиксированный шанс 12% при доступности события
       bannerTitle: 'ОСОБЫЙ СЕКТОР',
       bannerSubtitle: '[ МАНЕВРЕННЫЙ ПРОРЫВ: 3 ЭШЕЛОНА ]',
       startCreditsGrant: 900, // Начальная субсидия ПВО (+900 CR на закупку ракет)
@@ -328,6 +329,7 @@ export function createTacticalEventsManager(
   spawner: TargetSpawner,
 ): TacticalEventManager {
   let wavesSinceLastSalvo = 0;
+  let wavesSinceLastSwarm = 999; // изначально кулдаун не блокирует первую допустимую волну
 
   let salvo: SalvoState = {
     phase: 'idle',
@@ -357,6 +359,7 @@ export function createTacticalEventsManager(
     salvo.missilesLeftToSpawn = 0;
     salvo.trackedTargetIds.clear();
     wavesSinceLastSalvo = 0;
+    wavesSinceLastSwarm = 999;
 
     swarm.active = false;
     swarm.step = 'idle';
@@ -384,15 +387,17 @@ export function createTacticalEventsManager(
     swarm.step = 'idle';
     swarm.trackedTargetIds.clear();
 
-    // 1. Оценка генерального события: «Манёвренный прорыв» (с 4-й волны с фиксированным шансом 12%)
-    const isManeuverSwarm =
-      wave >= EVENT_CONFIG.general.maneuverSwarm.minWave &&
-      Math.random() < EVENT_CONFIG.general.maneuverSwarm.chance;
+    // 1. Оценка генерального события: «Манёвренный прорыв» (с 4-й волны, шанс 12%, кулдаун минимум 3 волны)
+    const swarmCfg = EVENT_CONFIG.general.maneuverSwarm;
+    const isCooldownOver = wavesSinceLastSwarm >= swarmCfg.cooldownWaves;
+    const canTriggerSwarm = wave >= swarmCfg.minWave && isCooldownOver;
+    const isManeuverSwarm = canTriggerSwarm && Math.random() < swarmCfg.chance;
 
     if (isManeuverSwarm) {
+      wavesSinceLastSwarm = 0;
       swarm.active = true;
       swarm.step = 'delay_echelon_1';
-      swarm.timer = EVENT_CONFIG.general.maneuverSwarm.echelon1Delay;
+      swarm.timer = swarmCfg.echelon1Delay;
       swarm.baseAngle1 = Phaser.Math.FloatBetween(0, Math.PI * 2);
       swarm.baseAngle2 = Phaser.Math.FloatBetween(0, Math.PI * 2);
       swarm.baseAngle3 = Phaser.Math.FloatBetween(0, Math.PI * 2);
@@ -409,13 +414,14 @@ export function createTacticalEventsManager(
       // В особую генеральную волну прогрессивный залп взаимно исключается
       return {
         isSpecialWave: true,
-        specialWaveTargetsCount:
-          EVENT_CONFIG.general.maneuverSwarm.totalMissiles,
-        bannerTitle: `ВОЛНА ${wave}: ${EVENT_CONFIG.general.maneuverSwarm.bannerTitle}`,
-        bannerSubtitle: EVENT_CONFIG.general.maneuverSwarm.bannerSubtitle,
-        creditsGrant: EVENT_CONFIG.general.maneuverSwarm.startCreditsGrant,
+        specialWaveTargetsCount: swarmCfg.totalMissiles,
+        bannerTitle: `ВОЛНА ${wave}: ${swarmCfg.bannerTitle}`,
+        bannerSubtitle: swarmCfg.bannerSubtitle,
+        creditsGrant: swarmCfg.startCreditsGrant,
       };
     }
+
+    wavesSinceLastSwarm++;
 
     // 2. Оценка прогрессивного события: «Массированный залп» (доступно с 3-й волны)
     let shouldTrigger = false;

@@ -162,5 +162,6 @@ export function setupGameInputs(
   };
 
   scene.events.once(Phaser.Scenes.Events.SHUTDOWN, cleanup);
+  scene.events.once(Phaser.Scenes.Events.DESTROY, cleanup);
   return cleanup;
 }

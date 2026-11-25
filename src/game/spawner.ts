@@ -9,9 +9,11 @@ import {
  * Конфигурация спавна целей, прогрессии волн и маневрирования
  */
 export const SPAWNER_CONFIG = {
-  initialSpawnTimer: 1.2, // начальная задержка перед первым спавном на старте волны (сек)
+  initialSpawnTimer: 2.9, // задержка первого спавна (с учётом 3.0с баннера «ВОЛНА 1» и ~0.15с подлёта луча)
   edgeSpawnInset: 2, // базовый отступ спавна внутрь от кромки радара (px)
   maneuverSpawnInset: 4, // защитный отступ спавна маневрирующих ракет от кромки (px)
+  openingLeadAngleRad: 0.35, // угол упреждения первого контакта перед лучом на старте игры (рад)
+  openingRadiusFactor: 0.78, // дистанция первого контакта на старте игры (доля радиуса радара)
 
   // Увеличение скорости целей с ростом волн
   waveSpeedStep: 0.04, // +4% к скорости за каждую волну выше 1-й
@@ -71,12 +73,13 @@ export interface TargetSpawner {
     wave: number,
     activeTargetsCount: number,
     targetsLeftInWave: number,
+    beamAngle?: number,
   ) => GameTarget | null;
 
   /**
-   * Спавн крылатой ракеты по заданному азимуту (для тактических событий, например залпов)
+   * Спавн крылатой ракеты по заданному азимуту (для залпов и стартового контакта)
    */
-  spawnMissileAtAngle: (angle: number, wave: number) => GameTarget;
+  spawnMissileAtAngle: (angle: number, wave: number, radiusFactor?: number) => GameTarget;
 
   /**
    * Спавн маневрирующей крылатой ракеты с кастомным отклонением от центра и задержкой доворота
@@ -95,10 +98,12 @@ export interface TargetSpawner {
 export function createSpawner(): TargetSpawner {
   let nextTargetId = 1;
   let spawnTimer: number = SPAWNER_CONFIG.initialSpawnTimer;
+  let isOpeningContactPending = true;
 
   const reset = (): void => {
     nextTargetId = 1;
     spawnTimer = SPAWNER_CONFIG.initialSpawnTimer;
+    isOpeningContactPending = true;
   };
 
   const pickRandomType = (): TargetType => {
@@ -227,8 +232,15 @@ export function createSpawner(): TargetSpawner {
     return createTarget(x, y, wave);
   };
 
-  const spawnMissileAtAngle = (angle: number, wave: number): GameTarget => {
-    const spawnDist = GAME_CONFIG.radarRadius - SPAWNER_CONFIG.edgeSpawnInset;
+  const spawnMissileAtAngle = (
+    angle: number,
+    wave: number,
+    radiusFactor?: number,
+  ): GameTarget => {
+    const spawnDist =
+      radiusFactor !== undefined
+        ? GAME_CONFIG.radarRadius * radiusFactor
+        : GAME_CONFIG.radarRadius - SPAWNER_CONFIG.edgeSpawnInset;
     const x = GAME_CONFIG.radarX + Math.cos(angle) * spawnDist;
     const y = GAME_CONFIG.radarY + Math.sin(angle) * spawnDist;
 
@@ -326,6 +338,7 @@ export function createSpawner(): TargetSpawner {
     wave: number,
     activeTargetsCount: number,
     targetsLeftInWave: number,
+    beamAngle = 0,
   ): GameTarget | null => {
     if (targetsLeftInWave <= 0) return null;
 
@@ -349,6 +362,14 @@ export function createSpawner(): TargetSpawner {
       );
 
       if (activeTargetsCount < maxActive) {
+        if (isOpeningContactPending) {
+          isOpeningContactPending = false;
+          return spawnMissileAtAngle(
+            beamAngle + SPAWNER_CONFIG.openingLeadAngleRad,
+            wave,
+            SPAWNER_CONFIG.openingRadiusFactor,
+          );
+        }
         return spawnTargetAtEdge(wave);
       }
     }
