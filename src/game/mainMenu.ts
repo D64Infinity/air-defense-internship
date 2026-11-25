@@ -75,6 +75,16 @@ export function createMainMenu(
   const menuCenterX = Math.round(width / 2); // Строгий геометрический центр экрана (480 при 960x640)
   const menuCenterY = 280; // Единый вертикальный центр для кнопок меню и экрана радара
 
+  // Единый базовый стиль текста меню (чёткий рендер и запас под жирные глифы)
+  const menuTextStyle = {
+    fontFamily: '"Cascadia Mono", Consolas, monospace',
+    padding: { left: 3, right: 3, top: 2, bottom: 2 },
+    resolution: GAME_CONFIG.textResolution,
+  };
+
+  const formatHighScoreLabel = (best: number): string =>
+    best > 0 ? `ЛУЧШИЙ РЕКОРД СТАНЦИИ: ${best} ОЧК` : 'АРХИВ ПУСТ • НЕТ ДАННЫХ ДЕЖУРСТВ';
+
   const container = scene.add.container(0, 0);
   container.setDepth(45);
   container.setVisible(true);
@@ -153,7 +163,7 @@ export function createMainMenu(
     height - 28,
     'ПОСТ ВКО-44 // АППАРАТНАЯ СТОЙКА 1РЛ-134 // СТАНЦИЯ ОБНАРУЖЕНИЯ «ОБЗОР» // ГОСТ 14254-80',
     {
-      fontFamily: '"Cascadia Mono", Consolas, monospace',
+      ...menuTextStyle,
       fontSize: '10px',
       color: '#334155',
       fontStyle: 'bold',
@@ -713,24 +723,24 @@ export function createMainMenu(
     titlePlaque.strokePath();
   }
 
-  const sectorTag = scene.add.text(0, -19, MENU_STANDBY_CONFIG.sectorTagText, {
-    fontFamily: '"Cascadia Mono", Consolas, monospace',
+  const sectorTag = scene.add.text(0, -21, MENU_STANDBY_CONFIG.sectorTagText, {
+    ...menuTextStyle,
     fontSize: '11px',
     color: '#f59e0b',
     fontStyle: 'bold',
     letterSpacing: 2,
   }).setOrigin(0.5);
 
-  const mainTitleText = scene.add.text(0, 3, 'РАДИОЛОКАЦИОННЫЙ ПОСТ «ОБЗОР»', {
-    fontFamily: '"Cascadia Mono", Consolas, monospace',
+  const mainTitleText = scene.add.text(0, 0, 'РАДИОЛОКАЦИОННЫЙ ПОСТ «ОБЗОР»', {
+    ...menuTextStyle,
     fontSize: '18px',
     color: '#f8fafc',
     fontStyle: 'bold',
     letterSpacing: 2.5,
   }).setOrigin(0.5);
 
-  const titleSubText = scene.add.text(0, 23, 'ТЕРМИНАЛ БОЕВОГО УПРАВЛЕНИЯ ПВО • РЕЖИМ ОЖИДАНИЯ', {
-    fontFamily: '"Cascadia Mono", Consolas, monospace',
+  const titleSubText = scene.add.text(0, 21, 'ТЕРМИНАЛ БОЕВОГО УПРАВЛЕНИЯ ПВО • РЕЖИМ ОЖИДАНИЯ', {
+    ...menuTextStyle,
     fontSize: '10px',
     color: '#64748b',
     fontStyle: 'bold',
@@ -746,6 +756,7 @@ export function createMainMenu(
     sublabel: string;
     colorHex: number;
     colorText: string;
+    readonly?: boolean;
     action: () => void;
   }
 
@@ -771,10 +782,11 @@ export function createMainMenu(
     },
     {
       hotkey: '3',
-      label: formatMenuLabel('3', 'АРХИВ ДЕЖУРСТВ'),
-      sublabel: `ЛУЧШИЙ РЕКОРД СТАНЦИИ: ${callbacks.getHighScore()} ОЧК`,
+      label: 'АРХИВ ДЕЖУРСТВ',
+      sublabel: formatHighScoreLabel(callbacks.getHighScore()),
       colorHex: 0x0ea5e9,
       colorText: '#38bdf8',
+      readonly: true,
       action: () => {},
     },
     {
@@ -1002,7 +1014,7 @@ export function createMainMenu(
     drawButton(false, false);
 
     const mainLabel = scene.add.text(0, -9, btn.label, {
-      fontFamily: '"Cascadia Mono", Consolas, monospace',
+      ...menuTextStyle,
       fontSize: '14px',
       color: isPrimary ? '#ecfdf5' : '#f8fafc',
       fontStyle: 'bold',
@@ -1014,7 +1026,7 @@ export function createMainMenu(
     }
 
     const subLabel = scene.add.text(0, 12, btn.sublabel, {
-      fontFamily: '"Cascadia Mono", Consolas, monospace',
+      ...menuTextStyle,
       fontSize: '10px',
       color: btn.colorText,
       fontStyle: 'bold',
@@ -1030,56 +1042,61 @@ export function createMainMenu(
       updateSoundButtonLabel(!callbacks.isMuted());
     }
 
-    const hitZone = scene.add.rectangle(0, 0, btnW, btnH, 0x000000, 0);
-    hitZone.setInteractive({ useHandCursor: true });
-
-    hitZone.on('pointerover', () => {
-      if (isTransitioning) return;
-      drawButton(true, false);
-      needleHoverOffset = MENU_STANDBY_CONFIG.needleHoverBoostRad;
-      if (isPrimary && sheenGfx) {
-        mainLabel.setColor('#ffffff');
-        primarySheenTween?.stop();
-        const sheenState = { progress: 0 };
-        primarySheenTween = scene.tweens.add({
-          targets: sheenState,
-          progress: 1,
-          duration: MENU_STANDBY_CONFIG.startSheenDurationMs,
-          ease: 'Cubic.easeOut',
-          onUpdate: () => drawButtonSheen(sheenGfx, sheenState.progress),
-          onComplete: () => sheenGfx.clear(),
-        });
-      }
-      callbacks.playHoverSound?.();
-    });
-
-    hitZone.on('pointerout', () => {
-      if (isTransitioning) return;
-      drawButton(false, false);
-      if (isPrimary) {
-        mainLabel.setColor('#ecfdf5');
-        primarySheenTween?.stop();
-        sheenGfx?.clear();
-      }
-    });
-
-    hitZone.on('pointerdown', () => {
-      if (isTransitioning) return;
-      drawButton(true, true);
-      callbacks.playSelectSound?.();
-    });
-
-    hitZone.on('pointerup', () => {
-      if (isTransitioning) return;
-      drawButton(true, false);
-      btn.action();
-    });
-
     const btnChildren: Phaser.GameObjects.GameObject[] = [glowGfx];
     if (ledGlowGfx) btnChildren.push(ledGlowGfx);
     btnChildren.push(btnGfx);
     if (sheenGfx) btnChildren.push(sheenGfx);
-    btnChildren.push(mainLabel, subLabel, hitZone);
+    btnChildren.push(mainLabel, subLabel);
+
+    if (!btn.readonly) {
+      const hitZone = scene.add.rectangle(0, 0, btnW, btnH, 0x000000, 0);
+      hitZone.setInteractive({ useHandCursor: true });
+
+      hitZone.on('pointerover', () => {
+        if (isTransitioning) return;
+        drawButton(true, false);
+        needleHoverOffset = MENU_STANDBY_CONFIG.needleHoverBoostRad;
+        if (isPrimary && sheenGfx) {
+          mainLabel.setColor('#ffffff');
+          primarySheenTween?.stop();
+          const sheenState = { progress: 0 };
+          primarySheenTween = scene.tweens.add({
+            targets: sheenState,
+            progress: 1,
+            duration: MENU_STANDBY_CONFIG.startSheenDurationMs,
+            ease: 'Cubic.easeOut',
+            onUpdate: () => drawButtonSheen(sheenGfx, sheenState.progress),
+            onComplete: () => sheenGfx.clear(),
+          });
+        }
+        callbacks.playHoverSound?.();
+      });
+
+      hitZone.on('pointerout', () => {
+        if (isTransitioning) return;
+        drawButton(false, false);
+        if (isPrimary) {
+          mainLabel.setColor('#ecfdf5');
+          primarySheenTween?.stop();
+          sheenGfx?.clear();
+        }
+      });
+
+      hitZone.on('pointerdown', () => {
+        if (isTransitioning) return;
+        drawButton(true, true);
+        callbacks.playSelectSound?.();
+      });
+
+      hitZone.on('pointerup', () => {
+        if (isTransitioning) return;
+        drawButton(true, false);
+        btn.action();
+      });
+
+      btnChildren.push(hitZone);
+    }
+
     btnContainer.add(btnChildren);
   });
 
@@ -1329,10 +1346,7 @@ export function createMainMenu(
     updateSoundButtonLabel(!callbacks.isMuted());
 
     if (recordSubLabelRef) {
-      const best = callbacks.getHighScore();
-      recordSubLabelRef.setText(
-        best > 0 ? `ЛУЧШИЙ РЕКОРД СТАНЦИИ: ${best} ОЧК` : 'АРХИВ ПУСТ • НЕТ ДАННЫХ ДЕЖУРСТВ',
-      );
+      recordSubLabelRef.setText(formatHighScoreLabel(callbacks.getHighScore()));
     }
 
     renderVolumetricRadar(scene.time.now, standbySweepAngle);

@@ -14,6 +14,7 @@ import {
   createPauseOverlay,
   createBriefingOverlay,
   createHud,
+  TELEMETRY_HINT_CONFIG,
   type GameOverOverlay,
   type PauseOverlay,
   type BriefingOverlay,
@@ -1336,6 +1337,8 @@ export class GameScene extends Phaser.Scene {
       isScanning: this.armory.isScanning,
       scanningTarget: this.armory.scanningTarget,
       scanProgress: this.armory.scanProgress,
+      showTelemetryHints:
+        this.stats.snapshot.correctDecisions < TELEMETRY_HINT_CONFIG.maxAssistedDecisions,
     });
   }
 

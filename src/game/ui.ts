@@ -125,6 +125,9 @@ export function createGameOverOverlay(
   // Разделитель 2: перед оперативной сводкой
   modalGraphics.moveTo(cx - halfW + 36, cy - 16);
   modalGraphics.lineTo(cx + halfW - 36, cy - 16);
+  // Вертикальный разделитель 2-колоночной таблицы сводки
+  modalGraphics.moveTo(cx, cy + 28);
+  modalGraphics.lineTo(cx, cy + 108);
   // Разделитель 3: перед кнопкой перезапуска
   modalGraphics.moveTo(cx - halfW + 36, cy + 128);
   modalGraphics.lineTo(cx + halfW - 36, cy + 128);
@@ -157,7 +160,7 @@ export function createGameOverOverlay(
     {
       ...modalTextStyle,
       fontSize: '11px',
-      color: '#7f1d1d',
+      color: '#b91c1c',
       fontStyle: 'bold',
     },
   ).setOrigin(1, 0);
@@ -223,18 +226,50 @@ export function createGameOverOverlay(
     },
   ).setOrigin(0.5);
 
-  const statsText = scene.add.text(
-    cx,
-    cy + 64,
-    '',
-    {
-      ...modalTextStyle,
-      fontSize: '13px',
-      color: '#cbd5e1',
-      align: 'center',
-      lineSpacing: 9,
-    },
-  ).setOrigin(0.5);
+  const statsRowY = cy + 68;
+  const statsLabelStyle = {
+    ...modalTextStyle,
+    fontSize: '13px',
+    color: '#94a3b8',
+    align: 'left' as const,
+    lineSpacing: 8,
+  };
+  const statsValueStyle = {
+    ...modalTextStyle,
+    fontSize: '13px',
+    color: '#f8fafc',
+    fontStyle: 'bold',
+    align: 'right' as const,
+    lineSpacing: 8,
+  };
+
+  const statsLeftLabels = scene.add.text(
+    cx - 296,
+    statsRowY,
+    'РАКЕТ СБИТО:\nБОМБАРДИРОВЩИКОВ СБИТО:\nСВОИХ СБИТО:\nСВОИХ СПАСЕНО:',
+    statsLabelStyle,
+  ).setOrigin(0, 0.5);
+
+  const statsLeftValues = scene.add.text(
+    cx - 20,
+    statsRowY,
+    '0\n0\n0\n0',
+    statsValueStyle,
+  ).setOrigin(1, 0.5);
+
+  const statsRightLabels = scene.add.text(
+    cx + 20,
+    statsRowY,
+    'ЛОВУШЕК ОПОЗНАНО:\nУГРОЗ ПРОПУЩЕНО:\nТОЧНОСТЬ РЕШЕНИЙ:\nВРЕМЯ ДЕЖУРСТВА:',
+    statsLabelStyle,
+  ).setOrigin(0, 0.5);
+
+  const statsRightValues = scene.add.text(
+    cx + 296,
+    statsRowY,
+    '0\n0\n100%\n00:00',
+    statsValueStyle,
+  ).setOrigin(1, 0.5);
 
   // Кнопка рестарта
   const restartBtn = scene.add.rectangle(
@@ -274,7 +309,10 @@ export function createGameOverOverlay(
     recordText,
     wavesText,
     statsHeader,
-    statsText,
+    statsLeftLabels,
+    statsLeftValues,
+    statsRightLabels,
+    statsRightValues,
     restartBtn,
     restartText,
   ]);
@@ -295,10 +333,11 @@ export function createGameOverOverlay(
       const secs = Math.floor(stats.sessionTime % 60);
       const timeStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 
-      statsText.setText(
-        `УНИЧТОЖЕНО: ${stats.missilesShot} РАКЕТ  |  ${stats.bombersShot} БОМБАРДИРОВЩИКОВ  |  ${stats.friendlyFireCount} СВОИХ\n` +
-        `${stats.friendsSaved} СВОИХ СПАСЕНО  |  ${stats.decoysFiltered} ЛОВУШЕК ОТФИЛЬТРОВАНО  |  ${stats.threatsMissed} УГРОЗ ПРОПУЩЕНО\n` +
-        `ЭФФЕКТИВНОСТЬ: ${acc}% ТОЧНОСТЬ  |  ВРЕМЯ ДЕЖУРСТВА: ${timeStr}`,
+      statsLeftValues.setText(
+        `${stats.missilesShot}\n${stats.bombersShot}\n${stats.friendlyFireCount}\n${stats.friendsSaved}`,
+      );
+      statsRightValues.setText(
+        `${stats.decoysFiltered}\n${stats.threatsMissed}\n${acc}%\n${timeStr}`,
       );
       container.setVisible(true);
     },
@@ -359,7 +398,7 @@ export function createPauseOverlay(
 
   const title = scene.add.text(
     width / 2,
-    height / 2 - 85,
+    height / 2 - 90,
     '// ТАКТИЧЕСКАЯ ПАУЗА //',
     {
       ...pauseTextStyle,
@@ -370,10 +409,19 @@ export function createPauseOverlay(
   );
   title.setOrigin(0.5);
 
+  const titleDivider = scene.add.rectangle(
+    width / 2,
+    height / 2 - 62,
+    320,
+    1,
+    GAME_CONFIG.colors.modal.borderInfo,
+    0.35,
+  );
+
   // 1. Кнопка продолжения
   const resumeBtn = scene.add.rectangle(
     width / 2,
-    height / 2 - 28,
+    height / 2 - 22,
     260,
     36,
     GAME_CONFIG.colors.modal.btnResumeBg,
@@ -384,7 +432,7 @@ export function createPauseOverlay(
 
   const resumeText = scene.add.text(
     width / 2,
-    height / 2 - 28,
+    height / 2 - 22,
     GAME_CONFIG.isMobile ? 'ПРОДОЛЖИТЬ' : 'ПРОДОЛЖИТЬ (P)',
     {
       ...pauseTextStyle,
@@ -402,7 +450,7 @@ export function createPauseOverlay(
   // 2. Кнопка инструктажа
   const briefingBtn = scene.add.rectangle(
     width / 2,
-    height / 2 + 18,
+    height / 2 + 24,
     260,
     36,
     GAME_CONFIG.colors.modal.btnBriefingBg,
@@ -413,7 +461,7 @@ export function createPauseOverlay(
 
   const briefingText = scene.add.text(
     width / 2,
-    height / 2 + 18,
+    height / 2 + 24,
     'ИНСТРУКТАЖ / СПРАВКА',
     {
       ...pauseTextStyle,
@@ -431,7 +479,7 @@ export function createPauseOverlay(
   // 3. Кнопка перезапуска игры
   const restartBtn = scene.add.rectangle(
     width / 2,
-    height / 2 + 64,
+    height / 2 + 70,
     260,
     36,
     GAME_CONFIG.colors.modal.btnDangerBg,
@@ -442,7 +490,7 @@ export function createPauseOverlay(
 
   const restartText = scene.add.text(
     width / 2,
-    height / 2 + 64,
+    height / 2 + 70,
     GAME_CONFIG.isMobile ? 'НАЧАТЬ ЗАНОВО' : 'НАЧАТЬ ЗАНОВО (R)',
     {
       ...pauseTextStyle,
@@ -461,6 +509,7 @@ export function createPauseOverlay(
     darkBg,
     modal,
     title,
+    titleDivider,
     resumeBtn,
     resumeText,
     briefingBtn,
@@ -538,9 +587,10 @@ export function createBriefingOverlay(
   modalGraphics.lineTo(cx + halfW - 30, cy - 186);
   modalGraphics.strokePath();
 
+  const segmentPadX = 2;
   const briefingTextStyle = {
     fontFamily: '"Cascadia Mono", Consolas, monospace',
-    padding: { left: 2, right: 2, top: 1, bottom: 1 },
+    padding: { left: segmentPadX, right: segmentPadX, top: 1, bottom: 1 },
     resolution: GAME_CONFIG.textResolution,
   };
 
@@ -564,7 +614,7 @@ export function createBriefingOverlay(
 
   const contentObjects: Phaser.GameObjects.GameObject[] = [];
 
-  const addRow = (x: number, y: number, segments: TextSegment[], fontSize = '13px') => {
+  const addRow = (x: number, y: number, segments: TextSegment[], fontSize = '12.5px') => {
     let curX = Math.round(x);
     const roundedY = Math.round(y);
     for (const seg of segments) {
@@ -575,7 +625,8 @@ export function createBriefingOverlay(
         fontStyle: seg.bold ? 'bold' : 'normal',
       });
       contentObjects.push(txt);
-      curX = Math.round(curX + txt.width);
+      // Компенсируем двусторонний padding на стыке сегментов, чтобы не появлялся лишний зазор
+      curX = Math.round(curX + txt.width - segmentPadX * 2);
     }
   };
 
@@ -585,7 +636,7 @@ export function createBriefingOverlay(
   // 1. Угрозы (красный акцент)
   addRow(startX, cy - 156, [
     { text: '• УГРОЗЫ: ', color: '#ef4444', bold: true },
-    { text: 'Ракеты (ловкие, средний ЭПР) и бомбардировщики (высокий ЭПР) врага.', color: '#e2e8f0' },
+    { text: 'Ракеты (средний ЭПР) и бомбардировщики (высокий ЭПР) врага.', color: '#e2e8f0' },
   ]);
   addRow(startX, cy - 132, [
     { text: '  ДЕЙСТВИЕ: ', color: '#94a3b8' },
@@ -609,7 +660,7 @@ export function createBriefingOverlay(
   // 3. Ловушки (серый/нейтральный акцент)
   addRow(startX, cy - 48, [
     { text: '• ЛОВУШКИ: ', color: '#94a3b8', bold: true },
-    { text: 'Имитаторы копируют поведение других юнитов (урон не наносят).', color: '#e2e8f0' },
+    { text: 'Имитаторы копируют чужие профили (урон базе не наносят).', color: '#e2e8f0' },
   ]);
   addRow(startX, cy - 24, [
     { text: '  ДЕЙСТВИЕ: ПОМЕТКА ', color: '#94a3b8' },
@@ -652,7 +703,7 @@ export function createBriefingOverlay(
       : 'УПРАВЛЕНИЕ (КЛАВИАТУРА): [1] СВОЙ  [2] УГРОЗА  [3] ЛОЖНАЯ ЦЕЛЬ  [4] СКАН  [P] ПАУЗА',
     {
       ...briefingTextStyle,
-      fontSize: '11.5px',
+      fontSize: '11px',
       color: '#facc15',
       fontStyle: 'bold',
     },
@@ -743,11 +794,25 @@ export interface TargetSelectionData {
   showActionHint?: boolean;
 }
 
+/**
+ * Пороги интерактивной подсветки аномалий телеметрии (без прямых подсказок кнопок)
+ */
+export const TELEMETRY_HINT_CONFIG = {
+  maxAssistedDecisions: 4, // после 4 верных классификаций подсказки в цифрах отключаются
+  highSpeedThreshold: 42, // порог быстрой цели (крылатые ракеты / быстрые ловушки)
+  lowEprThreshold: 48, // порог слабого отражения ЭПР (ловушки и часть ракет)
+  highEprThreshold: 75, // порог плотного сигнала (союзники и бомбардировщики)
+  denseEprMaxSpeed: 35, // верхняя граница скорости для интриги «союзник / бомбардировщик»
+  rowStartY: 212,
+  rowStepY: 19,
+} as const;
+
 export interface TelemetryData {
   selectedTarget: GameTarget | null;
   isScanning: boolean;
   scanningTarget: GameTarget | null;
   scanProgress: number;
+  showTelemetryHints?: boolean;
 }
 
 /**
@@ -1262,6 +1327,23 @@ export function createHud(
     lineSpacing: 4,
   });
 
+  const telemetryAccentGfx = scene.add.graphics();
+  const telemetryLines: Phaser.GameObjects.Text[] = Array.from({ length: 4 }, (_, idx) => {
+    const line = scene.add.text(
+      656,
+      TELEMETRY_HINT_CONFIG.rowStartY + idx * TELEMETRY_HINT_CONFIG.rowStepY,
+      '',
+      {
+        ...monoStyle,
+        fontSize: '13px',
+        color: '#cbd5e1',
+        fontStyle: 'bold',
+      },
+    );
+    line.setVisible(false);
+    return line;
+  });
+
   const feedbackText = scene.add.text(656, 583, '', {
     ...monoStyle,
     fontSize: '11px',
@@ -1568,7 +1650,9 @@ export function createHud(
     streakText,
     targetTelemetryTitle,
     targetTelemetryType,
+    telemetryAccentGfx,
     targetTelemetryText,
+    ...telemetryLines,
     feedbackText,
     ...(buttons.friend.elements ?? [buttons.friend.bg, buttons.friend.text]),
     ...(buttons.threat.elements ?? [buttons.threat.bg, buttons.threat.text]),
@@ -1939,10 +2023,13 @@ export function createHud(
     renderActionHint();
 
     if (!isSelected) {
+      telemetryAccentGfx.clear();
+      for (const line of telemetryLines) line.setVisible(false);
       targetTelemetryTitle.setText('ОБЪЕКТ СЛЕЖЕНИЯ: НЕТ');
       targetTelemetryTitle.setColor('#94a3b8');
       targetTelemetryType.setText('');
       targetTelemetryText.setY(195);
+      targetTelemetryText.setVisible(true);
       targetTelemetryText.setText(
         'Выберите вспыхнувшую\n' +
           'зелёной точкой цель\n' +
@@ -1950,6 +2037,18 @@ export function createHud(
           'и классификации.',
       );
     }
+  };
+
+  /**
+   * Тихий боковой акцент и подложка для выделяющейся строки телеметрии
+   */
+  const drawTelemetryRowAccent = (rowIndex: number, colorHex: number) => {
+    const rowY =
+      TELEMETRY_HINT_CONFIG.rowStartY + rowIndex * TELEMETRY_HINT_CONFIG.rowStepY;
+    telemetryAccentGfx.fillStyle(colorHex, 0.09);
+    telemetryAccentGfx.fillRect(654, rowY - 1, 265, 17);
+    telemetryAccentGfx.fillStyle(colorHex, 0.9);
+    telemetryAccentGfx.fillRect(649, rowY + 1, 3, 13);
   };
 
   // 8. Обновление телеметрии цели
@@ -2005,14 +2104,49 @@ export function createHud(
 
     targetTelemetryType.setText(typeStr);
     targetTelemetryType.setColor(typeColor);
+    targetTelemetryText.setVisible(false);
+    telemetryAccentGfx.clear();
 
-    targetTelemetryText.setY(211);
-    targetTelemetryText.setText(
-      `СКОРОСТЬ:   ${t.speed} км/ч\n` +
-        `КУРС:       ${t.headingDeg}°\n` +
-        `СИГНАЛ ЭПР: ${t.signal}%\n` +
-        `ДИСТАНЦИЯ:  ${dist} км`,
-    );
+    const showHints = Boolean(data.showTelemetryHints && !t.isScanned);
+
+    // 1. Скорость (аномально быстрые цели: крылатые ракеты / редкие быстрые ловушки)
+    let speedText = `СКОРОСТЬ:   ${t.speed} км/ч`;
+    let speedColor = '#cbd5e1';
+    if (showHints && t.speed >= TELEMETRY_HINT_CONFIG.highSpeedThreshold) {
+      speedText += ' ▲ БЫСТРАЯ';
+      speedColor = '#fbbf24';
+      drawTelemetryRowAccent(0, 0xfbbf24);
+    }
+
+    // 2. Сигнал ЭПР (слабое отражение vs плотный силуэт при умеренной скорости)
+    let eprText = `СИГНАЛ ЭПР: ${t.signal}%`;
+    let eprColor = '#cbd5e1';
+    if (showHints && t.signal < TELEMETRY_HINT_CONFIG.lowEprThreshold) {
+      eprText += ' ▼ СЛАБЫЙ';
+      eprColor = '#94a3b8';
+      drawTelemetryRowAccent(2, 0x94a3b8);
+    } else if (
+      showHints &&
+      t.signal >= TELEMETRY_HINT_CONFIG.highEprThreshold &&
+      t.speed <= TELEMETRY_HINT_CONFIG.denseEprMaxSpeed
+    ) {
+      eprText += ' ▲ ПЛОТНЫЙ';
+      eprColor = '#7dd3fc';
+      drawTelemetryRowAccent(2, 0x38bdf8);
+    }
+
+    const rows: Array<{ text: string; color: string }> = [
+      { text: speedText, color: speedColor },
+      { text: `КУРС:       ${t.headingDeg}°`, color: '#cbd5e1' },
+      { text: eprText, color: eprColor },
+      { text: `ДИСТАНЦИЯ:  ${dist} км`, color: '#cbd5e1' },
+    ];
+
+    rows.forEach((row, idx) => {
+      telemetryLines[idx].setText(row.text);
+      telemetryLines[idx].setColor(row.color);
+      telemetryLines[idx].setVisible(true);
+    });
   };
 
   // 9. Фидбек и таймеры
