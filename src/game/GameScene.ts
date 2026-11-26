@@ -80,6 +80,7 @@ export class GameScene extends Phaser.Scene {
   private soundSystem: SoundSystem = createSoundSystem();
   private isPaused = false;
   private isGameStarted = false;
+  private isClosingBriefing = false;
 
   private targets: GameTarget[] = [];
   private selectedTarget: GameTarget | null = null;
@@ -172,6 +173,7 @@ export class GameScene extends Phaser.Scene {
     this.weatherFrontTimer = 0;
     this.nextWeatherFrontDelay = -1;
     this.hadWeatherFrontLastWave = false;
+    this.isClosingBriefing = false;
     this.selectedTarget = null;
     this.explosions = [];
     this.interceptorManager.reset();
@@ -225,7 +227,7 @@ export class GameScene extends Phaser.Scene {
       playHoverSound: () => this.soundSystem.playMenuHover(),
       playSelectSound: () => this.soundSystem.playMenuSelect(),
       playDegauss: () => this.soundSystem.playDegauss(),
-      isBriefingOpen: () => this.briefingOverlay.isVisible(),
+      isBriefingOpen: () => this.briefingOverlay.isVisible() || this.isClosingBriefing,
     });
 
     setupGameInputs(this, {
@@ -609,17 +611,22 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Открытие окна боевого инструктажа (из меню паузы)
+   * Открытие окна боевого инструктажа (из главного меню или меню паузы)
    */
   private openBriefing(): void {
     this.pauseOverlay.hide();
-    this.briefingOverlay.show(false);
+    this.briefingOverlay.show(this.isGameStarted ? false : 'menu');
   }
 
   /**
    * Обработка закрытия окна инструктажа
    */
   private handleBriefingClose(): void {
+    // Сбрасываем в макрозадаче, чтобы флаг пережил всю синхронную цепочку window-слушателей (включая главное меню)
+    this.isClosingBriefing = true;
+    window.setTimeout(() => {
+      this.isClosingBriefing = false;
+    }, 0);
     this.soundSystem.resume();
     this.briefingOverlay.hide();
     if (!this.isGameStarted) {

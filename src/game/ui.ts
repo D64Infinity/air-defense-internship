@@ -40,7 +40,7 @@ export interface PauseOverlay {
  */
 export interface BriefingOverlay {
   container: Phaser.GameObjects.Container;
-  show: (isFirstTime?: boolean) => void;
+  show: (modeOrFirstTime?: boolean | 'menu') => void;
   hide: () => void;
   isVisible: () => boolean;
 }
@@ -398,7 +398,7 @@ export function createPauseOverlay(
 
   const title = scene.add.text(
     width / 2,
-    height / 2 - 90,
+    height / 2 - 84,
     '// ТАКТИЧЕСКАЯ ПАУЗА //',
     {
       ...pauseTextStyle,
@@ -411,7 +411,7 @@ export function createPauseOverlay(
 
   const titleDivider = scene.add.rectangle(
     width / 2,
-    height / 2 - 62,
+    height / 2 - 56,
     320,
     1,
     GAME_CONFIG.colors.modal.borderInfo,
@@ -421,7 +421,7 @@ export function createPauseOverlay(
   // 1. Кнопка продолжения
   const resumeBtn = scene.add.rectangle(
     width / 2,
-    height / 2 - 22,
+    height / 2 - 18,
     260,
     36,
     GAME_CONFIG.colors.modal.btnResumeBg,
@@ -432,7 +432,7 @@ export function createPauseOverlay(
 
   const resumeText = scene.add.text(
     width / 2,
-    height / 2 - 22,
+    height / 2 - 18,
     GAME_CONFIG.isMobile ? 'ПРОДОЛЖИТЬ' : 'ПРОДОЛЖИТЬ (P)',
     {
       ...pauseTextStyle,
@@ -450,7 +450,7 @@ export function createPauseOverlay(
   // 2. Кнопка инструктажа
   const briefingBtn = scene.add.rectangle(
     width / 2,
-    height / 2 + 24,
+    height / 2 + 28,
     260,
     36,
     GAME_CONFIG.colors.modal.btnBriefingBg,
@@ -461,7 +461,7 @@ export function createPauseOverlay(
 
   const briefingText = scene.add.text(
     width / 2,
-    height / 2 + 24,
+    height / 2 + 28,
     'ИНСТРУКТАЖ / СПРАВКА',
     {
       ...pauseTextStyle,
@@ -479,7 +479,7 @@ export function createPauseOverlay(
   // 3. Кнопка перезапуска игры
   const restartBtn = scene.add.rectangle(
     width / 2,
-    height / 2 + 70,
+    height / 2 + 74,
     260,
     36,
     GAME_CONFIG.colors.modal.btnDangerBg,
@@ -490,7 +490,7 @@ export function createPauseOverlay(
 
   const restartText = scene.add.text(
     width / 2,
-    height / 2 + 70,
+    height / 2 + 74,
     GAME_CONFIG.isMobile ? 'НАЧАТЬ ЗАНОВО' : 'НАЧАТЬ ЗАНОВО (R)',
     {
       ...pauseTextStyle,
@@ -614,7 +614,7 @@ export function createBriefingOverlay(
 
   const contentObjects: Phaser.GameObjects.GameObject[] = [];
 
-  const addRow = (x: number, y: number, segments: TextSegment[], fontSize = '12.5px') => {
+  const addRow = (x: number, y: number, segments: TextSegment[], fontSize = '13px') => {
     let curX = Math.round(x);
     const roundedY = Math.round(y);
     for (const seg of segments) {
@@ -630,7 +630,7 @@ export function createBriefingOverlay(
     }
   };
 
-  const startX = cx - halfW + 30; // 190px при cx = 480
+  const startX = cx - halfW + 34; // 194px при cx = 480
   const isMobile = GAME_CONFIG.isMobile;
 
   // 1. Угрозы (красный акцент)
@@ -724,6 +724,7 @@ export function createBriefingOverlay(
 
   const startLabel = isMobile ? 'ЗАСТУПИТЬ НА СМЕНУ' : 'ЗАСТУПИТЬ НА СМЕНУ (ПРОБЕЛ)';
   const resumeLabel = isMobile ? 'ВЕРНУТЬСЯ В ИГРУ' : 'ВЕРНУТЬСЯ В ИГРУ (ПРОБЕЛ)';
+  const menuLabel = isMobile ? 'ЗАКРЫТЬ РЕГЛАМЕНТ' : 'ЗАКРЫТЬ РЕГЛАМЕНТ (ПРОБЕЛ)';
   const actionText = scene.add.text(cx, cy + 186, startLabel, {
     ...briefingTextStyle,
     fontSize: '14px',
@@ -746,8 +747,12 @@ export function createBriefingOverlay(
 
   return {
     container,
-    show: (isFirstTime = false) => {
-      actionText.setText(isFirstTime ? startLabel : resumeLabel);
+    show: (modeOrFirstTime = false) => {
+      if (modeOrFirstTime === 'menu') {
+        actionText.setText(menuLabel);
+      } else {
+        actionText.setText(modeOrFirstTime ? startLabel : resumeLabel);
+      }
       container.setVisible(true);
     },
     hide: () => container.setVisible(false),

@@ -157,10 +157,10 @@ export function createMainMenu(
     ambientRoomGfx.strokeRect(c.x - 3, c.y - 7, 6, 14);
   }
 
-  // Трафаретная маркировка стойки
+  // Трафаретная маркировка стойки (выровнена по оси нижних заклёпок с отступом от левой)
   const stencilText = scene.add.text(
-    28,
-    height - 28,
+    38,
+    height - 24,
     'ПОСТ ВКО-44 // АППАРАТНАЯ СТОЙКА 1РЛ-134 // СТАНЦИЯ ОБНАРУЖЕНИЯ «ОБЗОР» // ГОСТ 14254-80',
     {
       ...menuTextStyle,
@@ -169,7 +169,7 @@ export function createMainMenu(
       fontStyle: 'bold',
       letterSpacing: 1.5,
     },
-  );
+  ).setOrigin(0, 0.5);
 
   container.add([solidBgGfx, ambientRoomGfx, stencilText]);
 
@@ -1286,6 +1286,7 @@ export function createMainMenu(
 
   // Обработчик клавиш
   const onKeyDown = (e: KeyboardEvent) => {
+    if (e.repeat) return;
     if (!container.visible || container.alpha < 0.5 || isTransitioning) return;
     if (callbacks.isBriefingOpen && callbacks.isBriefingOpen()) return;
 
