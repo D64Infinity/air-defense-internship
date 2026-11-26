@@ -13,13 +13,21 @@ import {
   createGameOverOverlay,
   createPauseOverlay,
   createBriefingOverlay,
+  createArchiveOverlay,
   createHud,
   TELEMETRY_HINT_CONFIG,
   type GameOverOverlay,
   type PauseOverlay,
   type BriefingOverlay,
+  type ArchiveOverlay,
   type HudManager,
 } from './ui';
+import {
+  loadDutyArchive,
+  recordDutyShift,
+  clearDutyArchive,
+  type DutyArchiveData,
+} from './archive';
 import { createAlertManager, type AlertManager } from './alerts';
 import { createMainMenu, type MainMenuManager } from './mainMenu';
 import { setupGameInputs } from './input';
@@ -71,7 +79,9 @@ export class GameScene extends Phaser.Scene {
   private gameOverOverlay!: GameOverOverlay;
   private pauseOverlay!: PauseOverlay;
   private briefingOverlay!: BriefingOverlay;
+  private archiveOverlay!: ArchiveOverlay;
   private mainMenu!: MainMenuManager;
+  private archive: DutyArchiveData = loadDutyArchive();
   private spawner: TargetSpawner = createSpawner();
   private tacticalEvents: TacticalEventManager = createTacticalEventsManager(this.spawner);
   private scoring: ScoreTracker = createScoreTracker();
@@ -178,9 +188,9 @@ export class GameScene extends Phaser.Scene {
     this.explosions = [];
     this.interceptorManager.reset();
 
-    // Загрузка рекорда из localStorage
-    const savedRecord = localStorage.getItem('radar_station_record');
-    this.highScore = savedRecord ? parseInt(savedRecord, 10) || 0 : 0;
+    // Загрузка архива дежурств и рекорда из localStorage
+    this.archive = loadDutyArchive();
+    this.highScore = this.archive.bestScore;
 
     // 0. Амбиентный фон и корпус консоли
     this.ambientBg = new AmbientBackground(this);
@@ -210,6 +220,10 @@ export class GameScene extends Phaser.Scene {
       onRestart: () => this.restartGame(),
     });
     this.briefingOverlay = createBriefingOverlay(this, () => this.handleBriefingClose());
+    this.archiveOverlay = createArchiveOverlay(this, {
+      onClose: () => this.closeArchive(),
+      onClear: () => this.clearArchive(),
+    });
     this.gameOverOverlay = createGameOverOverlay(this, () => this.restartGame());
 
     // 4. Главное меню с аутентичным 2.5D радаром и светосигнальными табло-клавишами (Вариант А)
@@ -221,13 +235,19 @@ export class GameScene extends Phaser.Scene {
         this.startCombat();
       },
       onOpenBriefing: () => this.openBriefing(),
+      onOpenArchive: () => this.openArchive(),
       onToggleSound: () => this.soundSystem.toggleMute(),
       isMuted: () => this.soundSystem.isMuted,
       getHighScore: () => this.highScore,
+      getArchiveSummary: () => ({
+        totalShifts: this.archive.totalShifts,
+        highScore: this.highScore,
+      }),
       playHoverSound: () => this.soundSystem.playMenuHover(),
       playSelectSound: () => this.soundSystem.playMenuSelect(),
       playDegauss: () => this.soundSystem.playDegauss(),
       isBriefingOpen: () => this.briefingOverlay.isVisible() || this.isClosingBriefing,
+      isArchiveOpen: () => this.archiveOverlay.isVisible() || this.isClosingBriefing,
     });
 
     setupGameInputs(this, {
@@ -274,9 +294,11 @@ export class GameScene extends Phaser.Scene {
       onBuyScan: () => this.buyScan(),
       onRestart: () => this.restartGame(),
       onCloseBriefing: () => this.handleBriefingClose(),
+      onCloseArchive: () => this.closeArchive(),
       isGameOver: () => this.isGameOver,
       isPaused: () => this.isPaused,
       isBriefingOpen: () => this.briefingOverlay.isVisible(),
+      isArchiveOpen: () => this.archiveOverlay.isVisible(),
       isGameStarted: () => this.isGameStarted,
     });
 
@@ -665,6 +687,38 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
+   * Открытие журнала боевых дежурств из главного меню
+   */
+  private openArchive(): void {
+    this.archive = loadDutyArchive();
+    this.highScore = this.archive.bestScore;
+    this.archiveOverlay.show(this.archive);
+  }
+
+  /**
+   * Закрытие журнала боевых дежурств (с защитой от проброса Пробела в меню)
+   */
+  private closeArchive(): void {
+    this.isClosingBriefing = true;
+    window.setTimeout(() => {
+      this.isClosingBriefing = false;
+    }, 0);
+    this.soundSystem.playMenuSelect();
+    this.archiveOverlay.hide();
+  }
+
+  /**
+   * Очистка локального архива и рекорда станции
+   */
+  private clearArchive(): DutyArchiveData {
+    this.soundSystem.playMenuSelect();
+    this.archive = clearDutyArchive();
+    this.highScore = 0;
+    this.mainMenu.refreshArchiveLabel();
+    return this.archive;
+  }
+
+  /**
    * Срабатывание поражения базы
    */
   private triggerGameOver(): void {
@@ -672,16 +726,26 @@ export class GameScene extends Phaser.Scene {
     this.isPaused = false;
     this.pauseOverlay.hide();
     this.briefingOverlay.hide();
+    this.archiveOverlay.hide();
     this.selectedTarget = null;
     this.armory.cancelScan();
     this.updateTargetSelectionUI();
 
-    let isNewRecord = false;
-    if (this.scoring.score > this.highScore) {
-      this.highScore = this.scoring.score;
-      localStorage.setItem('radar_station_record', this.highScore.toString());
-      isNewRecord = true;
-    }
+    const statsSnapshot = this.stats.snapshot;
+    const accuracy =
+      statsSnapshot.totalDecisions > 0
+        ? Math.round((statsSnapshot.correctDecisions / statsSnapshot.totalDecisions) * 100)
+        : 100;
+    const prevBest = this.highScore;
+    this.archive = recordDutyShift({
+      score: this.scoring.score,
+      wave: this.wave,
+      bestStreak: this.scoring.bestStreak,
+      accuracy,
+      sessionTime: statsSnapshot.sessionTime,
+    });
+    const isNewRecord = this.scoring.score > prevBest;
+    this.highScore = this.archive.bestScore;
 
     this.gameOverOverlay.show(
       this.scoring.score,
@@ -689,7 +753,7 @@ export class GameScene extends Phaser.Scene {
       this.wave,
       this.scoring.bestStreak,
       isNewRecord,
-      this.stats.snapshot,
+      statsSnapshot,
     );
     this.barrageSalvo.reset();
   }

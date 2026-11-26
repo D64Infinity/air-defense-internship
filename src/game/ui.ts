@@ -6,6 +6,12 @@ import {
 } from './gameConfig';
 import { calculateStreakMultiplier } from './scoring';
 import type { GameSessionStats } from './stats';
+import {
+  MAX_ARCHIVE_ENTRIES,
+  formatArchiveDate,
+  formatShiftDuration,
+  type DutyArchiveData,
+} from './archive';
 
 export type { GameSessionStats };
 
@@ -41,6 +47,16 @@ export interface PauseOverlay {
 export interface BriefingOverlay {
   container: Phaser.GameObjects.Container;
   show: (modeOrFirstTime?: boolean | 'menu') => void;
+  hide: () => void;
+  isVisible: () => boolean;
+}
+
+/**
+ * Интерфейс управления модальным окном «Архив дежурств»
+ */
+export interface ArchiveOverlay {
+  container: Phaser.GameObjects.Container;
+  show: (data: DutyArchiveData) => void;
   hide: () => void;
   isVisible: () => boolean;
 }
@@ -756,6 +772,375 @@ export function createBriefingOverlay(
       container.setVisible(true);
     },
     hide: () => container.setVisible(false),
+    isVisible: () => container.visible,
+  };
+}
+
+export interface ArchiveOverlayCallbacks {
+  onClose: () => void;
+  onClear: () => DutyArchiveData;
+}
+
+/**
+ * Фабрика модального окна «Архив дежурств» (Топ-5 + последняя смена)
+ */
+export function createArchiveOverlay(
+  scene: Phaser.Scene,
+  callbacks: ArchiveOverlayCallbacks,
+): ArchiveOverlay {
+  const { width, height } = scene.scale;
+  const cx = Math.round(width / 2);
+  const cy = Math.round(height / 2);
+  const halfW = 340;
+  const halfH = 245;
+  const boxW = halfW * 2;
+  const boxH = halfH * 2;
+
+  const container = scene.add.container(0, 0);
+  container.setDepth(110);
+  container.setVisible(false);
+
+  const darkBg = scene.add.rectangle(cx, cy, width, height, GAME_CONFIG.colors.modal.overlay, 0.92);
+  darkBg.setInteractive();
+
+  const modalGraphics = scene.add.graphics();
+  modalGraphics.fillStyle(GAME_CONFIG.colors.modal.bgTerminal, 0.98);
+  modalGraphics.fillRoundedRect(cx - halfW, cy - halfH, boxW, boxH, 6);
+  modalGraphics.lineStyle(1.5, GAME_CONFIG.colors.modal.borderInfo, 0.85);
+  modalGraphics.strokeRoundedRect(cx - halfW, cy - halfH, boxW, boxH, 6);
+
+  // Угловые скобки
+  const corner = 14;
+  modalGraphics.lineStyle(2.5, GAME_CONFIG.colors.modal.borderInfo, 1);
+  modalGraphics.beginPath();
+  modalGraphics.moveTo(cx - halfW, cy - halfH + corner);
+  modalGraphics.lineTo(cx - halfW, cy - halfH);
+  modalGraphics.lineTo(cx - halfW + corner, cy - halfH);
+  modalGraphics.moveTo(cx + halfW - corner, cy - halfH);
+  modalGraphics.lineTo(cx + halfW, cy - halfH);
+  modalGraphics.lineTo(cx + halfW, cy - halfH + corner);
+  modalGraphics.moveTo(cx - halfW, cy + halfH - corner);
+  modalGraphics.lineTo(cx - halfW, cy + halfH);
+  modalGraphics.lineTo(cx - halfW + corner, cy + halfH);
+  modalGraphics.moveTo(cx + halfW - corner, cy + halfH);
+  modalGraphics.lineTo(cx + halfW, cy + halfH);
+  modalGraphics.lineTo(cx + halfW, cy + halfH - corner);
+  modalGraphics.strokePath();
+
+  // Горизонтальные разделители разделов
+  modalGraphics.lineStyle(1, GAME_CONFIG.colors.modal.borderInfo, 0.35);
+  modalGraphics.beginPath();
+  modalGraphics.moveTo(cx - halfW + 36, cy - 148);
+  modalGraphics.lineTo(cx + halfW - 36, cy - 148);
+  modalGraphics.moveTo(cx - halfW + 42, cy - 115);
+  modalGraphics.lineTo(cx + halfW - 42, cy - 115);
+  modalGraphics.moveTo(cx - halfW + 36, cy + 52);
+  modalGraphics.lineTo(cx + halfW - 36, cy + 52);
+  modalGraphics.strokePath();
+
+  const archiveTextStyle = {
+    fontFamily: '"Cascadia Mono", Consolas, monospace',
+    padding: { left: 2, right: 2, top: 1, bottom: 1 },
+    resolution: GAME_CONFIG.textResolution,
+  };
+
+  const tagLeft = scene.add.text(cx - halfW + 24, cy - halfH + 16, '[ РЕЕСТР ]', {
+    ...archiveTextStyle,
+    fontSize: '11px',
+    color: '#38bdf8',
+    fontStyle: 'bold',
+  });
+  const tagRight = scene.add.text(cx + halfW - 24, cy - halfH + 16, 'ПАМЯТЬ: ЛОКАЛЬНАЯ', {
+    ...archiveTextStyle,
+    fontSize: '11px',
+    color: '#64748b',
+    fontStyle: 'bold',
+  }).setOrigin(1, 0);
+
+  const title = scene.add.text(cx, cy - 202, '[ ЖУРНАЛ БОЕВЫХ ДЕЖУРСТВ // 1РЛ-134 ]', {
+    ...archiveTextStyle,
+    fontSize: '18px',
+    color: '#38bdf8',
+    fontStyle: 'bold',
+  }).setOrigin(0.5);
+
+  const summaryText = scene.add.text(cx, cy - 170, '', {
+    ...archiveTextStyle,
+    fontSize: '12.5px',
+    color: '#cbd5e1',
+    align: 'center',
+  }).setOrigin(0.5);
+
+  // Фиксированные колонки таблицы Топ-5
+  const cols = {
+    rankX: cx - 296,
+    dateX: cx - 252,
+    scoreX: cx - 48,
+    waveX: cx + 38,
+    streakX: cx + 124,
+    accX: cx + 210,
+    timeX: cx + 296,
+  } as const;
+
+  const headerY = cy - 130;
+  const headerStyle = {
+    ...archiveTextStyle,
+    fontSize: '11.5px',
+    color: '#64748b',
+    fontStyle: 'bold',
+  };
+  const headerTexts = [
+    scene.add.text(cols.rankX, headerY, '№', headerStyle).setOrigin(0, 0.5),
+    scene.add.text(cols.dateX, headerY, 'ДАТА', headerStyle).setOrigin(0, 0.5),
+    scene.add.text(cols.scoreX, headerY, 'СЧЁТ', headerStyle).setOrigin(1, 0.5),
+    scene.add.text(cols.waveX, headerY, 'ВОЛНА', headerStyle).setOrigin(1, 0.5),
+    scene.add.text(cols.streakX, headerY, 'СЕРИЯ', headerStyle).setOrigin(1, 0.5),
+    scene.add.text(cols.accX, headerY, 'ТОЧН.', headerStyle).setOrigin(1, 0.5),
+    scene.add.text(cols.timeX, headerY, 'ВРЕМЯ', headerStyle).setOrigin(1, 0.5),
+  ];
+
+  const topHighlightBar = scene.add.rectangle(cx, cy - 92, 598, 24, 0x0c273b, 0.78);
+
+  interface ArchiveRowView {
+    rank: Phaser.GameObjects.Text;
+    date: Phaser.GameObjects.Text;
+    score: Phaser.GameObjects.Text;
+    wave: Phaser.GameObjects.Text;
+    streak: Phaser.GameObjects.Text;
+    acc: Phaser.GameObjects.Text;
+    time: Phaser.GameObjects.Text;
+  }
+
+  const rowViews: ArchiveRowView[] = [];
+  const rowObjects: Phaser.GameObjects.GameObject[] = [];
+  const rowStyle = { ...archiveTextStyle, fontSize: '13px', color: '#cbd5e1' };
+
+  for (let i = 0; i < MAX_ARCHIVE_ENTRIES; i++) {
+    const ry = cy - 92 + i * 28;
+    const row: ArchiveRowView = {
+      rank: scene.add.text(cols.rankX, ry, '', { ...rowStyle, fontStyle: 'bold' }).setOrigin(0, 0.5),
+      date: scene.add.text(cols.dateX, ry, '', rowStyle).setOrigin(0, 0.5),
+      score: scene.add.text(cols.scoreX, ry, '', { ...rowStyle, fontStyle: 'bold' }).setOrigin(1, 0.5),
+      wave: scene.add.text(cols.waveX, ry, '', rowStyle).setOrigin(1, 0.5),
+      streak: scene.add.text(cols.streakX, ry, '', rowStyle).setOrigin(1, 0.5),
+      acc: scene.add.text(cols.accX, ry, '', rowStyle).setOrigin(1, 0.5),
+      time: scene.add.text(cols.timeX, ry, '', rowStyle).setOrigin(1, 0.5),
+    };
+    rowViews.push(row);
+    rowObjects.push(row.rank, row.date, row.score, row.wave, row.streak, row.acc, row.time);
+  }
+
+  const emptyTopText = scene.add.text(
+    cx,
+    cy - 36,
+    '// ДАННЫЕ ДЕЖУРСТВ ОТСУТСТВУЮТ — ЗАВЕРШИТЕ ХОТЯ БЫ ОДНУ СМЕНУ //',
+    {
+      ...archiveTextStyle,
+      fontSize: '12.5px',
+      color: '#64748b',
+      align: 'center',
+    },
+  ).setOrigin(0.5);
+
+  // Блок последней завершённой смены
+  const lastShiftHeader = scene.add.text(cx, cy + 68, '// ПОСЛЕДНЯЯ ЗАВЕРШЁННАЯ СМЕНА //', {
+    ...archiveTextStyle,
+    fontSize: '11px',
+    color: '#64748b',
+    fontStyle: 'bold',
+  }).setOrigin(0.5);
+
+  const lastShiftPanel = scene.add.rectangle(cx, cy + 100, 596, 36, 0x071824, 0.92);
+  lastShiftPanel.setStrokeStyle(1.2, GAME_CONFIG.colors.modal.borderInfo, 0.55);
+
+  const lastShiftText = scene.add.text(cx, cy + 100, '', {
+    ...archiveTextStyle,
+    fontSize: '12px',
+    color: '#e2e8f0',
+    align: 'center',
+  }).setOrigin(0.5);
+
+  // Нижние кнопки: Закрыть + Очистить (2-кликовое подтверждение)
+  const closeBtn = scene.add.rectangle(
+    cx - 93,
+    cy + 186,
+    320,
+    42,
+    GAME_CONFIG.colors.modal.btnResumeBg,
+    0.95,
+  );
+  closeBtn.setStrokeStyle(1.5, GAME_CONFIG.colors.modal.btnResumeBorder, 1);
+  closeBtn.setInteractive({ useHandCursor: true });
+
+  const closeText = scene.add.text(
+    cx - 93,
+    cy + 186,
+    GAME_CONFIG.isMobile ? 'ЗАКРЫТЬ ЖУРНАЛ' : 'ЗАКРЫТЬ ЖУРНАЛ (ПРОБЕЛ)',
+    {
+      ...archiveTextStyle,
+      fontSize: '13.5px',
+      color: '#ffffff',
+      fontStyle: 'bold',
+    },
+  ).setOrigin(0.5);
+
+  closeBtn.on('pointerover', () => closeBtn.setFillStyle(GAME_CONFIG.colors.modal.btnResumeHover, 1));
+  closeBtn.on('pointerout', () => closeBtn.setFillStyle(GAME_CONFIG.colors.modal.btnResumeBg, 0.95));
+  closeBtn.on('pointerdown', () => callbacks.onClose());
+
+  const clearBtn = scene.add.rectangle(
+    cx + 168,
+    cy + 186,
+    170,
+    42,
+    GAME_CONFIG.colors.modal.btnDangerBg,
+    0.9,
+  );
+  clearBtn.setStrokeStyle(1.5, GAME_CONFIG.colors.modal.btnDangerBorder, 0.9);
+  clearBtn.setInteractive({ useHandCursor: true });
+
+  const clearText = scene.add.text(cx + 168, cy + 186, 'ОЧИСТИТЬ', {
+    ...archiveTextStyle,
+    fontSize: '13px',
+    color: '#fca5a5',
+    fontStyle: 'bold',
+  }).setOrigin(0.5);
+
+  let isConfirmingClear = false;
+  let hasArchiveEntries = false;
+  let confirmTimerId: number | null = null;
+
+  const clearConfirmTimer = () => {
+    if (confirmTimerId !== null) {
+      window.clearTimeout(confirmTimerId);
+      confirmTimerId = null;
+    }
+  };
+
+  const resetClearConfirm = () => {
+    isConfirmingClear = false;
+    clearConfirmTimer();
+    if (!clearText.scene) return;
+    clearText.setText('ОЧИСТИТЬ');
+    clearText.setColor(hasArchiveEntries ? '#fca5a5' : '#64748b');
+  };
+
+  const renderArchive = (data: DutyArchiveData) => {
+    summaryText.setText(
+      `ВСЕГО СМЕН: ${data.totalShifts}   |   ЛУЧШИЙ СЧЁТ: ${data.bestScore}   |   МАКС. ВОЛНА: ${data.bestWave}`,
+    );
+
+    const hasTop = data.topShifts.length > 0;
+    topHighlightBar.setVisible(hasTop);
+    emptyTopText.setVisible(!hasTop);
+    if (!hasTop && data.totalShifts > 0) {
+      emptyTopText.setText('// В ТОП-5 ПОПАДАЮТ СМЕНЫ С РЕЗУЛЬТАТОМ ВЫШЕ 0 ОЧКОВ //');
+    } else if (!hasTop) {
+      emptyTopText.setText('// ДАННЫЕ ДЕЖУРСТВ ОТСУТСТВУЮТ — ЗАВЕРШИТЕ ХОТЯ БЫ ОДНУ СМЕНУ //');
+    }
+
+    for (let i = 0; i < MAX_ARCHIVE_ENTRIES; i++) {
+      const entry = data.topShifts[i];
+      const row = rowViews[i];
+      const visible = Boolean(entry);
+      row.rank.setVisible(visible);
+      row.date.setVisible(visible);
+      row.score.setVisible(visible);
+      row.wave.setVisible(visible);
+      row.streak.setVisible(visible);
+      row.acc.setVisible(visible);
+      row.time.setVisible(visible);
+      if (!entry) continue;
+
+      const isTopOne = i === 0;
+      const isLastPlayed = data.lastShift?.id === entry.id;
+      const rankColor = isTopOne ? '#facc15' : '#94a3b8';
+      const valueColor = isTopOne ? '#facc15' : isLastPlayed ? '#38bdf8' : '#e2e8f0';
+      const dateColor = isLastPlayed ? '#38bdf8' : '#cbd5e1';
+
+      row.rank.setText(`#${i + 1}`).setColor(rankColor);
+      row.date.setText(`${formatArchiveDate(entry.playedAt)}${isLastPlayed ? ' •' : ''}`).setColor(dateColor);
+      row.score.setText(`${entry.score}`).setColor(valueColor);
+      row.wave.setText(`${entry.wave}`).setColor('#cbd5e1');
+      row.streak.setText(`${entry.bestStreak}`).setColor('#cbd5e1');
+      row.acc.setText(`${entry.accuracy}%`).setColor('#86efac');
+      row.time.setText(formatShiftDuration(entry.sessionTime)).setColor('#94a3b8');
+    }
+
+    if (data.lastShift) {
+      const last = data.lastShift;
+      lastShiftText
+        .setText(
+          `${formatArchiveDate(last.playedAt)}  |  СЧЁТ: ${last.score}  |  ВОЛНА: ${last.wave}  |  СЕРИЯ: ${last.bestStreak}  |  ТОЧН.: ${last.accuracy}%  |  ${formatShiftDuration(last.sessionTime)}`,
+        )
+        .setColor('#e2e8f0');
+    } else {
+      lastShiftText.setText('ПОСЛЕДНЯЯ СМЕНА НЕ ЗАФИКСИРОВАНА').setColor('#64748b');
+    }
+
+    hasArchiveEntries = data.totalShifts > 0 || data.bestScore > 0 || data.topShifts.length > 0;
+    resetClearConfirm();
+    clearBtn.setAlpha(hasArchiveEntries ? 1 : 0.42);
+    if (clearBtn.input) {
+      clearBtn.input.cursor = hasArchiveEntries ? 'pointer' : 'default';
+    }
+  };
+
+  clearBtn.on('pointerover', () => {
+    if (!hasArchiveEntries) return;
+    clearBtn.setFillStyle(GAME_CONFIG.colors.modal.btnDangerHover, 1);
+  });
+  clearBtn.on('pointerout', () => {
+    clearBtn.setFillStyle(GAME_CONFIG.colors.modal.btnDangerBg, 0.9);
+  });
+  clearBtn.on('pointerdown', () => {
+    if (!hasArchiveEntries) return;
+    if (!isConfirmingClear) {
+      isConfirmingClear = true;
+      clearText.setText('ПОДТВЕРДИТЬ?');
+      clearText.setColor('#fef08a');
+      confirmTimerId = window.setTimeout(() => {
+        resetClearConfirm();
+      }, 3000);
+      return;
+    }
+    const cleared = callbacks.onClear();
+    renderArchive(cleared);
+  });
+
+  scene.events.once(Phaser.Scenes.Events.SHUTDOWN, clearConfirmTimer);
+  scene.events.once(Phaser.Scenes.Events.DESTROY, clearConfirmTimer);
+
+  container.add([
+    darkBg,
+    modalGraphics,
+    tagLeft,
+    tagRight,
+    title,
+    summaryText,
+    ...headerTexts,
+    topHighlightBar,
+    ...rowObjects,
+    emptyTopText,
+    lastShiftHeader,
+    lastShiftPanel,
+    lastShiftText,
+    closeBtn,
+    closeText,
+    clearBtn,
+    clearText,
+  ]);
+
+  return {
+    container,
+    show: (data) => {
+      renderArchive(data);
+      container.setVisible(true);
+    },
+    hide: () => {
+      resetClearConfirm();
+      container.setVisible(false);
+    },
     isVisible: () => container.visible,
   };
 }

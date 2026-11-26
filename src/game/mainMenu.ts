@@ -74,13 +74,16 @@ interface StandbyNoiseSpeck {
 export interface MainMenuCallbacks {
   onStartCombat: () => void;
   onOpenBriefing: () => void;
+  onOpenArchive: () => void;
   onToggleSound: () => boolean;
   isMuted: () => boolean;
   getHighScore: () => number;
+  getArchiveSummary?: () => { totalShifts: number; highScore: number };
   playHoverSound?: () => void;
   playSelectSound?: () => void;
   playDegauss?: () => void;
   isBriefingOpen?: () => boolean;
+  isArchiveOpen?: () => boolean;
 }
 
 /**
@@ -93,6 +96,7 @@ export interface MainMenuManager {
   startTransition: (onComplete: () => void) => void;
   update: (dt: number) => void;
   isVisible: () => boolean;
+  refreshArchiveLabel: () => void;
 }
 
 /**
@@ -117,8 +121,18 @@ export function createMainMenu(
     resolution: GAME_CONFIG.textResolution,
   };
 
-  const formatHighScoreLabel = (best: number): string =>
-    best > 0 ? `ЛУЧШИЙ РЕКОРД СТАНЦИИ: ${best} ОЧК` : 'АРХИВ ПУСТ • НЕТ ДАННЫХ ДЕЖУРСТВ';
+  const formatArchiveSummaryLabel = (): string => {
+    const summary = callbacks.getArchiveSummary
+      ? callbacks.getArchiveSummary()
+      : { totalShifts: 0, highScore: callbacks.getHighScore() };
+    if (summary.totalShifts > 0) {
+      return `ЗАПИСЕЙ: ${summary.totalShifts} • ЛУЧШИЙ СЧЁТ: ${summary.highScore} ОЧК`;
+    }
+    if (summary.highScore > 0) {
+      return `ЛУЧШИЙ РЕКОРД СТАНЦИИ: ${summary.highScore} ОЧК`;
+    }
+    return 'АРХИВ ПУСТ • НЕТ ДАННЫХ ДЕЖУРСТВ';
+  };
 
   const container = scene.add.container(0, 0);
   container.setDepth(45);
@@ -1037,12 +1051,11 @@ export function createMainMenu(
     },
     {
       hotkey: '3',
-      label: 'АРХИВ ДЕЖУРСТВ',
-      sublabel: formatHighScoreLabel(callbacks.getHighScore()),
+      label: formatMenuLabel('3', 'АРХИВ ДЕЖУРСТВ'),
+      sublabel: formatArchiveSummaryLabel(),
       colorHex: 0x0ea5e9,
       colorText: '#38bdf8',
-      readonly: true,
-      action: () => {},
+      action: () => callbacks.onOpenArchive(),
     },
     {
       hotkey: '4',
@@ -1641,13 +1654,21 @@ export function createMainMenu(
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.repeat) return;
     if (!container.visible || container.alpha < 0.5 || isTransitioning) return;
-    if (callbacks.isBriefingOpen && callbacks.isBriefingOpen()) return;
+    if (
+      (callbacks.isBriefingOpen && callbacks.isBriefingOpen()) ||
+      (callbacks.isArchiveOpen && callbacks.isArchiveOpen())
+    ) {
+      return;
+    }
 
     if (e.key === '1' || e.key === 'Enter' || e.code === 'Space') {
       triggerStart();
     } else if (e.key === '2') {
       callbacks.playSelectSound?.();
       callbacks.onOpenBriefing();
+    } else if (e.key === '3') {
+      callbacks.playSelectSound?.();
+      callbacks.onOpenArchive();
     } else if (e.key === '4' || e.key.toLowerCase() === 'm') {
       callbacks.playSelectSound?.();
       const isMuted = callbacks.onToggleSound();
@@ -1712,10 +1733,7 @@ export function createMainMenu(
     container.setVisible(true);
     container.setAlpha(1);
     updateSoundButtonLabel(!callbacks.isMuted());
-
-    if (recordSubLabelRef) {
-      recordSubLabelRef.setText(formatHighScoreLabel(callbacks.getHighScore()));
-    }
+    refreshArchiveLabel();
 
     renderVolumetricRadar(scene.time.now, standbySweepAngle);
   };
@@ -1818,6 +1836,12 @@ export function createMainMenu(
     }
   };
 
+  const refreshArchiveLabel = () => {
+    if (recordSubLabelRef) {
+      recordSubLabelRef.setText(formatArchiveSummaryLabel());
+    }
+  };
+
   const isVisible = () => container.visible && container.alpha > 0.05;
 
   return {
@@ -1827,5 +1851,6 @@ export function createMainMenu(
     startTransition,
     update,
     isVisible,
+    refreshArchiveLabel,
   };
 }

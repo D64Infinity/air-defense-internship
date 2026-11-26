@@ -49,11 +49,17 @@ export interface GameInputActions {
   onCloseBriefing?: () => void;
 
   /**
+   * Закрытие журнала боевых дежурств (Пробел / Esc / Кнопка)
+   */
+  onCloseArchive?: () => void;
+
+  /**
    * Проверка активного состояния игры
    */
   isGameOver: () => boolean;
   isPaused: () => boolean;
   isBriefingOpen?: () => boolean;
+  isArchiveOpen?: () => boolean;
   isGameStarted?: () => boolean;
 }
 
@@ -71,6 +77,7 @@ export function setupGameInputs(
       actions.isGameOver() ||
       actions.isPaused() ||
       actions.isBriefingOpen?.() ||
+      actions.isArchiveOpen?.() ||
       pointer.x >= 640 ||
       (pointer.x < 150 && pointer.y < 65)
     ) {
@@ -93,7 +100,8 @@ export function setupGameInputs(
     actions.isGameStarted?.() !== false &&
     !actions.isGameOver() &&
     !actions.isPaused() &&
-    !actions.isBriefingOpen?.();
+    !actions.isBriefingOpen?.() &&
+    !actions.isArchiveOpen?.();
 
   const bindActiveKey = (key: string, callback: () => void) => {
     bindKey(key, () => {
@@ -101,8 +109,12 @@ export function setupGameInputs(
     });
   };
 
-  // Тактическая пауза / меню (P / Esc)
+  // Тактическая пауза / меню (P / Esc) и закрытие открытых терминальных окон
   const handleTogglePause = () => {
+    if (actions.isArchiveOpen?.()) {
+      actions.onCloseArchive?.();
+      return;
+    }
     if (actions.isGameStarted?.() === false) return;
     if (actions.isBriefingOpen?.()) {
       if (actions.isPaused()) {
@@ -113,7 +125,10 @@ export function setupGameInputs(
     }
   };
 
-  bindKey('keydown-P', handleTogglePause);
+  bindKey('keydown-P', () => {
+    if (actions.isArchiveOpen?.()) return;
+    handleTogglePause();
+  });
   bindKey('keydown-ESC', handleTogglePause);
 
   // Классификация целей (1, 2, 3 / NumPad 1, 2, 3)
@@ -134,10 +149,12 @@ export function setupGameInputs(
   bindActiveKey('keydown-SIX', () => actions.onBuyScan());
   bindActiveKey('keydown-NUMPAD_SIX', () => actions.onBuyScan());
 
-  // Пробел: закрытие инструктажа или перезапуск после поражения
+  // Пробел: закрытие инструктажа, архива или перезапуск после поражения
   bindKey('keydown-SPACE', () => {
     if (actions.isBriefingOpen?.()) {
       actions.onCloseBriefing?.();
+    } else if (actions.isArchiveOpen?.()) {
+      actions.onCloseArchive?.();
     } else if (actions.isGameOver()) {
       actions.onRestart();
     }
