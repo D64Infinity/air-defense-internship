@@ -1182,6 +1182,7 @@ export interface TargetSelectionData {
   scansAvailable: number;
   isScanning: boolean;
   showActionHint?: boolean;
+  highlightedRows?: [boolean, boolean, boolean, boolean];
 }
 
 /**
@@ -1203,6 +1204,7 @@ export interface TelemetryData {
   scanningTarget: GameTarget | null;
   scanProgress: number;
   showTelemetryHints?: boolean;
+  showCourseHint?: boolean;
 }
 
 /**
@@ -2186,15 +2188,38 @@ export function createHud(
     }
 
     const pulse = 0.5 + 0.5 * Math.sin(actionHintTime * 4.5);
-    const groupTop = startY - ACTION_HINT_CONFIG.padY;
-    const groupBottom = startY + (btnH + gap) * 3 + btnH + ACTION_HINT_CONFIG.padY;
+    let firstHighlighted = -1;
+    let lastHighlighted = -1;
+    let highlightedCount = 0;
+    for (let i = 0; i < 4; i++) {
+      if (actionHintEnabledRows[i]) {
+        if (firstHighlighted === -1) firstHighlighted = i;
+        lastHighlighted = i;
+        highlightedCount++;
+      }
+    }
+    if (highlightedCount === 0) {
+      for (const kt of keycapTexts) kt.setVisible(false);
+      return;
+    }
+
+    const spanTopIdx = highlightedCount === 1 ? firstHighlighted : 0;
+    const spanBottomIdx = highlightedCount === 1 ? lastHighlighted : 3;
+    const groupTop = startY + spanTopIdx * (btnH + gap) - ACTION_HINT_CONFIG.padY;
+    const groupBottom = startY + spanBottomIdx * (btnH + gap) + btnH + ACTION_HINT_CONFIG.padY;
     const groupLeft = btnX - ACTION_HINT_CONFIG.padX;
     const groupRight = btnX + btnW + ACTION_HINT_CONFIG.padX;
     const corner = ACTION_HINT_CONFIG.cornerLen;
 
-    // 1. Объединяющие тактические угловые скобки вокруг блока кнопок решений [1]–[4]
+    // 1. Тактические угловые скобки вокруг целевой кнопки (или блока кнопок)
+    const singleGlowColor = ACTION_HINT_CONFIG.rowGlowColors[firstHighlighted] ?? 0xfacc15;
     const groupAlpha = Math.min(1, 0.55 + 0.35 * pulse + actionHintFlash * 0.45);
-    const groupColor = actionHintFlash > 0.35 ? 0xfef08a : 0xfacc15;
+    const groupColor =
+      actionHintFlash > 0.35
+        ? 0xfef08a
+        : highlightedCount === 1
+          ? singleGlowColor
+          : 0xfacc15;
     decisionHintGfx.lineStyle(1.8, groupColor, groupAlpha);
     decisionHintGfx.beginPath();
     decisionHintGfx.moveTo(groupLeft, groupTop + corner);
@@ -2398,14 +2423,26 @@ export function createHud(
       !data.isScanning;
     buttons.scan.setEnabled(canScan);
 
-    const nextHintActive = Boolean(data.showActionHint && isSelected);
-    actionHintEnabledRows = [
+    const defaultRows: [boolean, boolean, boolean, boolean] = [
       isSelected,
       isSelected && data.interceptors > 0,
       isSelected,
       canScan,
     ];
-    if (nextHintActive && !actionHintActive) {
+    const requestedRows = data.highlightedRows;
+    const nextRows: [boolean, boolean, boolean, boolean] = requestedRows
+      ? [
+          defaultRows[0] && requestedRows[0],
+          defaultRows[1] && requestedRows[1],
+          defaultRows[2] && requestedRows[2],
+          defaultRows[3] && requestedRows[3],
+        ]
+      : defaultRows;
+
+    const nextHintActive = Boolean(data.showActionHint && isSelected && nextRows.some(Boolean));
+    const maskChanged = nextRows.some((val, idx) => val !== actionHintEnabledRows[idx]);
+    actionHintEnabledRows = nextRows;
+    if (nextHintActive && (!actionHintActive || maskChanged)) {
       actionHintTime = 0;
       actionHintFlash = 1.0;
     }
@@ -2421,10 +2458,9 @@ export function createHud(
       targetTelemetryText.setY(195);
       targetTelemetryText.setVisible(true);
       targetTelemetryText.setText(
-        'Выберите вспыхнувшую\n' +
-          'зелёной точкой цель\n' +
-          'на радаре для захвата\n' +
-          'и классификации.',
+        GAME_CONFIG.isMobile
+          ? 'Коснитесь вспыхнувшей\nцели на радаре, затем\nоцените данные или\nнажмите СКАНЕР.'
+          : 'Кликните по вспыхнувшей\nцели на радаре, затем\nоцените данные или\nпроверьте [4] СКАНОМ.',
       );
     }
   };
@@ -2508,7 +2544,31 @@ export function createHud(
       drawTelemetryRowAccent(0, 0xfbbf24);
     }
 
-    // 2. Сигнал ЭПР (слабое отражение vs плотный силуэт при умеренной скорости)
+    // 2. Курс относительно базы (ориентир геометрии на первых целях)
+    let courseText = `КУРС:       ${t.headingDeg}°`;
+    let courseColor = '#cbd5e1';
+    if (data.showCourseHint && !t.isScanned) {
+      const toBaseX = GAME_CONFIG.radarX - t.x;
+      const toBaseY = GAME_CONFIG.radarY - t.y;
+      const speedSq = t.vx * t.vx + t.vy * t.vy;
+      const dot = toBaseX * t.vx + toBaseY * t.vy;
+      if (dot > 0 && speedSq > 0) {
+        const perpDist = Math.abs(toBaseX * t.vy - toBaseY * t.vx) / Math.sqrt(speedSq);
+        if (perpDist <= GAME_CONFIG.dangerCloseRadius * 0.72) {
+          courseText += ' → НА БАЗУ';
+          courseColor = '#fca5a5';
+          drawTelemetryRowAccent(1, 0xef4444);
+        } else {
+          courseText += ' ↗ МИМО';
+          courseColor = '#94a3b8';
+        }
+      } else {
+        courseText += ' ↗ ОТ БАЗЫ';
+        courseColor = '#94a3b8';
+      }
+    }
+
+    // 3. Сигнал ЭПР (слабое отражение vs плотный силуэт при умеренной скорости)
     let eprText = `СИГНАЛ ЭПР: ${t.signal}%`;
     let eprColor = '#cbd5e1';
     if (showHints && t.signal < TELEMETRY_HINT_CONFIG.lowEprThreshold) {
@@ -2527,7 +2587,7 @@ export function createHud(
 
     const rows: Array<{ text: string; color: string }> = [
       { text: speedText, color: speedColor },
-      { text: `КУРС:       ${t.headingDeg}°`, color: '#cbd5e1' },
+      { text: courseText, color: courseColor },
       { text: eprText, color: eprColor },
       { text: `ДИСТАНЦИЯ:  ${dist} км`, color: '#cbd5e1' },
     ];

@@ -32,7 +32,7 @@ import { createAlertManager, type AlertManager } from './alerts';
 import { createMainMenu, type MainMenuManager } from './mainMenu';
 import { setupGameInputs } from './input';
 import { createRadarRender, type OnboardingStage, type RadarRender } from './radarRender';
-import { createSpawner, type TargetSpawner } from './spawner';
+import { createSpawner, SPAWNER_CONFIG, type TargetSpawner } from './spawner';
 import {
   createTacticalEventsManager,
   type TacticalEventManager,
@@ -71,6 +71,7 @@ import {
 
 export class GameScene extends Phaser.Scene {
   private static hasSeenBriefing = true; /* !!! ВРЕМЕННО TRUE !!! НЕ ТРОГАТЬ!!! */
+  private static hasGraduatedOnboarding = false;
 
   private ambientBg!: AmbientBackground;
   private radarRender!: RadarRender;
@@ -128,11 +129,11 @@ export class GameScene extends Phaser.Scene {
   private wave = 1;
   private waveTargetsToSpawn = GAME_CONFIG.waveTargetsBase;
   private waveHadFlaws = false;
+  private static readonly ONBOARDING_MAX_DECISIONS = 3;
   private isSpecialWaveCurrent = false;
   private isGameOver = false;
   private highScore = 0;
-  private hasSelectedAnyTarget = false;
-  private hasCompletedFirstAction = false;
+  private onboardingDecisionTargetIds = new Set<number>();
 
   // Таймеры эффектов
   private baseFlashTimer = 0;
@@ -145,8 +146,7 @@ export class GameScene extends Phaser.Scene {
     this.isGameOver = false;
     this.isPaused = false;
     this.isGameStarted = false;
-    this.hasSelectedAnyTarget = false;
-    this.hasCompletedFirstAction = false;
+    this.onboardingDecisionTargetIds.clear();
     this.baseHealth = GAME_CONFIG.maxBaseHealth;
     this.scoring.reset();
     this.armory.reset();
@@ -282,9 +282,6 @@ export class GameScene extends Phaser.Scene {
           return;
         }
         this.selectedTarget = found;
-        if (found && !this.hasSelectedAnyTarget) {
-          this.hasSelectedAnyTarget = true;
-        }
         this.updateTargetSelectionUI();
       },
       onTogglePause: () => this.togglePause(),
@@ -351,13 +348,20 @@ export class GameScene extends Phaser.Scene {
       this.waveTargetsToSpawn = Math.max(0, this.waveTargetsToSpawn - 1);
     }
 
+    const onboardingActive = this.isOnboardingActive();
+
     if (!this.tacticalEvents.isSpecialWaveActive()) {
       const newTarget = this.spawner.update(
         dt,
         this.wave,
         this.targets.length,
         this.waveTargetsToSpawn,
-        this.radarRender.beamAngle,
+        {
+          maxActiveOverride: onboardingActive
+            ? SPAWNER_CONFIG.wave1OnboardingMaxActive
+            : undefined,
+          isOnboardingActive: onboardingActive,
+        },
       );
       if (newTarget) {
         this.targets.push(newTarget);
@@ -453,9 +457,8 @@ export class GameScene extends Phaser.Scene {
       this.soundSystem.playThunderClap(pan);
     });
 
-    const onboardingStage: OnboardingStage = !this.hasSelectedAnyTarget
-      ? 'acquire'
-      : 'none';
+    const onboardingStage: OnboardingStage =
+      onboardingActive && this.selectedTarget === null ? 'acquire' : 'none';
 
     updateExplosions(this.explosions, dt);
     this.radarRender.renderDynamic({
@@ -825,7 +828,6 @@ export class GameScene extends Phaser.Scene {
     const res = this.armory.startScan(this.selectedTarget);
     this.showFeedback(res.message, res.color);
     if (res.success) {
-      this.hasCompletedFirstAction = true;
       this.updateScoreBoard();
       this.updateTargetSelectionUI();
     }
@@ -836,7 +838,6 @@ export class GameScene extends Phaser.Scene {
     const res = this.armory.buyInterceptor();
     this.showFeedback(res.message, res.color);
     if (res.success) {
-      this.hasCompletedFirstAction = true;
       this.updateScoreBoard();
       this.updateTargetSelectionUI();
     }
@@ -856,7 +857,6 @@ export class GameScene extends Phaser.Scene {
     const res = this.armory.buyScan();
     this.showFeedback(res.message, res.color);
     if (res.success) {
-      this.hasCompletedFirstAction = true;
       this.updateScoreBoard();
       this.updateTargetSelectionUI();
     }
@@ -916,7 +916,7 @@ export class GameScene extends Phaser.Scene {
         return;
       }
       target.markedAs = choice;
-      this.hasCompletedFirstAction = true;
+      this.onboardingDecisionTargetIds.add(target.id);
       if (choice === 'friend') {
         this.showFeedback(
           '[МЕТКА] ЦЕЛЬ ПРИНЯТА КАК СОЮЗНИК',
@@ -956,7 +956,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     target.isTargeted = true;
-    this.hasCompletedFirstAction = true;
+    this.onboardingDecisionTargetIds.add(target.id);
     this.soundSystem.playLaunch();
     this.showFeedback(
       '[ПУСК] ПЕРЕХВАТЧИК В ВОЗДУХЕ!',
@@ -1392,24 +1392,62 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
+  private isOnboardingActive(): boolean {
+    return (
+      !GameScene.hasGraduatedOnboarding &&
+      this.wave === 1 &&
+      this.onboardingDecisionTargetIds.size < GameScene.ONBOARDING_MAX_DECISIONS
+    );
+  }
+
   private updateTargetSelectionUI(): void {
+    const showFirstTargetGuide =
+      !GameScene.hasGraduatedOnboarding &&
+      this.wave === 1 &&
+      this.onboardingDecisionTargetIds.size === 0 &&
+      this.selectedTarget !== null;
+
+    let highlightedRows: [boolean, boolean, boolean, boolean] | undefined;
+    if (showFirstTargetGuide && this.selectedTarget) {
+      if (!this.selectedTarget.isScanned && this.armory.scansAvailable > 0) {
+        // Сначала ориентируем новичка на безопасную проверку сканером [4]
+        highlightedRows = [false, false, false, true];
+      } else if (this.selectedTarget.isScanned) {
+        // После скана подсвечиваем нужную кнопку решения по раскрытому типу
+        const category = GAME_CONFIG.targetTypes[this.selectedTarget.type].category;
+        highlightedRows = [
+          category === 'friend',
+          category === 'threat',
+          category === 'ignore',
+          false,
+        ];
+      } else {
+        highlightedRows = [true, true, true, false];
+      }
+    }
+
     this.hud.updateTargetSelectionUI({
       selectedTarget: this.selectedTarget,
       interceptors: this.armory.interceptors,
       scansAvailable: this.armory.scansAvailable,
       isScanning: this.armory.isScanning,
-      showActionHint: this.selectedTarget !== null && !this.hasCompletedFirstAction,
+      showActionHint: showFirstTargetGuide,
+      highlightedRows,
     });
   }
 
   private updateTelemetry(): void {
+    const onboardingActive = this.isOnboardingActive();
     this.hud.updateTelemetry({
       selectedTarget: this.selectedTarget,
       isScanning: this.armory.isScanning,
       scanningTarget: this.armory.scanningTarget,
       scanProgress: this.armory.scanProgress,
       showTelemetryHints:
-        this.stats.snapshot.correctDecisions < TELEMETRY_HINT_CONFIG.maxAssistedDecisions,
+        onboardingActive ||
+        (!GameScene.hasGraduatedOnboarding &&
+          this.stats.snapshot.correctDecisions < TELEMETRY_HINT_CONFIG.maxAssistedDecisions),
+      showCourseHint: onboardingActive,
     });
   }
 
@@ -1536,6 +1574,9 @@ export class GameScene extends Phaser.Scene {
     if (this.waveTargetsToSpawn <= 0 && this.targets.length === 0 && !this.isGameOver) {
       const completedSpecialWave = this.isSpecialWaveCurrent;
       this.wave++;
+      if (this.wave >= 2) {
+        GameScene.hasGraduatedOnboarding = true;
+      }
       this.waveTargetsToSpawn =
         GAME_CONFIG.waveTargetsBase + this.wave * GAME_CONFIG.waveTargetsIncrement;
       const waveInit = this.tacticalEvents.startWave(this.wave, this.waveTargetsToSpawn);

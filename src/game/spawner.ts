@@ -9,11 +9,14 @@ import {
  * Конфигурация спавна целей, прогрессии волн и маневрирования
  */
 export const SPAWNER_CONFIG = {
-  initialSpawnTimer: 2.9, // задержка первого спавна (с учётом 3.0с баннера «ВОЛНА 1» и ~0.15с подлёта луча)
+  initialSpawnTimer: 2.0, // спокойная пауза на старте перед первой целью с внешней кромки
   edgeSpawnInset: 2, // базовый отступ спавна внутрь от кромки радара (px)
   maneuverSpawnInset: 4, // защитный отступ спавна маневрирующих ракет от кромки (px)
-  openingLeadAngleRad: 0.35, // угол упреждения первого контакта перед лучом на старте игры (рад)
-  openingRadiusFactor: 0.78, // дистанция первого контакта на старте игры (доля радиуса радара)
+
+  // Мягкий темп в начале 1-й волны (на период встроенного мини-обучения)
+  wave1OnboardingMaxActive: 2,
+  wave1OnboardingIntervalMin: 4.0,
+  wave1OnboardingIntervalMax: 5.5,
 
   // Увеличение скорости целей с ростом волн
   waveSpeedStep: 0.04, // +4% к скорости за каждую волну выше 1-й
@@ -73,7 +76,7 @@ export interface TargetSpawner {
     wave: number,
     activeTargetsCount: number,
     targetsLeftInWave: number,
-    beamAngle?: number,
+    options?: { maxActiveOverride?: number; isOnboardingActive?: boolean },
   ) => GameTarget | null;
 
   /**
@@ -98,12 +101,10 @@ export interface TargetSpawner {
 export function createSpawner(): TargetSpawner {
   let nextTargetId = 1;
   let spawnTimer: number = SPAWNER_CONFIG.initialSpawnTimer;
-  let isOpeningContactPending = true;
 
   const reset = (): void => {
     nextTargetId = 1;
     spawnTimer = SPAWNER_CONFIG.initialSpawnTimer;
-    isOpeningContactPending = true;
   };
 
   const pickRandomType = (): TargetType => {
@@ -338,38 +339,41 @@ export function createSpawner(): TargetSpawner {
     wave: number,
     activeTargetsCount: number,
     targetsLeftInWave: number,
-    beamAngle = 0,
+    options?: { maxActiveOverride?: number; isOnboardingActive?: boolean },
   ): GameTarget | null => {
     if (targetsLeftInWave <= 0) return null;
 
     spawnTimer -= dt;
-    const maxActive = GAME_CONFIG.maxActiveTargetsBase + Math.floor(wave / 2);
+    const defaultMaxActive = GAME_CONFIG.maxActiveTargetsBase + Math.floor(wave / 2);
+    const maxActive =
+      options?.maxActiveOverride !== undefined
+        ? Math.min(defaultMaxActive, options.maxActiveOverride)
+        : defaultMaxActive;
 
     if (spawnTimer <= 0) {
-      const speedUp = Math.min(
-        SPAWNER_CONFIG.spawnIntervalSpeedUpMax,
-        (wave - 1) * SPAWNER_CONFIG.spawnIntervalSpeedUpStep,
-      );
-      spawnTimer = Phaser.Math.FloatBetween(
-        Math.max(
-          SPAWNER_CONFIG.spawnIntervalMinFloor,
-          GAME_CONFIG.spawnIntervalMinBase - speedUp,
-        ),
-        Math.max(
-          SPAWNER_CONFIG.spawnIntervalMaxFloor,
-          GAME_CONFIG.spawnIntervalMaxBase - speedUp,
-        ),
-      );
+      if (options?.isOnboardingActive) {
+        spawnTimer = Phaser.Math.FloatBetween(
+          SPAWNER_CONFIG.wave1OnboardingIntervalMin,
+          SPAWNER_CONFIG.wave1OnboardingIntervalMax,
+        );
+      } else {
+        const speedUp = Math.min(
+          SPAWNER_CONFIG.spawnIntervalSpeedUpMax,
+          (wave - 1) * SPAWNER_CONFIG.spawnIntervalSpeedUpStep,
+        );
+        spawnTimer = Phaser.Math.FloatBetween(
+          Math.max(
+            SPAWNER_CONFIG.spawnIntervalMinFloor,
+            GAME_CONFIG.spawnIntervalMinBase - speedUp,
+          ),
+          Math.max(
+            SPAWNER_CONFIG.spawnIntervalMaxFloor,
+            GAME_CONFIG.spawnIntervalMaxBase - speedUp,
+          ),
+        );
+      }
 
       if (activeTargetsCount < maxActive) {
-        if (isOpeningContactPending) {
-          isOpeningContactPending = false;
-          return spawnMissileAtAngle(
-            beamAngle + SPAWNER_CONFIG.openingLeadAngleRad,
-            wave,
-            SPAWNER_CONFIG.openingRadiusFactor,
-          );
-        }
         return spawnTargetAtEdge(wave);
       }
     }

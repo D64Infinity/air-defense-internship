@@ -755,10 +755,23 @@ export function createRadarRender(
     }
 
     const { radarX, radarY, colors } = GAME_CONFIG;
-    const focusTarget =
-      data.targets.find(
-        (t) => !t.isJammer && !t.isTerrainHugger && !t.isTargeted && t.alpha > 0.05,
-      ) ?? null;
+    const focusCandidates = data.targets.filter(
+      (t) =>
+        !t.isJammer &&
+        !t.isTerrainHugger &&
+        !t.isTargeted &&
+        !t.markedAs &&
+        t.alpha > 0.05,
+    );
+    let focusTarget: GameTarget | null = null;
+    let bestDist = Infinity;
+    for (const candidate of focusCandidates) {
+      const d = Math.hypot(candidate.x - radarX, candidate.y - radarY);
+      if (d < bestDist) {
+        bestDist = d;
+        focusTarget = candidate;
+      }
+    }
 
     if (!focusTarget) {
       hintLabelText.setVisible(false);
