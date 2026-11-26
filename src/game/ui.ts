@@ -1190,10 +1190,11 @@ export interface TargetSelectionData {
  */
 export const TELEMETRY_HINT_CONFIG = {
   maxAssistedDecisions: 4, // после 4 верных классификаций подсказки в цифрах отключаются
-  highSpeedThreshold: 42, // порог быстрой цели (крылатые ракеты / быстрые ловушки)
+  speedDisplayScale: 20, // коэффициент перевода скорости px/сек в реалистичные тактические км/ч
+  highSpeedThreshold: 42, // порог быстрой цели (крылатые ракеты / быстрые ловушки, >= 840 км/ч)
   lowEprThreshold: 48, // порог слабого отражения ЭПР (ловушки и часть ракет)
   highEprThreshold: 75, // порог плотного сигнала (союзники и бомбардировщики)
-  denseEprMaxSpeed: 35, // верхняя граница скорости для интриги «союзник / бомбардировщик»
+  denseEprMaxSpeed: 35, // верхняя граница скорости для интриги «союзник / бомбардировщик» (<= 700 км/ч)
   rowStartY: 212,
   rowStepY: 19,
 } as const;
@@ -2408,6 +2409,27 @@ export function createHud(
     buttons.buyScan.setEnabled(canBuyScan);
   };
 
+  // Кэш последних строк и цветов телеметрии (чтобы не перерисовывать WebGL-текстуру текста каждый кадр)
+  const textRenderCache = new WeakMap<
+    Phaser.GameObjects.Text,
+    { text: string; color?: string }
+  >();
+
+  const syncTextObject = (
+    obj: Phaser.GameObjects.Text,
+    nextText: string,
+    nextColor?: string,
+  ) => {
+    const prev = textRenderCache.get(obj);
+    if (!prev || prev.text !== nextText) {
+      obj.setText(nextText);
+    }
+    if (nextColor !== undefined && (!prev || prev.color !== nextColor)) {
+      obj.setColor(nextColor);
+    }
+    textRenderCache.set(obj, { text: nextText, color: nextColor ?? prev?.color });
+  };
+
   // 7. Обновление доступности кнопок по выбранной цели
   const updateTargetSelectionUI = (data: TargetSelectionData) => {
     const isSelected = data.selectedTarget !== null;
@@ -2452,12 +2474,12 @@ export function createHud(
     if (!isSelected) {
       telemetryAccentGfx.clear();
       for (const line of telemetryLines) line.setVisible(false);
-      targetTelemetryTitle.setText('ОБЪЕКТ СЛЕЖЕНИЯ: НЕТ');
-      targetTelemetryTitle.setColor('#94a3b8');
-      targetTelemetryType.setText('');
+      syncTextObject(targetTelemetryTitle, 'ОБЪЕКТ СЛЕЖЕНИЯ: НЕТ', '#94a3b8');
+      syncTextObject(targetTelemetryType, '');
       targetTelemetryText.setY(195);
       targetTelemetryText.setVisible(true);
-      targetTelemetryText.setText(
+      syncTextObject(
+        targetTelemetryText,
         GAME_CONFIG.isMobile
           ? 'Коснитесь вспыхнувшей\nцели на радаре, затем\nоцените данные или\nнажмите СКАНЕР.'
           : 'Кликните по вспыхнувшей\nцели на радаре, затем\nоцените данные или\nпроверьте [4] СКАНОМ.',
@@ -2492,8 +2514,9 @@ export function createHud(
         : t.markedAs === 'ignore'
           ? ' [ПОМЕХА]'
           : '';
-    targetTelemetryTitle.setText(`ОБЪЕКТ СЛЕЖЕНИЯ: #TRK-${t.id}${markBadge}`);
-    targetTelemetryTitle.setColor(
+    syncTextObject(
+      targetTelemetryTitle,
+      `ОБЪЕКТ СЛЕЖЕНИЯ: #TRK-${t.id}${markBadge}`,
       t.markedAs === 'friend'
         ? '#4ade80'
         : t.markedAs === 'ignore'
@@ -2528,15 +2551,15 @@ export function createHud(
       typeColor = '#38bdf8';
     }
 
-    targetTelemetryType.setText(typeStr);
-    targetTelemetryType.setColor(typeColor);
+    syncTextObject(targetTelemetryType, typeStr, typeColor);
     targetTelemetryText.setVisible(false);
     telemetryAccentGfx.clear();
 
     const showHints = Boolean(data.showTelemetryHints && !t.isScanned);
 
     // 1. Скорость (аномально быстрые цели: крылатые ракеты / редкие быстрые ловушки)
-    let speedText = `СКОРОСТЬ:   ${t.speed} км/ч`;
+    const displaySpeedKmh = Math.round(t.speed * TELEMETRY_HINT_CONFIG.speedDisplayScale);
+    let speedText = `СКОРОСТЬ:   ${displaySpeedKmh} км/ч`;
     let speedColor = '#cbd5e1';
     if (showHints && t.speed >= TELEMETRY_HINT_CONFIG.highSpeedThreshold) {
       speedText += ' ▲ БЫСТРАЯ';
@@ -2593,8 +2616,7 @@ export function createHud(
     ];
 
     rows.forEach((row, idx) => {
-      telemetryLines[idx].setText(row.text);
-      telemetryLines[idx].setColor(row.color);
+      syncTextObject(telemetryLines[idx], row.text, row.color);
       telemetryLines[idx].setVisible(true);
     });
   };

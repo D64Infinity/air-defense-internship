@@ -100,7 +100,7 @@ export function createRadarRender(
 ): RadarRender {
   const staticGraphics = scene.add.graphics();
   const dynamicGraphics = scene.add.graphics();
-  const hintLabelText = scene.add.text(0, 0, '', {
+  const hintLabelText = scene.add.text(0, 0, RADAR_ONBOARDING_CONFIG.acquireText, {
     fontFamily: '"Cascadia Mono", Consolas, monospace',
     fontSize: '10px',
     color: '#fde047',
@@ -804,9 +804,6 @@ export function createRadarRender(
       dynamicGraphics.lineTo(tx + Math.cos(a) * rOut, ty + Math.sin(a) * rOut);
     }
     dynamicGraphics.strokePath();
-
-    hintLabelText.setText(RADAR_ONBOARDING_CONFIG.acquireText);
-    hintLabelText.setColor('#fde047');
 
     // Внутренняя выноска-лидер всегда направлена к центру круга, чтобы оставаться внутри купола
     const dirX = tx >= radarX ? -1 : 1;

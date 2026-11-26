@@ -25,8 +25,8 @@ export const GAME_CONFIG = {
   canvasWidth: 960,
   canvasHeight: 640,
 
-  // Разрешение растеризации шрифтов (суперсэмплинг для чёткости текста на мониторах)
-  textResolution: typeof window !== 'undefined' ? Math.max(Math.ceil(window.devicePixelRatio || 1), 2) : 2,
+  // Разрешение растеризации шрифтов (2x — оптимальный баланс чёткости и расхода памяти на телефонах с DPR 3–4)
+  textResolution: typeof window !== 'undefined' ? Math.min(Math.max(Math.ceil(window.devicePixelRatio || 1), 2), 2) : 2,
 
   // Геометрия дисплея радара
   radarX: 345,

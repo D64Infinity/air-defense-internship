@@ -214,9 +214,10 @@ export function createMainMenu(
 
   container.add([solidBgGfx, ambientRoomGfx, stencilText]);
 
-  // 2. СЛОЙ 2.5D ОБЪЁМНОГО РАДАРА
-  const radar3dGfx = scene.add.graphics();
-  container.add(radar3dGfx);
+  // 2. СЛОЙ 2.5D ОБЪЁМНОГО РАДАРА (статичный корпус/сетка + динамика луча и приборов)
+  const radarStaticGfx = scene.add.graphics();
+  const radarDynamicGfx = scene.add.graphics();
+  container.add([radarStaticGfx, radarDynamicGfx]);
 
   // Отдельный слой гравировки шасси тумбы (растворяется вместе с тумбой при старте)
   const chassisLabelsContainer = scene.add.container(0, 0);
@@ -258,6 +259,7 @@ export function createMainMenu(
   let easterOmegaAngle = 1.25;
   let activePings: StandbyPing[] = [];
   let crtSpecks: StandbyNoiseSpeck[] = [];
+  let isStaticDirty = true;
 
   // Координаты элементов управления на шасси (единая сетка без перекрытий)
   const gaugePos = { x: menuRadarX - menuRx * 0.76, y: menuRadarY + menuRy * 1.13, r: 21 };
@@ -336,9 +338,6 @@ export function createMainMenu(
    * - Дежурные фосфорные эхо-метки целей в эфире.
    */
   const renderVolumetricRadar = (timeNow: number, sweepAngle: number) => {
-    radar3dGfx.clear();
-    ignitionFlashGfx.clear();
-
     const cx = currentCenterX;
     const cy = currentCenterY;
     const rx = currentRx;
@@ -347,336 +346,11 @@ export function createMainMenu(
     const pedestalA = currentPedestalAlpha;
     const gain = MENU_STANDBY_CONFIG.gainLevels[gainIndex] ?? 1.0;
     const isAmberMode = phosphorMode === 'amber' && currentIgnitionProgress < 0.25;
+    const isSoundOn = !callbacks.isMuted();
 
     chassisLabelsContainer.setAlpha(pedestalA);
     chassisLabelsContainer.setVisible(pedestalA > 0.02);
 
-    // «Дыхание» фосфора ЭЛТ в дежурном режиме
-    const breathing = 0.85 + 0.15 * Math.sin(timeNow * 0.0035);
-
-    // ==========================================
-    // A. ПРИБОРНАЯ ТУМБА И АНАЛОГОВЫЕ ПРИБОРЫ (ШАССИ)
-    // ==========================================
-    if (pedestalA > 0.01) {
-      // 1. Мягкая диффузная тень аппарата на металлическом столе
-      radar3dGfx.fillStyle(0x000305, 0.45 * pedestalA);
-      radar3dGfx.fillEllipse(cx, cy + ry * 1.58, rx * 2.8, ry * 1.5);
-      radar3dGfx.fillStyle(0x010508, 0.75 * pedestalA);
-      radar3dGfx.fillRoundedRect(cx - rx * 1.28, cy + ry * 0.45, rx * 2.56, ry * 1.55, 14);
-
-      // 2. Чугунная плита шасси (трапеция в перспективе)
-      radar3dGfx.fillStyle(0x040d10, 0.98 * pedestalA);
-      radar3dGfx.beginPath();
-      radar3dGfx.moveTo(cx - rx * 1.25, cy - ry * 0.35);
-      radar3dGfx.lineTo(cx + rx * 1.25, cy - ry * 0.35);
-      radar3dGfx.lineTo(cx + rx * 1.35, cy + ry * 1.58);
-      radar3dGfx.lineTo(cx - rx * 1.35, cy + ry * 1.58);
-      radar3dGfx.closePath();
-      radar3dGfx.fillPath();
-
-      // Гермоввод (сальник) кабеля на левом торце шасси
-      const glandX = cx - rx * 1.32;
-      const glandY = cy + ry * 1.28;
-      radar3dGfx.fillStyle(0x1e293b, 0.96 * pedestalA);
-      radar3dGfx.fillRoundedRect(glandX - 5, glandY - 7, 10, 14, 3);
-      radar3dGfx.lineStyle(1.2, 0x475569, 0.85 * pedestalA);
-      radar3dGfx.strokeRoundedRect(glandX - 5, glandY - 7, 10, 14, 3);
-
-      // Верхняя светлая фаска (отблеск от настольной лампы)
-      radar3dGfx.lineStyle(2.2, 0x224942, 0.95 * pedestalA);
-      radar3dGfx.beginPath();
-      radar3dGfx.moveTo(cx - rx * 1.25, cy - ry * 0.35);
-      radar3dGfx.lineTo(cx + rx * 1.25, cy - ry * 0.35);
-      radar3dGfx.strokePath();
-
-      // Тёмная окантовка боковин плиты
-      radar3dGfx.lineStyle(1.8, 0x0f2420, 0.85 * pedestalA);
-      radar3dGfx.beginPath();
-      radar3dGfx.moveTo(cx - rx * 1.25, cy - ry * 0.35);
-      radar3dGfx.lineTo(cx - rx * 1.35, cy + ry * 1.58);
-      radar3dGfx.lineTo(cx + rx * 1.35, cy + ry * 1.58);
-      radar3dGfx.lineTo(cx + rx * 1.25, cy - ry * 0.35);
-      radar3dGfx.strokePath();
-
-      // Лицевая приборная панель (глубокий военный оливково-серый металл)
-      radar3dGfx.fillStyle(0x081917, 0.96 * pedestalA);
-      radar3dGfx.beginPath();
-      radar3dGfx.moveTo(cx - rx * 1.20, cy - ry * 0.25);
-      radar3dGfx.lineTo(cx + rx * 1.20, cy - ry * 0.25);
-      radar3dGfx.lineTo(cx + rx * 1.28, cy + ry * 1.52);
-      radar3dGfx.lineTo(cx - rx * 1.28, cy + ry * 1.52);
-      radar3dGfx.closePath();
-      radar3dGfx.fillPath();
-
-      // Верхняя световая грань панели
-      radar3dGfx.lineStyle(1.4, 0x2d5c53, 0.85 * pedestalA);
-      radar3dGfx.beginPath();
-      radar3dGfx.moveTo(cx - rx * 1.20, cy - ry * 0.25);
-      radar3dGfx.lineTo(cx + rx * 1.20, cy - ry * 0.25);
-      radar3dGfx.strokePath();
-
-      // Вентиляционные жалюзи магнетрона (чисто между 4-й кнопкой и блоком тумблеров)
-      for (let i = 0; i < 3; i++) {
-        const slotY = cy + ry * 1.02 + i * 7;
-        radar3dGfx.fillStyle(0x010507, 0.95 * pedestalA);
-        radar3dGfx.fillRoundedRect(cx - 72, slotY, 144, 3.8, 1.8);
-        radar3dGfx.lineStyle(1.0, 0x1f473e, 0.7 * pedestalA);
-        radar3dGfx.lineBetween(cx - 72, slotY + 3.8, cx + 72, slotY + 3.8);
-      }
-
-      // Компактная заводская табличка по центру между тумблерами
-      const plaqueW = 68;
-      const plaqueH = 16;
-      const plaqueY = cy + ry * 1.33 - plaqueH / 2;
-      radar3dGfx.fillStyle(isEasterEggActive ? 0x271a07 : 0x0b1d1a, 0.96 * pedestalA);
-      radar3dGfx.fillRect(cx - plaqueW / 2, plaqueY, plaqueW, plaqueH);
-      radar3dGfx.lineStyle(1.2, isEasterEggActive ? 0xd97706 : 0x334d47, 0.9 * pedestalA);
-      radar3dGfx.strokeRect(cx - plaqueW / 2, plaqueY, plaqueW, plaqueH);
-      radar3dGfx.fillStyle(0x94a3b8, 0.85 * pedestalA);
-      radar3dGfx.fillCircle(cx - plaqueW / 2 + 4, plaqueY + plaqueH / 2, 1.4);
-      radar3dGfx.fillCircle(cx + plaqueW / 2 - 4, plaqueY + plaqueH / 2, 1.4);
-
-      // 4 массивных крепёжных болта по углам плиты с глубокими шлицами
-      const bolts = [
-        { x: cx - rx * 1.22, y: cy + ry * 1.48 },
-        { x: cx + rx * 1.22, y: cy + ry * 1.48 },
-        { x: cx - rx * 1.15, y: cy - ry * 0.20 },
-        { x: cx + rx * 1.15, y: cy - ry * 0.20 },
-      ];
-      for (const b of bolts) {
-        radar3dGfx.fillStyle(0x020709, 0.8 * pedestalA);
-        radar3dGfx.fillCircle(b.x + 1, b.y + 1, 5);
-        radar3dGfx.fillStyle(0x334155, 0.95 * pedestalA);
-        radar3dGfx.fillCircle(b.x, b.y, 4.5);
-        radar3dGfx.lineStyle(1.2, 0x0f172a, 0.95 * pedestalA);
-        radar3dGfx.strokeCircle(b.x, b.y, 4.5);
-        radar3dGfx.lineBetween(b.x - 2.5, b.y, b.x + 2.5, b.y);
-        radar3dGfx.lineBetween(b.x, b.y - 2.5, b.x, b.y + 2.5);
-      }
-
-      // 3. АНАЛОГОВЫЙ СТРЕЛОЧНЫЙ ВОЛЬТМЕТР 6.3V (Слева внизу на панели)
-      const gaugeX = cx - rx * 0.76;
-      const gaugeY = cy + ry * 1.13;
-      const gaugeR = gaugePos.r;
-
-      radar3dGfx.fillStyle(0x020608, 0.7 * pedestalA);
-      radar3dGfx.fillCircle(gaugeX + 1.5, gaugeY + 2, gaugeR + 2);
-
-      radar3dGfx.fillStyle(0x0c1a1e, 0.98 * pedestalA);
-      radar3dGfx.fillCircle(gaugeX, gaugeY, gaugeR + 2.5);
-      radar3dGfx.lineStyle(1.8, 0x334155, 0.9 * pedestalA);
-      radar3dGfx.strokeCircle(gaugeX, gaugeY, gaugeR + 2.5);
-
-      radar3dGfx.fillStyle(0x04130d, 0.98 * pedestalA);
-      radar3dGfx.fillCircle(gaugeX, gaugeY, gaugeR);
-      radar3dGfx.fillStyle(0xd97706, (0.12 + 0.04 * gain) * pedestalA * breathing);
-      radar3dGfx.fillCircle(gaugeX, gaugeY, gaugeR - 2);
-
-      radar3dGfx.lineStyle(1.2, 0x475569, 0.75 * pedestalA);
-      radar3dGfx.beginPath();
-      radar3dGfx.arc(gaugeX, gaugeY, gaugeR - 5, Math.PI * 0.82, Math.PI * 1.78, false);
-      radar3dGfx.strokePath();
-
-      // Зелёная рабочая зона и красный сектор перегрузки справа
-      radar3dGfx.lineStyle(2.2, 0x22c55e, 0.85 * pedestalA);
-      radar3dGfx.beginPath();
-      radar3dGfx.arc(gaugeX, gaugeY, gaugeR - 5, Math.PI * 1.20, Math.PI * 1.52, false);
-      radar3dGfx.strokePath();
-      radar3dGfx.lineStyle(2.2, 0xef4444, 0.85 * pedestalA);
-      radar3dGfx.beginPath();
-      radar3dGfx.arc(gaugeX, gaugeY, gaugeR - 5, Math.PI * 1.60, Math.PI * 1.78, false);
-      radar3dGfx.strokePath();
-
-      for (let a = Math.PI * 0.85; a <= Math.PI * 1.75; a += Math.PI * 0.18) {
-        radar3dGfx.lineStyle(1.0, 0x94a3b8, 0.7 * pedestalA);
-        radar3dGfx.lineBetween(
-          gaugeX + Math.cos(a) * (gaugeR - 7),
-          gaugeY + Math.sin(a) * (gaugeR - 7),
-          gaugeX + Math.cos(a) * (gaugeR - 4),
-          gaugeY + Math.sin(a) * (gaugeR - 4),
-        );
-      }
-
-      // Стрелка прибора (учитывает уровень усиления ПРД, режим пасхалки и отклики)
-      const needleJitter = Math.sin(timeNow * 0.016) * 0.038;
-      const gainLoadOffset = (gainIndex - MENU_STANDBY_CONFIG.defaultGainIndex) * 0.055;
-      const easterOffset = isEasterEggActive ? 0.24 : 0;
-      const needleAngle = Phaser.Math.Clamp(
-        Math.PI * 1.36 + needleJitter + gainLoadOffset + easterOffset + needleHoverOffset,
-        Math.PI * 0.88,
-        Math.PI * 1.76,
-      );
-      radar3dGfx.lineStyle(1.6, isEasterEggActive ? 0xf87171 : 0xf59e0b, 0.98 * pedestalA);
-      radar3dGfx.beginPath();
-      radar3dGfx.moveTo(gaugeX, gaugeY + 2);
-      radar3dGfx.lineTo(
-        gaugeX + Math.cos(needleAngle) * (gaugeR - 5),
-        gaugeY + Math.sin(needleAngle) * (gaugeR - 5),
-      );
-      radar3dGfx.strokePath();
-
-      radar3dGfx.fillStyle(0xf8fafc, 0.95 * pedestalA);
-      radar3dGfx.fillCircle(gaugeX, gaugeY + 2, 2.8);
-
-      radar3dGfx.lineStyle(1.5, 0xffffff, 0.28 * pedestalA);
-      radar3dGfx.beginPath();
-      radar3dGfx.arc(gaugeX - 3, gaugeY - 3, gaugeR - 6, Math.PI * 1.1, Math.PI * 1.6, false);
-      radar3dGfx.strokePath();
-
-      // 4. ЛИМБ РЕГУЛИРОВКИ УСИЛЕНИЯ ПРД (Справа внизу на панели, 5 положений)
-      const dialX = cx + rx * 0.76;
-      const dialY = cy + ry * 1.13;
-      const dialR = dialPos.r;
-
-      radar3dGfx.fillStyle(0x020608, 0.75 * pedestalA);
-      radar3dGfx.fillCircle(dialX + 2, dialY + 2, dialR + 3);
-
-      radar3dGfx.fillStyle(0x0c1a1e, 0.98 * pedestalA);
-      radar3dGfx.fillCircle(dialX, dialY, dialR + 3);
-      radar3dGfx.lineStyle(1.8, 0x334155, 0.85 * pedestalA);
-      radar3dGfx.strokeCircle(dialX, dialY, dialR + 3);
-
-      radar3dGfx.fillStyle(0x061413, 0.98 * pedestalA);
-      radar3dGfx.fillCircle(dialX, dialY, dialR);
-
-      // 5 позиционных засечек усиления вокруг лимба
-      for (let lvl = 0; lvl < MENU_STANDBY_CONFIG.gainLevels.length; lvl++) {
-        const notchA = -Math.PI / 2 + (lvl - 2) * MENU_STANDBY_CONFIG.gainDialStepRad;
-        const isCurrent = lvl === gainIndex;
-        const dotColor = isCurrent ? (isAmberMode ? 0xfbbf24 : 0x4ade80) : 0x64748b;
-        radar3dGfx.fillStyle(dotColor, (isCurrent ? 0.95 : 0.65) * pedestalA);
-        radar3dGfx.fillCircle(
-          dialX + Math.cos(notchA) * (dialR + 5.5),
-          dialY + Math.sin(notchA) * (dialR + 5.5),
-          isCurrent ? 2.0 : 1.3,
-        );
-      }
-
-      // Рифление ручки лимба и фаска
-      radar3dGfx.lineStyle(1.1, 0x334155, 0.65 * pedestalA);
-      for (let a = 0; a < Math.PI * 2; a += Math.PI / 6) {
-        radar3dGfx.lineBetween(
-          dialX + Math.cos(a) * (dialR - 4),
-          dialY + Math.sin(a) * (dialR - 4),
-          dialX + Math.cos(a) * dialR,
-          dialY + Math.sin(a) * dialR,
-        );
-      }
-      radar3dGfx.fillStyle(0x0b1f1c, 0.98 * pedestalA);
-      radar3dGfx.fillCircle(dialX, dialY, dialR - 5);
-      radar3dGfx.lineStyle(1.2, 0x475569, 0.6 * pedestalA);
-      radar3dGfx.strokeCircle(dialX, dialY, dialR - 5);
-
-      const dialAngle = -Math.PI / 2 + (gainIndex - 2) * MENU_STANDBY_CONFIG.gainDialStepRad;
-      const pointerColor = isAmberMode ? 0xfbbf24 : 0x86efac;
-      radar3dGfx.lineStyle(2.2, pointerColor, 0.95 * pedestalA);
-      radar3dGfx.lineBetween(
-        dialX + Math.cos(dialAngle) * 3,
-        dialY + Math.sin(dialAngle) * 3,
-        dialX + Math.cos(dialAngle) * (dialR - 3),
-        dialY + Math.sin(dialAngle) * (dialR - 3),
-      );
-      radar3dGfx.fillStyle(0xe2e8f0, 0.9 * pedestalA);
-      radar3dGfx.fillCircle(dialX, dialY, 2.5);
-
-      // 5. ДВА ИНТЕРАКТИВНЫХ ТУМБЛЕРА П2Т (Левый: РЕЖИМ ЭЛТ, Правый: ЗВУК)
-      const isSoundOn = !callbacks.isMuted();
-      const switches = [
-        {
-          x: cx - 52,
-          y: cy + ry * 1.33,
-          ledColor: phosphorMode === 'amber' ? 0xf59e0b : 0x22c55e,
-          isUp: phosphorMode === 'emerald',
-          isLit: true,
-        },
-        {
-          x: cx + 52,
-          y: cy + ry * 1.33,
-          ledColor: 0xf59e0b,
-          isUp: isSoundOn,
-          isLit: isSoundOn,
-        },
-      ];
-      for (const sw of switches) {
-        // Литая металлическая база тумблера на чистой панели ниже жалюзи
-        radar3dGfx.fillStyle(0x0c1626, 0.95 * pedestalA);
-        radar3dGfx.fillRect(sw.x - 13, sw.y - 8, 26, 16);
-        radar3dGfx.lineStyle(1.3, 0x334155, 0.85 * pedestalA);
-        radar3dGfx.strokeRect(sw.x - 13, sw.y - 8, 26, 16);
-
-        // Шестигранная гайка в основании рычажка
-        radar3dGfx.fillStyle(0x1e293b, 0.9 * pedestalA);
-        radar3dGfx.fillCircle(sw.x, sw.y, 4.8);
-
-        // Светодиодный индикатор с отражённым бликом на панели
-        if (sw.isLit) {
-          radar3dGfx.fillStyle(sw.ledColor, 0.16 * pedestalA * breathing);
-          radar3dGfx.fillCircle(sw.x, sw.y - 14, 9);
-          radar3dGfx.fillStyle(sw.ledColor, 0.42 * pedestalA * breathing);
-          radar3dGfx.fillCircle(sw.x, sw.y - 14, 5.2);
-          radar3dGfx.fillStyle(sw.ledColor, 0.95 * pedestalA);
-          radar3dGfx.fillCircle(sw.x, sw.y - 14, 2.5);
-          radar3dGfx.fillStyle(0xffffff, 0.85 * pedestalA);
-          radar3dGfx.fillCircle(sw.x, sw.y - 14, 1.0);
-        } else {
-          radar3dGfx.fillStyle(0x1e293b, 0.95 * pedestalA);
-          radar3dGfx.fillCircle(sw.x, sw.y - 14, 2.5);
-          radar3dGfx.lineStyle(1.0, 0x334155, 0.8 * pedestalA);
-          radar3dGfx.strokeCircle(sw.x, sw.y - 14, 2.5);
-        }
-
-        // Хромированный рычажок тумблера (вверх или вниз по состоянию)
-        const leverEndY = sw.isUp ? sw.y - 7 : sw.y + 7;
-        radar3dGfx.lineStyle(3.0, 0x64748b, 0.95 * pedestalA);
-        radar3dGfx.lineBetween(sw.x, sw.y, sw.x, leverEndY);
-        radar3dGfx.lineStyle(1.4, 0xf1f5f9, 0.95 * pedestalA);
-        radar3dGfx.lineBetween(sw.x - 0.5, sw.y, sw.x - 0.5, leverEndY);
-        radar3dGfx.fillStyle(0xf8fafc, 0.95 * pedestalA);
-        radar3dGfx.fillCircle(sw.x, leverEndY, 2.6);
-      }
-    }
-
-    // ==========================================
-    // B. ГОФРИРОВАННАЯ РЕЗИНОВАЯ БЛЕНДА ТУБУСА (3D ОБЪЁМ)
-    // ==========================================
-    if (depth > 1.5) {
-      // Глубокий конический раструб тубуса:
-      const folds = [
-        { yOff: -depth * 0.65, scale: 1.15, baseColor: 0x020709, highlightColor: 0x163430 },
-        { yOff: -depth * 0.30, scale: 1.09, baseColor: 0x061417, highlightColor: 0x1c443e },
-        { yOff: depth * 0.08, scale: 1.04, baseColor: 0x091c20, highlightColor: 0x23524b },
-      ];
-
-      for (const f of folds) {
-        // Тёмное тело складки резины
-        radar3dGfx.fillStyle(f.baseColor, 0.96);
-        radar3dGfx.fillEllipse(cx, cy + f.yOff, rx * f.scale * 2, ry * f.scale * 2);
-        // Рельефное ребро складки с хайлайтом
-        radar3dGfx.lineStyle(1.4, f.highlightColor, 0.85);
-        radar3dGfx.strokeEllipse(cx, cy + f.yOff, rx * f.scale * 2, ry * f.scale * 2);
-      }
-
-      // Лицевое массивное резиновое кольцо наглазника (Front Bezel Rim)
-      radar3dGfx.lineStyle(4.5, 0x162624, 0.98);
-      radar3dGfx.strokeEllipse(cx, cy, rx * 1.02 * 2, ry * 1.02 * 2);
-
-      // Верхняя фаска отблеска на резине от потолочной лампы
-      radar3dGfx.lineStyle(2.0, 0x64748b, 0.65 * (depth / menuVisorDepth));
-      radar3dGfx.beginPath();
-      const rimSteps = 12;
-      for (let i = 0; i <= rimSteps; i++) {
-        const a = Math.PI * 1.15 + (Math.PI * 0.70 * i) / rimSteps;
-        const hx = cx + Math.cos(a) * rx * 1.01;
-        const hy = cy + Math.sin(a) * ry * 1.01;
-        if (i === 0) radar3dGfx.moveTo(hx, hy);
-        else radar3dGfx.lineTo(hx, hy);
-      }
-      radar3dGfx.strokePath();
-    }
-
-    // ==========================================
-    // C. СТЕКЛО КИНЕСКОПА ЭЛТ, ШКАЛЫ ДАЛЬНОСТИ И БЕЗЕЛЬ (СИНХРОНИЗИРОВАНО С БОЕВЫМ РАДАРОМ)
-    // ==========================================
     const baseColors = GAME_CONFIG.colors;
     const screenColors = isAmberMode
       ? {
@@ -706,90 +380,399 @@ export function createMainMenu(
           blipCore: baseColors.blipCore,
         };
 
-    // 1. Постоянное мягкое рассеивание люминофора наружу (Ambient Glass Halo)
-    const haloSteps = [
-      { d: 40, alpha: 0.008 },
-      { d: 26, alpha: 0.02 },
-      { d: 15, alpha: 0.04 },
-      { d: 6, alpha: 0.07 },
-    ];
-    for (const h of haloSteps) {
-      const hRx = rx + h.d * (rx / combatRadarRadius);
-      const hRy = ry + h.d * (ry / combatRadarRadius);
-      radar3dGfx.lineStyle(6, screenColors.blipHalo, Math.min(0.14, h.alpha * gain));
-      radar3dGfx.strokeEllipse(cx, cy, hRx * 2, hRy * 2);
+    // «Дыхание» фосфора ЭЛТ в дежурном режиме
+    const breathing = 0.85 + 0.15 * Math.sin(timeNow * 0.0035);
+
+    const gaugeX = cx - rx * 0.76;
+    const gaugeY = cy + ry * 1.13;
+    const gaugeR = gaugePos.r;
+
+    // ==========================================
+    // 1. СТАТИЧНЫЙ СЛОЙ (перерисовывается только при смене режима/тумблеров/анимации перехода)
+    // ==========================================
+    if (isStaticDirty) {
+      isStaticDirty = false;
+      radarStaticGfx.clear();
+
+      if (pedestalA > 0.01) {
+        // 1. Мягкая диффузная тень аппарата на металлическом столе
+        radarStaticGfx.fillStyle(0x000305, 0.45 * pedestalA);
+        radarStaticGfx.fillEllipse(cx, cy + ry * 1.58, rx * 2.8, ry * 1.5);
+        radarStaticGfx.fillStyle(0x010508, 0.75 * pedestalA);
+        radarStaticGfx.fillRoundedRect(cx - rx * 1.28, cy + ry * 0.45, rx * 2.56, ry * 1.55, 14);
+
+        // 2. Чугунная плита шасси (трапеция в перспективе)
+        radarStaticGfx.fillStyle(0x040d10, 0.98 * pedestalA);
+        radarStaticGfx.beginPath();
+        radarStaticGfx.moveTo(cx - rx * 1.25, cy - ry * 0.35);
+        radarStaticGfx.lineTo(cx + rx * 1.25, cy - ry * 0.35);
+        radarStaticGfx.lineTo(cx + rx * 1.35, cy + ry * 1.58);
+        radarStaticGfx.lineTo(cx - rx * 1.35, cy + ry * 1.58);
+        radarStaticGfx.closePath();
+        radarStaticGfx.fillPath();
+
+        // Гермоввод (сальник) кабеля на левом торце шасси
+        const glandX = cx - rx * 1.32;
+        const glandY = cy + ry * 1.28;
+        radarStaticGfx.fillStyle(0x1e293b, 0.96 * pedestalA);
+        radarStaticGfx.fillRoundedRect(glandX - 5, glandY - 7, 10, 14, 3);
+        radarStaticGfx.lineStyle(1.2, 0x475569, 0.85 * pedestalA);
+        radarStaticGfx.strokeRoundedRect(glandX - 5, glandY - 7, 10, 14, 3);
+
+        // Верхняя светлая фаска (отблеск от настольной лампы)
+        radarStaticGfx.lineStyle(2.2, 0x224942, 0.95 * pedestalA);
+        radarStaticGfx.beginPath();
+        radarStaticGfx.moveTo(cx - rx * 1.25, cy - ry * 0.35);
+        radarStaticGfx.lineTo(cx + rx * 1.25, cy - ry * 0.35);
+        radarStaticGfx.strokePath();
+
+        // Тёмная окантовка боковин плиты
+        radarStaticGfx.lineStyle(1.8, 0x0f2420, 0.85 * pedestalA);
+        radarStaticGfx.beginPath();
+        radarStaticGfx.moveTo(cx - rx * 1.25, cy - ry * 0.35);
+        radarStaticGfx.lineTo(cx - rx * 1.35, cy + ry * 1.58);
+        radarStaticGfx.lineTo(cx + rx * 1.35, cy + ry * 1.58);
+        radarStaticGfx.lineTo(cx + rx * 1.25, cy - ry * 0.35);
+        radarStaticGfx.strokePath();
+
+        // Лицевая приборная панель
+        radarStaticGfx.fillStyle(0x081917, 0.96 * pedestalA);
+        radarStaticGfx.beginPath();
+        radarStaticGfx.moveTo(cx - rx * 1.20, cy - ry * 0.25);
+        radarStaticGfx.lineTo(cx + rx * 1.20, cy - ry * 0.25);
+        radarStaticGfx.lineTo(cx + rx * 1.28, cy + ry * 1.52);
+        radarStaticGfx.lineTo(cx - rx * 1.28, cy + ry * 1.52);
+        radarStaticGfx.closePath();
+        radarStaticGfx.fillPath();
+
+        radarStaticGfx.lineStyle(1.4, 0x2d5c53, 0.85 * pedestalA);
+        radarStaticGfx.beginPath();
+        radarStaticGfx.moveTo(cx - rx * 1.20, cy - ry * 0.25);
+        radarStaticGfx.lineTo(cx + rx * 1.20, cy - ry * 0.25);
+        radarStaticGfx.strokePath();
+
+        // Вентиляционные жалюзи магнетрона
+        for (let i = 0; i < 3; i++) {
+          const slotY = cy + ry * 1.02 + i * 7;
+          radarStaticGfx.fillStyle(0x010507, 0.95 * pedestalA);
+          radarStaticGfx.fillRoundedRect(cx - 72, slotY, 144, 3.8, 1.8);
+          radarStaticGfx.lineStyle(1.0, 0x1f473e, 0.7 * pedestalA);
+          radarStaticGfx.lineBetween(cx - 72, slotY + 3.8, cx + 72, slotY + 3.8);
+        }
+
+        // Компактная заводская табличка по центру между тумблерами
+        const plaqueW = 68;
+        const plaqueH = 16;
+        const plaqueY = cy + ry * 1.33 - plaqueH / 2;
+        radarStaticGfx.fillStyle(isEasterEggActive ? 0x271a07 : 0x0b1d1a, 0.96 * pedestalA);
+        radarStaticGfx.fillRect(cx - plaqueW / 2, plaqueY, plaqueW, plaqueH);
+        radarStaticGfx.lineStyle(1.2, isEasterEggActive ? 0xd97706 : 0x334d47, 0.9 * pedestalA);
+        radarStaticGfx.strokeRect(cx - plaqueW / 2, plaqueY, plaqueW, plaqueH);
+        radarStaticGfx.fillStyle(0x94a3b8, 0.85 * pedestalA);
+        radarStaticGfx.fillCircle(cx - plaqueW / 2 + 4, plaqueY + plaqueH / 2, 1.4);
+        radarStaticGfx.fillCircle(cx + plaqueW / 2 - 4, plaqueY + plaqueH / 2, 1.4);
+
+        // 4 крепёжных болта по углам плиты
+        const bolts = [
+          { x: cx - rx * 1.22, y: cy + ry * 1.48 },
+          { x: cx + rx * 1.22, y: cy + ry * 1.48 },
+          { x: cx - rx * 1.15, y: cy - ry * 0.20 },
+          { x: cx + rx * 1.15, y: cy - ry * 0.20 },
+        ];
+        for (const b of bolts) {
+          radarStaticGfx.fillStyle(0x020709, 0.8 * pedestalA);
+          radarStaticGfx.fillCircle(b.x + 1, b.y + 1, 5);
+          radarStaticGfx.fillStyle(0x334155, 0.95 * pedestalA);
+          radarStaticGfx.fillCircle(b.x, b.y, 4.5);
+          radarStaticGfx.lineStyle(1.2, 0x0f172a, 0.95 * pedestalA);
+          radarStaticGfx.strokeCircle(b.x, b.y, 4.5);
+          radarStaticGfx.lineBetween(b.x - 2.5, b.y, b.x + 2.5, b.y);
+          radarStaticGfx.lineBetween(b.x, b.y - 2.5, b.x, b.y + 2.5);
+        }
+
+        // Корпус и шкала аналогового вольтметра 6.3V
+        radarStaticGfx.fillStyle(0x020608, 0.7 * pedestalA);
+        radarStaticGfx.fillCircle(gaugeX + 1.5, gaugeY + 2, gaugeR + 2);
+
+        radarStaticGfx.fillStyle(0x0c1a1e, 0.98 * pedestalA);
+        radarStaticGfx.fillCircle(gaugeX, gaugeY, gaugeR + 2.5);
+        radarStaticGfx.lineStyle(1.8, 0x334155, 0.9 * pedestalA);
+        radarStaticGfx.strokeCircle(gaugeX, gaugeY, gaugeR + 2.5);
+
+        radarStaticGfx.fillStyle(0x04130d, 0.98 * pedestalA);
+        radarStaticGfx.fillCircle(gaugeX, gaugeY, gaugeR);
+
+        radarStaticGfx.lineStyle(1.2, 0x475569, 0.75 * pedestalA);
+        radarStaticGfx.beginPath();
+        radarStaticGfx.arc(gaugeX, gaugeY, gaugeR - 5, Math.PI * 0.82, Math.PI * 1.78, false);
+        radarStaticGfx.strokePath();
+
+        radarStaticGfx.lineStyle(2.2, 0x22c55e, 0.85 * pedestalA);
+        radarStaticGfx.beginPath();
+        radarStaticGfx.arc(gaugeX, gaugeY, gaugeR - 5, Math.PI * 1.20, Math.PI * 1.52, false);
+        radarStaticGfx.strokePath();
+        radarStaticGfx.lineStyle(2.2, 0xef4444, 0.85 * pedestalA);
+        radarStaticGfx.beginPath();
+        radarStaticGfx.arc(gaugeX, gaugeY, gaugeR - 5, Math.PI * 1.60, Math.PI * 1.78, false);
+        radarStaticGfx.strokePath();
+
+        for (let a = Math.PI * 0.85; a <= Math.PI * 1.75; a += Math.PI * 0.18) {
+          radarStaticGfx.lineStyle(1.0, 0x94a3b8, 0.7 * pedestalA);
+          radarStaticGfx.lineBetween(
+            gaugeX + Math.cos(a) * (gaugeR - 7),
+            gaugeY + Math.sin(a) * (gaugeR - 7),
+            gaugeX + Math.cos(a) * (gaugeR - 4),
+            gaugeY + Math.sin(a) * (gaugeR - 4),
+          );
+        }
+
+        // Лимб регулировки усиления ПРД
+        const dialX = cx + rx * 0.76;
+        const dialY = cy + ry * 1.13;
+        const dialR = dialPos.r;
+
+        radarStaticGfx.fillStyle(0x020608, 0.75 * pedestalA);
+        radarStaticGfx.fillCircle(dialX + 2, dialY + 2, dialR + 3);
+
+        radarStaticGfx.fillStyle(0x0c1a1e, 0.98 * pedestalA);
+        radarStaticGfx.fillCircle(dialX, dialY, dialR + 3);
+        radarStaticGfx.lineStyle(1.8, 0x334155, 0.85 * pedestalA);
+        radarStaticGfx.strokeCircle(dialX, dialY, dialR + 3);
+
+        radarStaticGfx.fillStyle(0x061413, 0.98 * pedestalA);
+        radarStaticGfx.fillCircle(dialX, dialY, dialR);
+
+        for (let lvl = 0; lvl < MENU_STANDBY_CONFIG.gainLevels.length; lvl++) {
+          const notchA = -Math.PI / 2 + (lvl - 2) * MENU_STANDBY_CONFIG.gainDialStepRad;
+          const isCurrent = lvl === gainIndex;
+          const dotColor = isCurrent ? (isAmberMode ? 0xfbbf24 : 0x4ade80) : 0x64748b;
+          radarStaticGfx.fillStyle(dotColor, (isCurrent ? 0.95 : 0.65) * pedestalA);
+          radarStaticGfx.fillCircle(
+            dialX + Math.cos(notchA) * (dialR + 5.5),
+            dialY + Math.sin(notchA) * (dialR + 5.5),
+            isCurrent ? 2.0 : 1.3,
+          );
+        }
+
+        radarStaticGfx.lineStyle(1.1, 0x334155, 0.65 * pedestalA);
+        for (let a = 0; a < Math.PI * 2; a += Math.PI / 6) {
+          radarStaticGfx.lineBetween(
+            dialX + Math.cos(a) * (dialR - 4),
+            dialY + Math.sin(a) * (dialR - 4),
+            dialX + Math.cos(a) * dialR,
+            dialY + Math.sin(a) * dialR,
+          );
+        }
+        radarStaticGfx.fillStyle(0x0b1f1c, 0.98 * pedestalA);
+        radarStaticGfx.fillCircle(dialX, dialY, dialR - 5);
+        radarStaticGfx.lineStyle(1.2, 0x475569, 0.6 * pedestalA);
+        radarStaticGfx.strokeCircle(dialX, dialY, dialR - 5);
+
+        const dialAngle = -Math.PI / 2 + (gainIndex - 2) * MENU_STANDBY_CONFIG.gainDialStepRad;
+        const pointerColor = isAmberMode ? 0xfbbf24 : 0x86efac;
+        radarStaticGfx.lineStyle(2.2, pointerColor, 0.95 * pedestalA);
+        radarStaticGfx.lineBetween(
+          dialX + Math.cos(dialAngle) * 3,
+          dialY + Math.sin(dialAngle) * 3,
+          dialX + Math.cos(dialAngle) * (dialR - 3),
+          dialY + Math.sin(dialAngle) * (dialR - 3),
+        );
+        radarStaticGfx.fillStyle(0xe2e8f0, 0.9 * pedestalA);
+        radarStaticGfx.fillCircle(dialX, dialY, 2.5);
+
+        // Основания и рычажки тумблеров П2Т
+        const staticSwitches = [
+          { x: cx - 52, y: cy + ry * 1.33, isUp: phosphorMode === 'emerald', isLit: true },
+          { x: cx + 52, y: cy + ry * 1.33, isUp: isSoundOn, isLit: isSoundOn },
+        ];
+        for (const sw of staticSwitches) {
+          radarStaticGfx.fillStyle(0x0c1626, 0.95 * pedestalA);
+          radarStaticGfx.fillRect(sw.x - 13, sw.y - 8, 26, 16);
+          radarStaticGfx.lineStyle(1.3, 0x334155, 0.85 * pedestalA);
+          radarStaticGfx.strokeRect(sw.x - 13, sw.y - 8, 26, 16);
+
+          radarStaticGfx.fillStyle(0x1e293b, 0.9 * pedestalA);
+          radarStaticGfx.fillCircle(sw.x, sw.y, 4.8);
+
+          if (!sw.isLit) {
+            radarStaticGfx.fillStyle(0x1e293b, 0.95 * pedestalA);
+            radarStaticGfx.fillCircle(sw.x, sw.y - 14, 2.5);
+            radarStaticGfx.lineStyle(1.0, 0x334155, 0.8 * pedestalA);
+            radarStaticGfx.strokeCircle(sw.x, sw.y - 14, 2.5);
+          }
+
+          const leverEndY = sw.isUp ? sw.y - 7 : sw.y + 7;
+          radarStaticGfx.lineStyle(3.0, 0x64748b, 0.95 * pedestalA);
+          radarStaticGfx.lineBetween(sw.x, sw.y, sw.x, leverEndY);
+          radarStaticGfx.lineStyle(1.4, 0xf1f5f9, 0.95 * pedestalA);
+          radarStaticGfx.lineBetween(sw.x - 0.5, sw.y, sw.x - 0.5, leverEndY);
+          radarStaticGfx.fillStyle(0xf8fafc, 0.95 * pedestalA);
+          radarStaticGfx.fillCircle(sw.x, leverEndY, 2.6);
+        }
+      }
+
+      // B. Гофрированная резиновая бленда тубуса
+      if (depth > 1.5) {
+        const folds = [
+          { yOff: -depth * 0.65, scale: 1.15, baseColor: 0x020709, highlightColor: 0x163430 },
+          { yOff: -depth * 0.30, scale: 1.09, baseColor: 0x061417, highlightColor: 0x1c443e },
+          { yOff: depth * 0.08, scale: 1.04, baseColor: 0x091c20, highlightColor: 0x23524b },
+        ];
+        for (const f of folds) {
+          radarStaticGfx.fillStyle(f.baseColor, 0.96);
+          radarStaticGfx.fillEllipse(cx, cy + f.yOff, rx * f.scale * 2, ry * f.scale * 2);
+          radarStaticGfx.lineStyle(1.4, f.highlightColor, 0.85);
+          radarStaticGfx.strokeEllipse(cx, cy + f.yOff, rx * f.scale * 2, ry * f.scale * 2);
+        }
+
+        radarStaticGfx.lineStyle(4.5, 0x162624, 0.98);
+        radarStaticGfx.strokeEllipse(cx, cy, rx * 1.02 * 2, ry * 1.02 * 2);
+
+        radarStaticGfx.lineStyle(2.0, 0x64748b, 0.65 * (depth / menuVisorDepth));
+        radarStaticGfx.beginPath();
+        const rimSteps = 12;
+        for (let i = 0; i <= rimSteps; i++) {
+          const a = Math.PI * 1.15 + (Math.PI * 0.70 * i) / rimSteps;
+          const hx = cx + Math.cos(a) * rx * 1.01;
+          const hy = cy + Math.sin(a) * ry * 1.01;
+          if (i === 0) radarStaticGfx.moveTo(hx, hy);
+          else radarStaticGfx.lineTo(hx, hy);
+        }
+        radarStaticGfx.strokePath();
+      }
+
+      // C. Стекло ЭЛТ, ниша безеля и статическая сетка дальности
+      const haloSteps = [
+        { d: 40, alpha: 0.008 },
+        { d: 26, alpha: 0.02 },
+        { d: 15, alpha: 0.04 },
+        { d: 6, alpha: 0.07 },
+      ];
+      for (const h of haloSteps) {
+        const hRx = rx + h.d * (rx / combatRadarRadius);
+        const hRy = ry + h.d * (ry / combatRadarRadius);
+        radarStaticGfx.lineStyle(6, screenColors.blipHalo, Math.min(0.14, h.alpha * gain));
+        radarStaticGfx.strokeEllipse(cx, cy, hRx * 2, hRy * 2);
+      }
+
+      const recessSteps = [
+        { d: 14, alpha: 0.35, color: 0x010502 },
+        { d: 8, alpha: 0.55, color: 0x010502 },
+        { d: 3, alpha: 0.80, color: 0x010301 },
+      ];
+      for (const rec of recessSteps) {
+        const recRx = rx + rec.d * (rx / combatRadarRadius);
+        const recRy = ry + rec.d * (ry / combatRadarRadius);
+        radarStaticGfx.lineStyle(4, rec.color, rec.alpha);
+        radarStaticGfx.strokeEllipse(cx, cy, recRx * 2, recRy * 2);
+      }
+
+      const rimRx = rx + 2 * (rx / combatRadarRadius);
+      const rimRy = ry + 2 * (ry / combatRadarRadius);
+      radarStaticGfx.lineStyle(1.5, screenColors.hudBorder, 0.85);
+      radarStaticGfx.strokeEllipse(cx, cy, rimRx * 2, rimRy * 2);
+
+      radarStaticGfx.fillStyle(screenColors.radarBg, 0.95);
+      radarStaticGfx.fillEllipse(cx, cy, rx * 2, ry * 2);
+
+      const ringSteps = [0.25, 0.5, 0.75, 1.0];
+      ringSteps.forEach((fraction, index) => {
+        const isOuter = index === ringSteps.length - 1;
+        radarStaticGfx.lineStyle(
+          isOuter ? 2 : 1,
+          isOuter ? screenColors.radarBorder : screenColors.gridRing,
+          isOuter ? 0.90 : Math.min(0.42, 0.21 * gain),
+        );
+        radarStaticGfx.strokeEllipse(cx, cy, rx * fraction * 2, ry * fraction * 2);
+      });
+
+      const dangerFrac = GAME_CONFIG.dangerCloseRadius / combatRadarRadius;
+      radarStaticGfx.lineStyle(1, screenColors.dangerRing, 0.30);
+      radarStaticGfx.strokeEllipse(cx, cy, rx * dangerFrac * 2, ry * dangerFrac * 2);
+
+      radarStaticGfx.lineStyle(1, screenColors.gridAxis, 0.22);
+      radarStaticGfx.beginPath();
+      radarStaticGfx.moveTo(cx - rx, cy);
+      radarStaticGfx.lineTo(cx + rx, cy);
+      radarStaticGfx.moveTo(cx, cy - ry);
+      radarStaticGfx.lineTo(cx, cy + ry);
+      radarStaticGfx.strokePath();
+
+      for (let deg = 0; deg < 360; deg += 30) {
+        const rad = Phaser.Math.DegToRad(deg);
+        const isMajor = deg % 90 === 0;
+        const tickLenFrac = (isMajor ? 10 : 5) / combatRadarRadius;
+
+        const x1 = cx + Math.cos(rad) * rx * (1 - tickLenFrac);
+        const y1 = cy + Math.sin(rad) * ry * (1 - tickLenFrac);
+        const x2 = cx + Math.cos(rad) * rx;
+        const y2 = cy + Math.sin(rad) * ry;
+
+        radarStaticGfx.lineStyle(1, screenColors.gridRing, isMajor ? 0.65 : 0.28);
+        radarStaticGfx.beginPath();
+        radarStaticGfx.moveTo(x1, y1);
+        radarStaticGfx.lineTo(x2, y2);
+        radarStaticGfx.strokePath();
+      }
     }
 
-    // 2. Заглублённая круглая ниша под колбу
-    const recessSteps = [
-      { d: 14, alpha: 0.35, color: 0x010502 },
-      { d: 8, alpha: 0.55, color: 0x010502 },
-      { d: 3, alpha: 0.80, color: 0x010301 },
-    ];
-    for (const rec of recessSteps) {
-      const recRx = rx + rec.d * (rx / combatRadarRadius);
-      const recRy = ry + rec.d * (ry / combatRadarRadius);
-      radar3dGfx.lineStyle(4, rec.color, rec.alpha);
-      radar3dGfx.strokeEllipse(cx, cy, recRx * 2, recRy * 2);
-    }
+    // ==========================================
+    // 2. ДИНАМИЧЕСКИЙ СЛОЙ (только живые элементы каждого кадра)
+    // ==========================================
+    radarDynamicGfx.clear();
+    ignitionFlashGfx.clear();
 
-    // 3. Тонкий металлический прижимной обод вокруг стекла
-    const rimRx = rx + 2 * (rx / combatRadarRadius);
-    const rimRy = ry + 2 * (ry / combatRadarRadius);
-    radar3dGfx.lineStyle(1.5, screenColors.hudBorder, 0.85);
-    radar3dGfx.strokeEllipse(cx, cy, rimRx * 2, rimRy * 2);
+    if (pedestalA > 0.01) {
+      // Тёплая лампа накала шкалы, живая стрелка и блик стекла вольтметра
+      radarDynamicGfx.fillStyle(0xd97706, (0.12 + 0.04 * gain) * pedestalA * breathing);
+      radarDynamicGfx.fillCircle(gaugeX, gaugeY, gaugeR - 2);
 
-    // 4. Холодный матовый люминофор ЭЛТ
-    radar3dGfx.fillStyle(screenColors.radarBg, 0.95);
-    radar3dGfx.fillEllipse(cx, cy, rx * 2, ry * 2);
-
-    // Внутреннее мягкое фосфорное сияние колбы (усиливается ручкой УСИЛ. ПРД)
-    radar3dGfx.fillStyle(screenColors.glowTint, Math.min(0.55, 0.35 * breathing * gain));
-    radar3dGfx.fillEllipse(cx, cy, rx * 0.88 * 2, ry * 0.88 * 2);
-
-    // 5. Концентрические кольца дальности (25%, 50%, 75%, 100%)
-    const ringSteps = [0.25, 0.5, 0.75, 1.0];
-    ringSteps.forEach((fraction, index) => {
-      const isOuter = index === ringSteps.length - 1;
-      radar3dGfx.lineStyle(
-        isOuter ? 2 : 1,
-        isOuter ? screenColors.radarBorder : screenColors.gridRing,
-        isOuter ? 0.90 : Math.min(0.45, 0.22 * breathing * gain),
+      const needleJitter = Math.sin(timeNow * 0.016) * 0.038;
+      const gainLoadOffset = (gainIndex - MENU_STANDBY_CONFIG.defaultGainIndex) * 0.055;
+      const easterOffset = isEasterEggActive ? 0.24 : 0;
+      const needleAngle = Phaser.Math.Clamp(
+        Math.PI * 1.36 + needleJitter + gainLoadOffset + easterOffset + needleHoverOffset,
+        Math.PI * 0.88,
+        Math.PI * 1.76,
       );
-      radar3dGfx.strokeEllipse(cx, cy, rx * fraction * 2, ry * fraction * 2);
-    });
+      radarDynamicGfx.lineStyle(1.6, isEasterEggActive ? 0xf87171 : 0xf59e0b, 0.98 * pedestalA);
+      radarDynamicGfx.beginPath();
+      radarDynamicGfx.moveTo(gaugeX, gaugeY + 2);
+      radarDynamicGfx.lineTo(
+        gaugeX + Math.cos(needleAngle) * (gaugeR - 5),
+        gaugeY + Math.sin(needleAngle) * (gaugeR - 5),
+      );
+      radarDynamicGfx.strokePath();
 
-    // 6. Зона ближней опасности (Danger Close Ring)
-    const dangerFrac = GAME_CONFIG.dangerCloseRadius / combatRadarRadius;
-    radar3dGfx.lineStyle(1, screenColors.dangerRing, 0.32 * breathing);
-    radar3dGfx.strokeEllipse(cx, cy, rx * dangerFrac * 2, ry * dangerFrac * 2);
+      radarDynamicGfx.fillStyle(0xf8fafc, 0.95 * pedestalA);
+      radarDynamicGfx.fillCircle(gaugeX, gaugeY + 2, 2.8);
 
-    // 7. Перспективные визирные оси
-    radar3dGfx.lineStyle(1, screenColors.gridAxis, 0.24 * breathing);
-    radar3dGfx.beginPath();
-    radar3dGfx.moveTo(cx - rx, cy);
-    radar3dGfx.lineTo(cx + rx, cy);
-    radar3dGfx.moveTo(cx, cy - ry);
-    radar3dGfx.lineTo(cx, cy + ry);
-    radar3dGfx.strokePath();
+      radarDynamicGfx.lineStyle(1.5, 0xffffff, 0.28 * pedestalA);
+      radarDynamicGfx.beginPath();
+      radarDynamicGfx.arc(gaugeX - 3, gaugeY - 3, gaugeR - 6, Math.PI * 1.1, Math.PI * 1.6, false);
+      radarDynamicGfx.strokePath();
 
-    // 8. Азимутальные риски по периметру (крупные на 90°, мелкие на 30°)
-    for (let deg = 0; deg < 360; deg += 30) {
-      const rad = Phaser.Math.DegToRad(deg);
-      const isMajor = deg % 90 === 0;
-      const tickLenFrac = (isMajor ? 10 : 5) / combatRadarRadius;
-
-      const x1 = cx + Math.cos(rad) * rx * (1 - tickLenFrac);
-      const y1 = cy + Math.sin(rad) * ry * (1 - tickLenFrac);
-      const x2 = cx + Math.cos(rad) * rx;
-      const y2 = cy + Math.sin(rad) * ry;
-
-      radar3dGfx.lineStyle(1, screenColors.gridRing, (isMajor ? 0.70 : 0.30) * breathing);
-      radar3dGfx.beginPath();
-      radar3dGfx.moveTo(x1, y1);
-      radar3dGfx.lineTo(x2, y2);
-      radar3dGfx.strokePath();
+      // Светящиеся светодиоды активных тумблеров
+      const litSwitches = [
+        { x: cx - 52, y: cy + ry * 1.33, ledColor: phosphorMode === 'amber' ? 0xf59e0b : 0x22c55e, isLit: true },
+        { x: cx + 52, y: cy + ry * 1.33, ledColor: 0xf59e0b, isLit: isSoundOn },
+      ];
+      for (const sw of litSwitches) {
+        if (!sw.isLit) continue;
+        radarDynamicGfx.fillStyle(sw.ledColor, 0.16 * pedestalA * breathing);
+        radarDynamicGfx.fillCircle(sw.x, sw.y - 14, 9);
+        radarDynamicGfx.fillStyle(sw.ledColor, 0.42 * pedestalA * breathing);
+        radarDynamicGfx.fillCircle(sw.x, sw.y - 14, 5.2);
+        radarDynamicGfx.fillStyle(sw.ledColor, 0.95 * pedestalA);
+        radarDynamicGfx.fillCircle(sw.x, sw.y - 14, 2.5);
+        radarDynamicGfx.fillStyle(0xffffff, 0.85 * pedestalA);
+        radarDynamicGfx.fillCircle(sw.x, sw.y - 14, 1.0);
+      }
     }
+
+    // Дыхание люминофора внутри колбы
+    radarDynamicGfx.fillStyle(screenColors.glowTint, Math.min(0.45, 0.26 * breathing * gain));
+    radarDynamicGfx.fillEllipse(cx, cy, rx * 0.88 * 2, ry * 0.88 * 2);
 
     // ==========================================
     // D. ЖИВОЙ ДЕЖУРНЫЙ ЛУЧ РАЗВЁРТКИ ЭЛТ, МИКРО-ШУМ И ФОСФОРНЫЕ ЭХО
@@ -799,49 +782,44 @@ export function createMainMenu(
       const trailSpan = 0.45 + 0.14 * (gain - 1.0);
       const trailSteps = 12;
 
-      // Мягкий широкий сектор послесвечения люминофора по дуге эллипса
-      radar3dGfx.fillStyle(screenColors.trail, Math.min(0.32, 0.18 * breathing * gain));
-      radar3dGfx.beginPath();
-      radar3dGfx.moveTo(cx, cy);
+      radarDynamicGfx.fillStyle(screenColors.trail, Math.min(0.32, 0.18 * breathing * gain));
+      radarDynamicGfx.beginPath();
+      radarDynamicGfx.moveTo(cx, cy);
       for (let s = trailSteps; s >= 0; s--) {
         const a = beamAngle - (trailSpan * s) / trailSteps;
         const px = cx + Math.cos(a) * rx;
         const py = cy + Math.sin(a) * ry;
-        radar3dGfx.lineTo(px, py);
+        radarDynamicGfx.lineTo(px, py);
       }
-      radar3dGfx.closePath();
-      radar3dGfx.fillPath();
+      radarDynamicGfx.closePath();
+      radarDynamicGfx.fillPath();
 
-      // Сам луч развёртки
       const beamX = cx + Math.cos(beamAngle) * rx;
       const beamY = cy + Math.sin(beamAngle) * ry;
-      radar3dGfx.lineStyle(2, screenColors.beam, Math.min(1, 0.90 * breathing * gain));
-      radar3dGfx.beginPath();
-      radar3dGfx.moveTo(cx, cy);
-      radar3dGfx.lineTo(beamX, beamY);
-      radar3dGfx.strokePath();
+      radarDynamicGfx.lineStyle(2, screenColors.beam, Math.min(1, 0.90 * breathing * gain));
+      radarDynamicGfx.beginPath();
+      radarDynamicGfx.moveTo(cx, cy);
+      radarDynamicGfx.lineTo(beamX, beamY);
+      radarDynamicGfx.strokePath();
 
-      // Деликатные микро-помехи эфира (интенсивность зависит от усиления ПРД)
       for (const speck of crtSpecks) {
         const lifeFrac = speck.life / speck.maxLife;
         const sx = cx + speck.nx * rx;
         const sy = cy + speck.ny * ry;
-        radar3dGfx.fillStyle(screenColors.blipCore, 0.24 * lifeFrac * gain);
-        radar3dGfx.fillRect(sx - speck.width / 2, sy, speck.width, 1.4);
+        radarDynamicGfx.fillStyle(screenColors.blipCore, 0.24 * lifeFrac * gain);
+        radarDynamicGfx.fillRect(sx - speck.width / 2, sy, speck.width, 1.4);
       }
 
-      // Калибровочные эхо-волны от кликов по экрану ЭЛТ
       for (const ping of activePings) {
         const fade = 1 - ping.progress;
         const px = cx + ping.nx * rx;
         const py = cy + ping.ny * ry;
         const maxPingR = 46 * (rx / menuRx);
         const pingR = 6 + ping.progress * maxPingR;
-        radar3dGfx.lineStyle(1.6, screenColors.beam, 0.65 * fade);
-        radar3dGfx.strokeEllipse(px, py, pingR * 2, pingR * 2 * (ry / rx));
+        radarDynamicGfx.lineStyle(1.6, screenColors.beam, 0.65 * fade);
+        radarDynamicGfx.strokeEllipse(px, py, pingR * 2, pingR * 2 * (ry / rx));
       }
 
-      // Живые дрейфующие фосфорные эхо-контакты и расходящееся эхо-кольцо
       for (const contact of standbyContacts) {
         const ex = cx + Math.cos(contact.angle) * rx * contact.rFrac;
         const ey = cy + Math.sin(contact.angle) * ry * contact.rFrac;
@@ -852,55 +830,52 @@ export function createMainMenu(
         if (contact.echoRingProgress < 1) {
           const ringFade = 1 - contact.echoRingProgress;
           const ringR = 4 + contact.echoRingProgress * 15 * gain;
-          radar3dGfx.lineStyle(1.2, haloColor, 0.55 * ringFade);
-          radar3dGfx.strokeEllipse(ex, ey, ringR * 2, ringR * 2 * (ry / rx));
+          radarDynamicGfx.lineStyle(1.2, haloColor, 0.55 * ringFade);
+          radarDynamicGfx.strokeEllipse(ex, ey, ringR * 2, ringR * 2 * (ry / rx));
         }
 
         if (contact.alpha <= 0.03) continue;
         const echoAlpha = Math.min(1, contact.alpha * breathing * gain);
-        radar3dGfx.fillStyle(haloColor, echoAlpha * (isDanger ? 0.55 : 0.4));
-        radar3dGfx.fillCircle(ex, ey, (isDanger ? 6.5 : 5.0) * Math.min(1.25, gain));
-        radar3dGfx.fillStyle(coreColor, echoAlpha);
-        radar3dGfx.fillCircle(ex, ey, 2.3);
+        radarDynamicGfx.fillStyle(haloColor, echoAlpha * (isDanger ? 0.55 : 0.4));
+        radarDynamicGfx.fillCircle(ex, ey, (isDanger ? 6.5 : 5.0) * Math.min(1.25, gain));
+        radarDynamicGfx.fillStyle(coreColor, echoAlpha);
+        radarDynamicGfx.fillCircle(ex, ey, 2.3);
       }
 
-      // ПАСХАЛКА: секретный призрачный борт «ОМЕГА-77» на орбите
       if (isEasterEggActive) {
         const ox = cx + Math.cos(easterOmegaAngle) * rx * MENU_STANDBY_CONFIG.easterOmegaOrbitRFrac;
         const oy = cy + Math.sin(easterOmegaAngle) * ry * MENU_STANDBY_CONFIG.easterOmegaOrbitRFrac;
         const omegaPulse = 0.55 + 0.45 * Math.sin(timeNow * 0.009);
 
-        radar3dGfx.lineStyle(1.4, 0xfbbf24, 0.7 * omegaPulse);
-        radar3dGfx.strokeEllipse(ox, oy, 22, 22 * (ry / rx));
-        radar3dGfx.lineStyle(1.0, 0xfef3c7, 0.55 * (1 - omegaPulse * 0.5));
-        radar3dGfx.strokeEllipse(ox, oy, 32, 32 * (ry / rx));
-        radar3dGfx.fillStyle(0xf59e0b, 0.5 * omegaPulse);
-        radar3dGfx.fillCircle(ox, oy, 6);
-        radar3dGfx.fillStyle(0xffffff, 0.95);
-        radar3dGfx.fillCircle(ox, oy, 2.6);
+        radarDynamicGfx.lineStyle(1.4, 0xfbbf24, 0.7 * omegaPulse);
+        radarDynamicGfx.strokeEllipse(ox, oy, 22, 22 * (ry / rx));
+        radarDynamicGfx.lineStyle(1.0, 0xfef3c7, 0.55 * (1 - omegaPulse * 0.5));
+        radarDynamicGfx.strokeEllipse(ox, oy, 32, 32 * (ry / rx));
+        radarDynamicGfx.fillStyle(0xf59e0b, 0.5 * omegaPulse);
+        radarDynamicGfx.fillCircle(ox, oy, 6);
+        radarDynamicGfx.fillStyle(0xffffff, 0.95);
+        radarDynamicGfx.fillCircle(ox, oy, 2.6);
       }
 
-      // Накал нити катода в центре кинескопа
       const dotPulse = 0.5 + 0.5 * Math.sin(timeNow * 0.005);
-      radar3dGfx.fillStyle(screenColors.radarBorder, 0.55 * dotPulse);
-      radar3dGfx.fillCircle(cx, cy, 7 * dotPulse + 2);
-      radar3dGfx.fillStyle(screenColors.blipCore, 0.95);
-      radar3dGfx.fillCircle(cx, cy, 2.5);
+      radarDynamicGfx.fillStyle(screenColors.radarBorder, 0.55 * dotPulse);
+      radarDynamicGfx.fillCircle(cx, cy, 7 * dotPulse + 2);
+      radarDynamicGfx.fillStyle(screenColors.blipCore, 0.95);
+      radarDynamicGfx.fillCircle(cx, cy, 2.5);
     }
 
-    // Сферический отблеск выпуклой стеклянной линзы кинескопа (только при виде в объёме)
     if (depth > 2) {
-      radar3dGfx.lineStyle(2.0, 0xffffff, 0.18 * breathing * (depth / menuVisorDepth));
-      radar3dGfx.beginPath();
+      radarDynamicGfx.lineStyle(2.0, 0xffffff, 0.18 * breathing * (depth / menuVisorDepth));
+      radarDynamicGfx.beginPath();
       const lensSteps = 12;
       for (let i = 0; i <= lensSteps; i++) {
         const a = Math.PI * 1.10 + (Math.PI * 0.48 * i) / lensSteps;
         const lx = cx - 5 + Math.cos(a) * rx * 0.82;
         const ly = cy - 3 + Math.sin(a) * ry * 0.82;
-        if (i === 0) radar3dGfx.moveTo(lx, ly);
-        else radar3dGfx.lineTo(lx, ly);
+        if (i === 0) radarDynamicGfx.moveTo(lx, ly);
+        else radarDynamicGfx.lineTo(lx, ly);
       }
-      radar3dGfx.strokePath();
+      radarDynamicGfx.strokePath();
     }
 
     // ==========================================
@@ -911,15 +886,12 @@ export function createMainMenu(
       const lineLen = rx * Math.min(1.0, ign * 1.8);
       const lineH = Math.max(3, ry * ign * 0.95);
 
-      // Зелёный ореол вокруг катодной линии
       ignitionFlashGfx.fillStyle(0x4ade80, 0.65 * ign);
       ignitionFlashGfx.fillEllipse(cx, cy, lineLen * 2, lineH * 2);
 
-      // Яркий белый сердечник вспышки
       ignitionFlashGfx.fillStyle(0xffffff, Math.min(1.0, ign * 1.3));
       ignitionFlashGfx.fillRect(cx - lineLen * 0.9, cy - 2.5, lineLen * 1.8, 5);
 
-      // Полное сияние фосфорного диска на пике
       ignitionFlashGfx.fillStyle(baseColors.radarBorder, 0.45 * ign);
       ignitionFlashGfx.fillEllipse(cx, cy, rx * 2, ry * 2);
     }
@@ -931,6 +903,7 @@ export function createMainMenu(
   const activateEasterEgg = () => {
     if (isEasterEggActive) return;
     isEasterEggActive = true;
+    isStaticDirty = true;
     needleHoverOffset = MENU_STANDBY_CONFIG.needleEasterSpikeRad;
     stencilText.setText(MENU_STANDBY_CONFIG.stencilEasterText);
     stencilText.setColor('#f59e0b');
@@ -1155,6 +1128,7 @@ export function createMainMenu(
   };
 
   const updateSoundButtonLabel = (isEnabled: boolean) => {
+    isStaticDirty = true;
     if (soundBtnLabelRef) {
       soundBtnLabelRef.setText(
         formatMenuLabel(
@@ -1416,6 +1390,7 @@ export function createMainMenu(
   modeSwitchHitZone.on('pointerdown', () => {
     if (isTransitioning) return;
     phosphorMode = phosphorMode === 'emerald' ? 'amber' : 'emerald';
+    isStaticDirty = true;
     needleHoverOffset = MENU_STANDBY_CONFIG.needleSwitchKickRad;
     callbacks.playSelectSound?.();
     checkEasterEggTrigger();
@@ -1432,12 +1407,14 @@ export function createMainMenu(
     if (isTransitioning) return;
     const isMuted = callbacks.onToggleSound();
     updateSoundButtonLabel(!isMuted);
+    isStaticDirty = true;
     needleHoverOffset = MENU_STANDBY_CONFIG.needleSwitchKickRad;
     callbacks.playSelectSound?.();
   });
 
   const setGainIndex = (nextIdx: number) => {
     gainIndex = Phaser.Math.Clamp(nextIdx, 0, MENU_STANDBY_CONFIG.gainLevels.length - 1);
+    isStaticDirty = true;
     needleHoverOffset = MENU_STANDBY_CONFIG.needleSwitchKickRad;
     callbacks.playHoverSound?.();
     checkEasterEggTrigger();
@@ -1606,16 +1583,15 @@ export function createMainMenu(
           currentIgnitionProgress = (p - 0.72) / 0.28;
         }
 
+        isStaticDirty = true;
         renderVolumetricRadar(scene.time.now, standbySweepAngle);
       },
       onComplete: () => {
-        // В момент финала вспышка на 100% заливает экран белым люминофором.
-        // Здесь мы мгновенно активируем боевую сцену, а саму вспышку плавно растворяем,
-        // что даёт 100% БЕСШОВНЫЙ переход без единого видимого рывка!
         onComplete();
 
         // Скрываем менюшную графику тумбы
-        radar3dGfx.clear();
+        radarStaticGfx.clear();
+        radarDynamicGfx.clear();
         container.setVisible(false);
 
         // Создаём отдельный оверлей растворения вспышки поверх боевого радара (плавное 420мс затухание)
@@ -1702,6 +1678,7 @@ export function createMainMenu(
     easterOmegaAngle = 1.25;
     activePings = [];
     crtSpecks = [];
+    isStaticDirty = true;
     standbyContacts = createInitialContacts();
 
     // Сброс позиций заголовка и клавиш
