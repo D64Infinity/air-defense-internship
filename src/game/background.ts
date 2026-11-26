@@ -165,6 +165,14 @@ export class AmbientBackground {
           age: 0,
         };
         break;
+      case 'supersonic_recon':
+        this.activeFlash = {
+          color: colors.scanCyan, // яркий ледяно-бирюзовый отсвет перехвата разведчика
+          maxAlpha: 0.44,
+          duration: 0.48,
+          age: 0,
+        };
+        break;
     }
   }
 

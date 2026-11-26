@@ -14,3 +14,4 @@ export * from './barrageSalvo';
 export * from './jammerAircraft';
 export * from './terrainHugger';
 export * from './weatherFront';
+export * from './supersonicRecon';

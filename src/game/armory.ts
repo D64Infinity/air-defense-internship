@@ -34,6 +34,7 @@ export interface ArmoryTracker {
 
   reset: () => void;
   addCredits: (amount: number) => void;
+  addBonusScan: () => boolean;
   deductCredits: (amount: number) => void;
   consumeInterceptor: () => boolean;
   buyInterceptor: () => BuyResult;
@@ -116,6 +117,12 @@ export function createArmory(config = GAME_CONFIG): ArmoryTracker {
 
     addCredits: (amount: number) => {
       credits += amount;
+    },
+
+    addBonusScan: (): boolean => {
+      if (scansAvailable >= config.maxScansPerWave) return false;
+      scansAvailable++;
+      return true;
     },
 
     deductCredits: (amount: number) => {

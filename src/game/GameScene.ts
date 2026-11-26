@@ -66,6 +66,9 @@ import {
   createWeatherFrontManager,
   type WeatherFrontManager,
   WEATHER_FRONT_CONFIG,
+  createSupersonicReconManager,
+  type SupersonicReconManager,
+  SUPERSONIC_RECON_CONFIG,
 } from './units';
 
 
@@ -102,6 +105,7 @@ export class GameScene extends Phaser.Scene {
   private barrageSalvo: BarrageSalvoManager = createBarrageSalvoManager();
   private jammerAircraft: JammerAircraftManager = createJammerAircraftManager();
   private terrainHugger: TerrainHuggerManager = createTerrainHuggerManager();
+  private supersonicRecon: SupersonicReconManager = createSupersonicReconManager();
   private weatherFront: WeatherFrontManager = createWeatherFrontManager();
 
   // Тайминги и контроль частоты заградительного налёта
@@ -123,6 +127,11 @@ export class GameScene extends Phaser.Scene {
   private weatherFrontTimer = 0;
   private nextWeatherFrontDelay = -1;
   private hadWeatherFrontLastWave = false;
+
+  // Тайминги и контроль появления сверхзвукового разведчика
+  private reconTimer = 0;
+  private nextReconDelay = -1;
+  private hadReconLastWave = false;
 
   // Состояние игры
   private baseHealth = GAME_CONFIG.maxBaseHealth;
@@ -183,6 +192,10 @@ export class GameScene extends Phaser.Scene {
     this.weatherFrontTimer = 0;
     this.nextWeatherFrontDelay = -1;
     this.hadWeatherFrontLastWave = false;
+    this.supersonicRecon.reset();
+    this.reconTimer = 0;
+    this.nextReconDelay = -1;
+    this.hadReconLastWave = false;
     this.isClosingBriefing = false;
     this.selectedTarget = null;
     this.explosions = [];
@@ -457,6 +470,23 @@ export class GameScene extends Phaser.Scene {
       this.soundSystem.playThunderClap(pan);
     });
 
+    // Бонусный юнит 4+ волны: Сверхзвуковой разведчик «Сокол»
+    if (!this.supersonicRecon.isActive && this.nextReconDelay > 0) {
+      this.reconTimer += dt;
+      if (this.reconTimer >= this.nextReconDelay) {
+        this.nextReconDelay = -1; // строго один вылет на волну максимум
+        const reconTarget = this.supersonicRecon.spawn(this.wave);
+        this.targets.push(reconTarget);
+        this.soundSystem.playReconAlert();
+        this.hud.showNotification(
+          '[ РЛС: СВЕРХЗВУКОВОЙ РАЗВЕДЧИК НА КРАЮ СЕКТОРА — ПЕРЕХВАТ [2] ИЛИ СКАН [4]! ]',
+          4.2,
+        );
+      }
+    }
+
+    this.supersonicRecon.update(dt);
+
     const onboardingStage: OnboardingStage =
       onboardingActive && this.selectedTarget === null ? 'acquire' : 'none';
 
@@ -474,6 +504,7 @@ export class GameScene extends Phaser.Scene {
       barrageSalvo: this.barrageSalvo,
       jammerAircraft: this.jammerAircraft,
       terrainHugger: this.terrainHugger,
+      supersonicRecon: this.supersonicRecon,
       weatherFront: this.weatherFront,
       explosions: this.explosions,
       warningArc: eventResult.warningArc,
@@ -604,6 +635,35 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
+   * Планирование редкого вылета сверхзвукового разведчика-невидимки «Сокол» (с 4-й волны)
+   */
+  private scheduleReconForWave(): void {
+    this.supersonicRecon.reset();
+    this.reconTimer = 0;
+
+    // В особой волне любые побочные события и спец-юниты строго отключены
+    if (this.isSpecialWaveCurrent) {
+      this.nextReconDelay = -1;
+      return;
+    }
+
+    // Волна 4+: шанс 42%, если в прошлой волне разведчика не было
+    const canTrigger = this.wave >= SUPERSONIC_RECON_CONFIG.minWave && !this.hadReconLastWave;
+    const willTrigger = canTrigger && Math.random() < SUPERSONIC_RECON_CONFIG.waveChance;
+
+    if (willTrigger) {
+      this.nextReconDelay = Phaser.Math.FloatBetween(
+        SUPERSONIC_RECON_CONFIG.delayMin,
+        SUPERSONIC_RECON_CONFIG.delayMax,
+      );
+      this.hadReconLastWave = true;
+    } else {
+      this.nextReconDelay = -1;
+      this.hadReconLastWave = false;
+    }
+  }
+
+  /**
    * Запуск боевого дежурства (старт спавна и появление первых целей)
    */
   private startCombat(): void {
@@ -624,10 +684,12 @@ export class GameScene extends Phaser.Scene {
     this.hadJammerLastWave = false;
     this.hadTerrainHuggerLastWave = false;
     this.hadWeatherFrontLastWave = false;
+    this.hadReconLastWave = false;
     this.scheduleBarrageForWave();
     this.scheduleJammerForWave();
     this.scheduleTerrainHuggerForWave();
     this.scheduleWeatherFrontForWave();
+    this.scheduleReconForWave();
     this.soundSystem.playWaveTransition(false);
     this.showWaveBanner('ВОЛНА 1\nБОЕВОЕ ДЕЖУРСТВО');
     this.updateTargetSelectionUI();
@@ -787,6 +849,10 @@ export class GameScene extends Phaser.Scene {
     this.weatherFrontTimer = 0;
     this.nextWeatherFrontDelay = -1;
     this.hadWeatherFrontLastWave = false;
+    this.supersonicRecon.reset();
+    this.reconTimer = 0;
+    this.nextReconDelay = -1;
+    this.hadReconLastWave = false;
     this.ambientBg.reset();
     this.pauseOverlay.hide();
     this.briefingOverlay.hide();
@@ -809,6 +875,7 @@ export class GameScene extends Phaser.Scene {
     this.armory.cancelScanIfTarget(target);
     this.jammerAircraft.onTargetDestroyed(target.id);
     this.terrainHugger.onTargetDestroyed(target.id);
+    this.supersonicRecon.onTargetRemoved(target.id);
     this.checkWaveProgress();
   }
 
@@ -884,6 +951,27 @@ export class GameScene extends Phaser.Scene {
           '[ СУО: ДОПЛЕРОВСКИЙ ЗАХВАТ УСТАНОВЛЕН — МАСКИРОВКА РЕЛЬЕФА СНЯТА! ]',
           4.0,
         );
+      } else if (res.target?.type === 'supersonic_recon') {
+        const { scanScoreReward, scanCreditsReward } = SUPERSONIC_RECON_CONFIG;
+        this.scoring.addDirectScore(scanScoreReward);
+        this.armory.addCredits(scanCreditsReward);
+        this.updateScoreBoard();
+        this.ambientBg.triggerExplosionFlash('supersonic_recon');
+        this.soundSystem.playReconAlert();
+        this.alerts.showInterceptAlert({
+          unitType: 'supersonic_recon',
+          points: scanScoreReward,
+          credits: scanCreditsReward,
+          isLongRange: false,
+          bonusNote: 'ТЕЛЕМЕТРИЯ',
+        });
+        this.removeTarget(res.target);
+        this.showFeedback(
+          `[БОНУС] ТЕЛЕМЕТРИЯ РАЗВЕДЧИКА (+${scanScoreReward}, +${scanCreditsReward} CR)`,
+          GAME_CONFIG.colors.text.cyanLight,
+        );
+        this.updateTargetSelectionUI();
+        return;
       }
       this.showFeedback(res.message, res.color);
     }
@@ -1071,6 +1159,26 @@ export class GameScene extends Phaser.Scene {
         isLongRange,
       });
       this.terrainHugger.onTargetDestroyed(target.id);
+    } else if (target.type === 'supersonic_recon') {
+      const { scoreReward, creditsReward, fullScanBonusCredits } = SUPERSONIC_RECON_CONFIG;
+      this.scoring.addDirectScore(scoreReward);
+      const scanAdded = this.armory.addBonusScan();
+      const totalCredits = scanAdded ? creditsReward : creditsReward + fullScanBonusCredits;
+      this.armory.addCredits(totalCredits);
+      this.stats.recordBomberIntercept();
+      const bonusLabel = scanAdded ? '+1 СКАН' : 'ЗАМЕНА СКАНА';
+      this.showFeedback(
+        `[БОНУС!] РАЗВЕДЧИК «СОКОЛ» СБИТ (+${scoreReward}, +${totalCredits} CR, ${bonusLabel})`,
+        GAME_CONFIG.colors.text.cyanLight,
+      );
+      this.alerts.showInterceptAlert({
+        unitType: 'supersonic_recon',
+        points: scoreReward,
+        credits: totalCredits,
+        isLongRange: false,
+        bonusNote: bonusLabel,
+      });
+      this.supersonicRecon.onTargetRemoved(target.id);
     } else if (target.type === 'friend') {
       // Огонь по своим
       this.stats.recordFriendlyFire();
@@ -1539,6 +1647,8 @@ export class GameScene extends Phaser.Scene {
           );
         } else if (ev.target.type === 'terrain_hugger') {
           this.terrainHugger.onTargetDestroyed(ev.target.id);
+        } else if (ev.target.type === 'supersonic_recon') {
+          this.supersonicRecon.onTargetRemoved(ev.target.id);
         }
         break;
     }
@@ -1593,6 +1703,7 @@ export class GameScene extends Phaser.Scene {
       this.scheduleJammerForWave();
       this.scheduleTerrainHuggerForWave();
       this.scheduleWeatherFrontForWave();
+      this.scheduleReconForWave();
 
       // Пополнение боекомплекта перехватчиков, зарядов сканирования и начисление кредитов за волну
       let { addedAmmo, waveCredits } = this.armory.refillForWave(this.wave);

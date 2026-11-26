@@ -148,6 +148,14 @@ export const GAME_CONFIG = {
       signalRange: [75, 90],
       headingJitter: 0.0,
     },
+    supersonic_recon: {
+      label: 'Сверхзвуковой разведчик',
+      category: 'threat',
+      weight: 0, // Бонусный юнит 4+ волны, управляется модулем SupersonicReconManager
+      speedRange: [92, 102],
+      signalRange: [88, 96],
+      headingJitter: 0.0,
+    },
   },
 
   // Цветовая палитра CRT-радара
@@ -302,5 +310,6 @@ export interface GameTarget {
   isEgressing?: boolean; // Флаг: самолёт РЭБ завершил дежурство и уходит из сектора
   isTerrainHugger?: boolean; // Флаг: низковысотный штурмовик огибания рельефа (ПМВ)
   isSubmerged?: boolean; // Флаг: цель находится в мёртвой зоне рельефа
+  isRecon?: boolean; // Флаг: бонусный сверхзвуковой разведчик
   eventTriggered?: boolean; // Флаг: для цели уже отработал мини-ивент развязки волны
 }

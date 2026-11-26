@@ -12,6 +12,7 @@ import {
   type BarrageSalvoManager,
   type JammerAircraftManager,
   type TerrainHuggerManager,
+  type SupersonicReconManager,
   type WeatherFrontManager,
 } from './units';
 
@@ -51,6 +52,7 @@ export interface RadarRenderData {
   barrageSalvo?: BarrageSalvoManager;
   jammerAircraft?: JammerAircraftManager;
   terrainHugger?: TerrainHuggerManager;
+  supersonicRecon?: SupersonicReconManager;
   weatherFront?: WeatherFrontManager;
   warningArc?: { angle: number; phase: 'warning' | 'active' } | null;
   onboardingStage?: OnboardingStage;
@@ -602,8 +604,8 @@ export function createRadarRender(
 
     // 4. Метки целей (люминофор)
     for (const target of data.targets) {
-      // Самолёт РЭБ и штурмовик ПМВ отрисовываются собственными менеджерами
-      if (target.isJammer || target.isTerrainHugger) continue;
+      // Самолёт РЭБ, штурмовик ПМВ и сверхзвуковой разведчик отрисовываются собственными менеджерами
+      if (target.isJammer || target.isTerrainHugger || target.isRecon) continue;
 
       // Проверка на экранирование конусом помех РЭБ
       const isJammed = data.jammerAircraft?.isTargetJammed(target);
@@ -738,6 +740,9 @@ export function createRadarRender(
     // 6.95. Низковысотный штурмовик ПМВ («Стриж»)
     data.terrainHugger?.render(dynamicGraphics);
 
+    // 6.98. Сверхзвуковой разведчик-невидимка «Сокол»
+    data.supersonicRecon?.render(dynamicGraphics);
+
     // 7. Эффекты взрывов и ударных волн
     renderExplosions(dynamicGraphics, data.explosions);
 
@@ -759,6 +764,7 @@ export function createRadarRender(
       (t) =>
         !t.isJammer &&
         !t.isTerrainHugger &&
+        !t.isRecon &&
         !t.isTargeted &&
         !t.markedAs &&
         t.alpha > 0.05,

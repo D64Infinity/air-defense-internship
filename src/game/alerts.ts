@@ -11,6 +11,7 @@ export interface InterceptAlertData {
   isLongRange?: boolean;
   streakReset?: boolean;
   ammoLeft?: number;
+  bonusNote?: string;
 }
 
 /**
@@ -200,6 +201,18 @@ export function createAlertManager(scene: Phaser.Scene): AlertManager {
       bgColor = alerts.bgSuccess;
       borderColor = alerts.borderSuccess;
       pipColor = alerts.pipSuccess;
+    } else if (data.unitType === 'supersonic_recon') {
+      title =
+        data.bonusNote === 'ТЕЛЕМЕТРИЯ'
+          ? '[ РТР ] СВЕРХЗВУКОВОЙ РАЗВЕДЧИК'
+          : '[ ПЕРЕХВАТ ] СВЕРХЗВУКОВОЙ РАЗВЕДЧИК';
+      const note = data.bonusNote ?? 'СПЕЦНАГРАДА';
+      outcome = `+${data.points} ОЧК | +${data.credits} CR | ${note}`;
+      titleColor = text.cyanLight;
+      outcomeColor = text.gold;
+      bgColor = alerts.bgInfo;
+      borderColor = alerts.borderInfo;
+      pipColor = alerts.pipInfo;
     } else if (data.unitType === 'friend') {
       title = '[ ТРЕВОГА ] ОГОНЬ ПО СВОИМ: СОЮЗНИК!';
       outcome = `${data.points} ОЧК | ${data.credits} CR | СЕРИЯ СБРОШЕНА`;

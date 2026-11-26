@@ -20,6 +20,7 @@ export interface SoundSystem {
   playFlareSizzle: () => void;
   playJammerShutdown: (pan?: number) => void;
   playTerrainHuggerPopUp: () => void;
+  playReconAlert: () => void;
   playThunderClap: (pan?: number) => void;
   playMenuHover: () => void;
   playMenuSelect: () => void;
@@ -1220,6 +1221,9 @@ export function createSoundSystem(): SoundSystem {
       case 'terrain_hugger':
         playTerrainHuggerExplosion(audioCtx, route, now);
         break;
+      case 'supersonic_recon':
+        playTerrainHuggerExplosion(audioCtx, route, now);
+        break;
       case 'friend':
         playFriendExplosion(audioCtx, route, now);
         break;
@@ -1709,6 +1713,43 @@ export function createSoundSystem(): SoundSystem {
   };
 
   /**
+   * Двойной высокий пинг РЛС при обнаружении сверхзвукового разведчика
+   */
+  const playReconAlert = (): void => {
+    if (isMuted) return;
+    const audioCtx = getContext();
+    if (!audioCtx) return;
+
+    const now = audioCtx.currentTime;
+    const masterDest = getMasterIn(audioCtx);
+
+    [0, 0.11].forEach((offset, idx) => {
+      const t = now + offset;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      const freq = idx === 0 ? 1280 : 1680;
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, t);
+      osc.frequency.exponentialRampToValueAtTime(freq * 1.12, t + 0.075);
+
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.linearRampToValueAtTime(0.11, t + 0.005);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.08);
+
+      osc.connect(gain);
+      gain.connect(masterDest);
+
+      osc.start(t);
+      osc.stop(t + 0.085);
+      osc.onended = () => {
+        osc.disconnect();
+        gain.disconnect();
+      };
+    });
+  };
+
+  /**
    * Раскатистый низкий гул множественного старта заградительных ракет
    */
   const playBarrageRocketLaunch = (): void => {
@@ -2140,6 +2181,7 @@ export function createSoundSystem(): SoundSystem {
     playFlareSizzle,
     playJammerShutdown,
     playTerrainHuggerPopUp,
+    playReconAlert,
     playThunderClap,
     playMenuHover,
     playMenuSelect,

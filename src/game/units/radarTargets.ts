@@ -79,6 +79,7 @@ export const TARGET_MANEUVERS: Record<TargetType, (target: GameTarget) => void> 
     }
   },
   terrain_hugger: () => {},
+  supersonic_recon: () => {},
 };
 
 /**
