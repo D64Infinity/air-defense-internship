@@ -787,6 +787,7 @@ export class GameScene extends Phaser.Scene {
       this.abilities.chargeRatio,
       this.abilities.isReady,
       this.abilities.stasisRemaining,
+      !this.abilities.hasActivatedOnce,
     );
   }
 

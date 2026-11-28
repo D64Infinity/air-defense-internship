@@ -143,6 +143,7 @@ export interface AbilityButtonWidget {
     chargeRatio: number,
     isReady: boolean,
     stasisRemaining: number,
+    showHotkeyHint: boolean,
   ) => void;
 }
 
@@ -165,7 +166,7 @@ export function createAbilityButtonWidget(
   const iconGfx = scene.add.graphics().setDepth(22);
 
   const labelText = scene.add
-    .text(ax, ay + aSize / 2 + 9, '3 ВОЛНА', {
+    .text(ax, ay + aSize / 2 + 9, 'ПУСТО', {
       ...monoStyle,
       fontSize: '9px',
       color: '#64748b',
@@ -208,9 +209,10 @@ export function createAbilityButtonWidget(
     chargeRatio: number,
     isReady: boolean,
     stasisRemaining: number,
+    showHotkeyHint: boolean,
   ) => {
     const pct = Math.round(chargeRatio * 100);
-    const key = `${ability?.id ?? 'locked'}|${Math.round(chargeRatio * 20)}|${isReady ? 1 : 0}|${stasisRemaining > 0 ? 1 : 0}|${isHovered ? 1 : 0}`;
+    const key = `${ability?.id ?? 'locked'}|${Math.round(chargeRatio * 20)}|${isReady ? 1 : 0}|${stasisRemaining > 0 ? 1 : 0}|${showHotkeyHint ? 1 : 0}|${isHovered ? 1 : 0}`;
     if (key === lastRenderKey) return;
     lastRenderKey = key;
 
@@ -279,15 +281,17 @@ export function createAbilityButtonWidget(
     iconGfx.clear();
     if (!ability) {
       drawPadlockIcon(iconGfx, ax, ay);
-      labelText.setText('3 ВОЛНА').setColor('#64748b');
+      labelText.setText('ПУСТО').setColor('#64748b');
     } else {
       ABILITY_ICONS[ability.id](iconGfx, ax, ay, isReady ? 1.0 : 0.48);
       if (stasisRemaining > 0) {
         labelText.setText(`${stasisRemaining.toFixed(1)}С`).setColor('#67e8f9');
       } else if (isReady) {
-        labelText
-          .setText(GAME_CONFIG.isMobile ? ability.shortLabel : 'ПРОБЕЛ')
-          .setColor(accentHex);
+        const readyLabel =
+          !GAME_CONFIG.isMobile && showHotkeyHint
+            ? 'ПРОБЕЛ'
+            : ability.shortLabel;
+        labelText.setText(readyLabel).setColor(accentHex);
       } else {
         labelText.setText(`${pct}%`).setColor('#94a3b8');
       }
@@ -296,14 +300,12 @@ export function createAbilityButtonWidget(
     // Обновление контекстного тултипа
     tooltipTitle.setText(
       ability
-        ? `[ ${ability.title} • ${isReady ? 'ГОТОВО' : `ЗАРЯД ${pct}%`} ]`
+        ? `[ ${ability.title} • ${isReady ? (GAME_CONFIG.isMobile ? 'ГОТОВО' : 'ГОТОВО • ПРОБЕЛ') : `ЗАРЯД ${pct}%`} ]`
         : '[ МОДУЛЬ СПЕЦСРЕДСТВ ]',
     );
     tooltipTitle.setColor(ability ? accentHex : '#94a3b8');
     tooltipDesc.setText(
-      ability
-        ? ability.tooltipDesc
-        : 'ВЫБОР 1-Й СПОСОБНОСТИ ОТКРОЕТСЯ НА 3-Й ВОЛНЕ',
+      ability ? ability.tooltipDesc : 'ОТКРОЕТСЯ НА 3-Й ВОЛНЕ',
     );
 
     const tipW = Math.max(tooltipTitle.width, tooltipDesc.width) + 28;
@@ -317,11 +319,12 @@ export function createAbilityButtonWidget(
     tooltipBg.fillRect(-tipW, -tipH / 2 + 4, 3, tipH - 8);
   };
 
-  let latestArgs: [AbilityDefinition | null, number, boolean, number] = [
+  let latestArgs: [AbilityDefinition | null, number, boolean, number, boolean] = [
     null,
     0,
     false,
     0,
+    true,
   ];
 
   hitArea.on('pointerover', () => {
@@ -340,7 +343,7 @@ export function createAbilityButtonWidget(
     }
   });
 
-  redraw(null, 0, false, 0);
+  redraw(null, 0, false, 0, true);
 
   return {
     setVisible: (visible: boolean) => {
@@ -353,10 +356,10 @@ export function createAbilityButtonWidget(
         tooltipContainer.setVisible(false);
       }
     },
-    sync: (ability, chargeRatio, isReady, stasisRemaining) => {
+    sync: (ability, chargeRatio, isReady, stasisRemaining, showHotkeyHint) => {
       canClick = Boolean(ability && isReady);
-      latestArgs = [ability, chargeRatio, isReady, stasisRemaining];
-      redraw(ability, chargeRatio, isReady, stasisRemaining);
+      latestArgs = [ability, chargeRatio, isReady, stasisRemaining, showHotkeyHint];
+      redraw(ability, chargeRatio, isReady, stasisRemaining, showHotkeyHint);
     },
   };
 }
@@ -471,12 +474,12 @@ export function createAbilityDraftOverlay(
       .setOrigin(0.5);
 
     const descText = scene.add
-      .text(cardX, cardCenterY + 52, '', {
+      .text(cardX, cardCenterY + 46, '', {
         ...monoStyle,
-        fontSize: '11px',
+        fontSize: '12px',
         color: '#cbd5e1',
         align: 'center',
-        lineSpacing: 4,
+        lineSpacing: 5,
       })
       .setOrigin(0.5);
 
@@ -543,11 +546,13 @@ export function createAbilityDraftOverlay(
     replacedAbility: AbilityDefinition | null,
   ) => {
     currentChoices = choices;
-    headerText.setText(`[ АРСЕНАЛ СЕКТОРА • ВОЛНА ${wave}: СПЕЦСРЕДСТВО НА 3 ВОЛНЫ ]`);
+    headerText.setText(`[ АРСЕНАЛ • ВОЛНА ${wave} ]`);
     subHeaderText.setText(
       replacedAbility
-        ? `ВНИМАНИЕ: ВЫБОР ПЕРЕЗАПИШЕТ «${replacedAbility.title}» НА СЛЕДУЮЩИЕ 3 ВОЛНЫ`
-        : 'ВЫБЕРИТЕ АКТИВНУЮ СПОСОБНОСТЬ (АКТИВАЦИЯ ПО ПРОБЕЛУ ИЛИ КНОПКЕ В УГЛУ)',
+        ? `ЗАМЕНА «${replacedAbility.title}» НА СЛЕДУЮЩИЕ 3 ВОЛНЫ`
+        : GAME_CONFIG.isMobile
+          ? 'НА 3 ВОЛНЫ • ЗАПУСК КНОПКОЙ В УГЛУ'
+          : 'НА 3 ВОЛНЫ • ЗАПУСК: ПРОБЕЛ ИЛИ КНОПКА В УГЛУ',
     );
 
     choices.forEach((def, idx) => {

@@ -1246,7 +1246,7 @@ const WAVE_MODIFIER_DISPLAY_CONFIG = {
   centerY: 84,
   size: 54,
   tooltipGapX: 14,
-  standbyLabel: 'ШТАТНО',
+  standbyLabel: 'НОРМА',
 } as const;
 
 /**

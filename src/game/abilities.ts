@@ -47,9 +47,9 @@ export const ABILITY_DEFS: readonly AbilityDefinition[] = [
     id: 'radar_pulse',
     title: 'РЛС-ИМПУЛЬС',
     shortLabel: 'ИМПУЛЬС',
-    subtitle: 'Мгновенный просвет сектора:\nраскрывает типы всех целей на радаре\nи выводит «Стрижа» из тени рельефа.',
-    tooltipDesc: 'РАСКРЫВАЕТ ВСЕ ЦЕЛИ НА ЭКРАНЕ И ТЕНЬ ПМВ',
-    chargeTierLabel: 'БЫСТРЫЙ ЗАРЯД',
+    subtitle: 'Раскрывает все цели\nна радаре и выводит\n«Стрижа» из тени',
+    tooltipDesc: 'РАСКРЫВАЕТ ВСЕ ЦЕЛИ И ТЕНЬ ПМВ',
+    chargeTierLabel: 'ЗАРЯД: 4',
     chargeNeeded: 4,
     accentColor: '#38bdf8',
     borderColor: 0x0284c7,
@@ -58,9 +58,9 @@ export const ABILITY_DEFS: readonly AbilityDefinition[] = [
     id: 'tactical_stasis',
     title: 'КРИО-СТАЗИС',
     shortLabel: 'СТАЗИС',
-    subtitle: 'Тормозит все враждебные цели до 30%\nскорости на 4.5 сек. Луч РЛС и ваши\nракеты работают без замедления.',
-    tooltipDesc: 'ЗАМЕДЛЯЕТ ЦЕЛИ ДО 30% НА 4.5 СЕК',
-    chargeTierLabel: 'СРЕДНИЙ ЗАРЯД',
+    subtitle: 'Замедляет цели до 30%\nна 4.5 сек. Луч и ракеты\nлетят как обычно',
+    tooltipDesc: 'ЦЕЛИ НА 30% СКОРОСТИ (4.5 СЕК)',
+    chargeTierLabel: 'ЗАРЯД: 5',
     chargeNeeded: 5,
     accentColor: '#67e8f9',
     borderColor: 0x06b6d4,
@@ -69,9 +69,9 @@ export const ABILITY_DEFS: readonly AbilityDefinition[] = [
     id: 'volley_barrage',
     title: 'ЗАЛП ЗРК',
     shortLabel: 'ЗАЛП ×3',
-    subtitle: 'Экстренный пуск 3 бесплатных ракет\nв ближайшие к базе угрозы.\nНе трогает союзников и ловушки.',
-    tooltipDesc: '3 БЕСПЛАТНЫЕ РАКЕТЫ ПО БЛИЖАЙШИМ УГРОЗАМ',
-    chargeTierLabel: 'ТЯЖЁЛЫЙ ЗАРЯД',
+    subtitle: '3 бесплатные ракеты\nв ближайшие угрозы.\nСвоих не трогает',
+    tooltipDesc: '3 БЕСПЛАТНЫЕ РАКЕТЫ ПО УГРОЗАМ',
+    chargeTierLabel: 'ЗАРЯД: 6',
     chargeNeeded: 6,
     accentColor: '#facc15',
     borderColor: 0xeab308,
@@ -80,9 +80,9 @@ export const ABILITY_DEFS: readonly AbilityDefinition[] = [
     id: 'emp_sweep',
     title: 'ЭМИ-ЗАЧИСТКА',
     shortLabel: 'ЭМИ',
-    subtitle: 'Сжигает все ложные цели в секторе\nс зачётом в серию и глушит строб\nсамолёта РЭБ на 4 секунды.',
-    tooltipDesc: 'УНИЧТОЖАЕТ ЛОВУШКИ И ГЛУШИТ РЭБ НА 4 СЕК',
-    chargeTierLabel: 'БЫСТРЫЙ ЗАРЯД',
+    subtitle: 'Снимает все ловушки\nи на 4 сек глушит\nпомехи РЭБ',
+    tooltipDesc: 'УБИРАЕТ ЛОВУШКИ И ГЛУШИТ РЭБ (4 СЕК)',
+    chargeTierLabel: 'ЗАРЯД: 4',
     chargeNeeded: 4,
     accentColor: '#c084fc',
     borderColor: 0xa855f7,
@@ -91,9 +91,9 @@ export const ABILITY_DEFS: readonly AbilityDefinition[] = [
     id: 'field_drop',
     title: 'ПОЛЕВОЙ СБРОС',
     shortLabel: 'СБРОС',
-    subtitle: 'Сброс аварийного контейнера:\nдобавляет +2 ракеты в боекомплект\nи восстанавливает +12 HP базе.',
-    tooltipDesc: '+2 РАКЕТЫ В БК И РЕМОНТ БАЗЫ +12 HP',
-    chargeTierLabel: 'СРЕДНИЙ ЗАРЯД',
+    subtitle: '+2 ракеты в БК\nи +12 HP базе.\nАварийный резерв',
+    tooltipDesc: '+2 РАКЕТЫ В БК И +12 HP БАЗЕ',
+    chargeTierLabel: 'ЗАРЯД: 5',
     chargeNeeded: 5,
     accentColor: '#4ade80',
     borderColor: 0x22c55e,
@@ -105,6 +105,7 @@ export interface AbilityManager {
   readonly charge: number;
   readonly chargeRatio: number;
   readonly isReady: boolean;
+  readonly hasActivatedOnce: boolean;
   readonly stasisRemaining: number;
   readonly pulseProgress: number | null;
   readonly empProgress: number | null;
@@ -123,6 +124,7 @@ export interface AbilityManager {
 export function createAbilityManager(): AbilityManager {
   let activeAbility: AbilityDefinition | null = null;
   let charge = 0;
+  let hasActivatedOnce = false;
   let stasisRemaining = 0;
   let pulseAge = -1;
   let empAge = -1;
@@ -130,6 +132,7 @@ export function createAbilityManager(): AbilityManager {
   const reset = (): void => {
     activeAbility = null;
     charge = 0;
+    hasActivatedOnce = false;
     stasisRemaining = 0;
     pulseAge = -1;
     empAge = -1;
@@ -169,6 +172,7 @@ export function createAbilityManager(): AbilityManager {
   const consumeAndTrigger = (): AbilityDefinition | null => {
     if (!activeAbility || charge < activeAbility.chargeNeeded) return null;
     charge = 0;
+    hasActivatedOnce = true;
 
     if (activeAbility.id === 'tactical_stasis') {
       stasisRemaining = ABILITY_CONFIG.stasisDurationSec;
@@ -214,6 +218,9 @@ export function createAbilityManager(): AbilityManager {
     },
     get isReady() {
       return Boolean(activeAbility && charge >= activeAbility.chargeNeeded);
+    },
+    get hasActivatedOnce() {
+      return hasActivatedOnce;
     },
     get stasisRemaining() {
       return stasisRemaining;
