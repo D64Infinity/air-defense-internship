@@ -63,6 +63,7 @@ export interface RadarRenderData {
   abilityPulseProgress?: number | null;
   abilityStasisActive?: boolean;
   abilityEmpProgress?: number | null;
+  abilityDomeRemaining?: number;
   warningArc?: { angle: number; phase: 'warning' | 'active' } | null;
   onboardingStage?: OnboardingStage;
 }
@@ -722,6 +723,34 @@ export function createRadarRender(
       dynamicGraphics.strokeCircle(radarX, radarY, er);
       dynamicGraphics.lineStyle(2.4, 0xf3e8ff, 0.95 * ea);
       dynamicGraphics.strokeCircle(radarX, radarY, er);
+    }
+
+    if (data.abilityDomeRemaining && data.abilityDomeRemaining > 0) {
+      const domeR = GAME_CONFIG.dangerCloseRadius;
+      const pulse = 0.72 + 0.28 * Math.sin(data.timeNow * 0.012);
+      const lowFade =
+        data.abilityDomeRemaining < 1.2
+          ? 0.45 + 0.55 * Math.abs(Math.sin(data.timeNow * 0.024))
+          : 1;
+      const alphaScale = pulse * lowFade;
+
+      dynamicGraphics.fillStyle(0xfacc15, 0.065 * alphaScale);
+      dynamicGraphics.fillCircle(radarX, radarY, domeR);
+
+      dynamicGraphics.lineStyle(5, 0xfacc15, 0.16 * alphaScale);
+      dynamicGraphics.strokeCircle(radarX, radarY, domeR);
+      dynamicGraphics.lineStyle(2, 0xfef08a, 0.88 * alphaScale);
+      dynamicGraphics.strokeCircle(radarX, radarY, domeR);
+
+      // 4 вращающиеся дуги-сегменты силового барьера
+      const rot = data.timeNow * 0.0018;
+      dynamicGraphics.lineStyle(2.6, 0x38bdf8, 0.75 * alphaScale);
+      for (let i = 0; i < 4; i++) {
+        const a0 = rot + (Math.PI / 2) * i;
+        dynamicGraphics.beginPath();
+        dynamicGraphics.arc(radarX, radarY, domeR + 3, a0, a0 + 0.45, false);
+        dynamicGraphics.strokePath();
+      }
     }
 
     // 4. Метки целей (люминофор)

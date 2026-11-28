@@ -12,6 +12,7 @@ export interface InterceptAlertData {
   streakReset?: boolean;
   ammoLeft?: number;
   bonusNote?: string;
+  byAbility?: boolean;
 }
 
 /**
@@ -165,7 +166,16 @@ export function createAlertManager(scene: Phaser.Scene): AlertManager {
     let borderColor = alerts.borderInfo;
     let pipColor = alerts.pipInfo;
 
-    if (data.unitType === 'bomber') {
+    if (data.byAbility) {
+      const unitLabel = GAME_CONFIG.targetTypes[data.unitType].label.toUpperCase();
+      title = '[ КУПОЛ ПВО ] ВРАЖЕСКАЯ ЦЕЛЬ СБИТА';
+      outcome = `${unitLabel} • 0 ОЧК | 0 CR`;
+      titleColor = text.gold;
+      outcomeColor = '#fef08a';
+      bgColor = alerts.bgGold;
+      borderColor = alerts.borderGold;
+      pipColor = alerts.pipGold;
+    } else if (data.unitType === 'bomber') {
       title = '[ ПЕРЕХВАТ ] ТЯЖЁЛЫЙ БОМБАРДИРОВЩИК';
       const rangeTag = data.isLongRange ? ' | ДАЛЬНИЙ РУБЕЖ' : '';
       outcome = `+${data.points} ОЧК  |  +${data.credits} CR${rangeTag}`;

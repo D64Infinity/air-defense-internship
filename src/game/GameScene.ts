@@ -394,6 +394,11 @@ export class GameScene extends Phaser.Scene {
         ? dt * ABILITY_CONFIG.stasisSpeedFactor
         : dt;
 
+    // 0.5. Перехват угроз на ближнем рубеже при активном Куполе ПВО (до проверки попадания по базе)
+    if (this.abilities.domeRemaining > 0) {
+      this.updateDefenseDome();
+    }
+
     // 1. Физика целей и спавн новых бортов до расчёта луча радара
     this.updateTargets(targetDt);
 
@@ -571,6 +576,7 @@ export class GameScene extends Phaser.Scene {
       abilityPulseProgress: this.abilities.pulseProgress,
       abilityStasisActive: this.abilities.stasisRemaining > 0,
       abilityEmpProgress: this.abilities.empProgress,
+      abilityDomeRemaining: this.abilities.domeRemaining,
       explosions: this.explosions,
       warningArc: eventResult.warningArc,
       onboardingStage,
@@ -782,11 +788,15 @@ export class GameScene extends Phaser.Scene {
   }
 
   private syncAbilityWidget(): void {
+    const activeTimer = Math.max(
+      this.abilities.stasisRemaining,
+      this.abilities.domeRemaining,
+    );
     this.abilityWidget.sync(
       this.abilities.activeAbility,
       this.abilities.chargeRatio,
       this.abilities.isReady,
-      this.abilities.stasisRemaining,
+      activeTimer,
       !this.abilities.hasActivatedOnce,
     );
   }
@@ -812,6 +822,55 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private updateDefenseDome(): void {
+    const domeRadius = GAME_CONFIG.dangerCloseRadius;
+
+    for (let i = this.targets.length - 1; i >= 0; i--) {
+      const target = this.targets[i];
+      if (
+        target.type !== 'missile' &&
+        target.type !== 'terrain_hugger' &&
+        !(target.type === 'bomber' && !target.hasBombedBase)
+      ) {
+        continue;
+      }
+
+      const distToBase = getDistToBase(target.x, target.y);
+      if (distToBase > domeRadius) continue;
+
+      this.explosions.push(createExplosion(target.x, target.y, true));
+      this.ambientBg.triggerExplosionFlash(target.type);
+      const pan = Phaser.Math.Clamp(
+        (target.x - GAME_CONFIG.radarX) / GAME_CONFIG.radarRadius,
+        -1,
+        1,
+      );
+      this.soundSystem.playExplosion(target.type, pan);
+
+      if (target.type === 'missile') {
+        this.stats.recordMissileIntercept();
+      } else {
+        this.stats.recordBomberIntercept();
+      }
+      if (target.type === 'terrain_hugger') {
+        this.terrainHugger.onTargetDestroyed(target.id);
+      }
+
+      const unitLabel = GAME_CONFIG.targetTypes[target.type].label.toUpperCase();
+      this.showFeedback(
+        `[КУПОЛ ПВО] ВРАГ СБИТ НА БАРЬЕРЕ (${unitLabel})`,
+        GAME_CONFIG.colors.text.gold,
+      );
+      this.alerts.showInterceptAlert({
+        unitType: target.type,
+        points: 0,
+        credits: 0,
+        byAbility: true,
+      });
+      this.removeTarget(target);
+    }
+  }
+
   private activateAbility(): void {
     if (
       this.isGameOver ||
@@ -828,20 +887,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    let volleyCandidates: GameTarget[] = [];
-    if (current.id === 'volley_barrage') {
-      volleyCandidates = this.targets
-        .filter((t) => GAME_CONFIG.targetTypes[t.type].category === 'threat' && !t.isTargeted)
-        .sort((a, b) => getDistToBase(a.x, a.y) - getDistToBase(b.x, b.y));
-      if (volleyCandidates.length === 0) {
-        this.soundSystem.playDenyClick();
-        this.showFeedback(
-          '[ЗАЛП ЗРК] В СЕКТОРЕ НЕТ АКТИВНЫХ УГРОЗ',
-          GAME_CONFIG.colors.text.warning,
-        );
-        return;
-      }
-    } else if (current.id === 'field_drop') {
+    if (current.id === 'field_drop') {
       if (
         this.armory.interceptors >= GAME_CONFIG.maxInterceptors &&
         this.baseHealth >= GAME_CONFIG.maxBaseHealth
@@ -888,20 +934,13 @@ export class GameScene extends Phaser.Scene {
         break;
       }
 
-      case 'volley_barrage': {
-        const picked = volleyCandidates.slice(0, ABILITY_CONFIG.volleyCount);
-        for (const t of picked) {
-          t.isTargeted = true;
-          this.soundSystem.playLaunch();
-          this.interceptorManager.launch(t, (impactTarget) => {
-            this.handleInterceptorImpact(impactTarget);
-          });
-        }
+      case 'defense_dome': {
+        this.ambientBg.triggerExplosionFlash('missile');
         this.showFeedback(
-          `[ЗАЛП ЗРК] БЕСПЛАТНО ВЫПУЩЕНО РАКЕТ: ${picked.length}!`,
+          `[КУПОЛ ПВО] ЗАЩИТНЫЙ БАРЬЕР АКТИВЕН НА ${ABILITY_CONFIG.domeDurationSec} СЕК!`,
           GAME_CONFIG.colors.text.gold,
         );
-        this.updateTargetSelectionUI();
+        this.updateDefenseDome();
         break;
       }
 
@@ -911,7 +950,6 @@ export class GameScene extends Phaser.Scene {
         for (const d of decoys) {
           this.explosions.push(createExplosion(d.x, d.y, false));
           this.stats.recordDecoyFiltered();
-          this.scoring.addDecoySuccess();
           this.removeTarget(d);
         }
         for (const t of this.targets) {

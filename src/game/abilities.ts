@@ -3,7 +3,7 @@ import Phaser from 'phaser';
 export type AbilityId =
   | 'radar_pulse'
   | 'tactical_stasis'
-  | 'volley_barrage'
+  | 'defense_dome'
   | 'emp_sweep'
   | 'field_drop';
 
@@ -16,10 +16,10 @@ export const ABILITY_CONFIG = {
   draftChoicesCount: 3, // Количество карточек на выбор
   stasisDurationSec: 4.5, // Длительность замедления времени (сек)
   stasisSpeedFactor: 0.3, // Скорость целей в стазисе (30%)
+  domeDurationSec: 6.0, // Длительность ближнего защитного купола ПВО (сек)
   pulseDurationSec: 1.25, // Длительность волны РЛС-импульса (сек)
   empDurationSec: 0.9, // Длительность ЭМИ-волны (сек)
   empJammerSuppressSec: 4.0, // Подавление самолёта РЭБ от ЭМИ (сек)
-  volleyCount: 3, // Количество бесплатных ракет при залпе ЗРК
   fieldDropMissiles: 2, // Бонус ракет от полевого сброса
   fieldDropHeal: 12, // Лечение базы от полевого сброса (HP)
   chargeOnThreatKill: 1.0, // Заряд за сбитую угрозу
@@ -66,13 +66,13 @@ export const ABILITY_DEFS: readonly AbilityDefinition[] = [
     borderColor: 0x06b6d4,
   },
   {
-    id: 'volley_barrage',
-    title: 'ЗАЛП ЗРК',
-    shortLabel: 'ЗАЛП ×3',
-    subtitle: '3 бесплатные ракеты\nв ближайшие угрозы.\nСвоих не трогает',
-    tooltipDesc: '3 БЕСПЛАТНЫЕ РАКЕТЫ ПО УГРОЗАМ',
-    chargeTierLabel: 'ЗАРЯД: 6',
-    chargeNeeded: 6,
+    id: 'defense_dome',
+    title: 'КУПОЛ ПВО',
+    shortLabel: 'КУПОЛ',
+    subtitle: 'Барьер на 6 сек у базы:\nсбивает врагов вблизи,\nсвоих пропускает',
+    tooltipDesc: 'ЩИТ ВОКРУГ БАЗЫ НА 6 СЕК',
+    chargeTierLabel: 'ЗАРЯД: 5',
+    chargeNeeded: 5,
     accentColor: '#facc15',
     borderColor: 0xeab308,
   },
@@ -107,6 +107,7 @@ export interface AbilityManager {
   readonly isReady: boolean;
   readonly hasActivatedOnce: boolean;
   readonly stasisRemaining: number;
+  readonly domeRemaining: number;
   readonly pulseProgress: number | null;
   readonly empProgress: number | null;
   shouldOfferDraftOnWave: (wave: number) => boolean;
@@ -126,6 +127,7 @@ export function createAbilityManager(): AbilityManager {
   let charge = 0;
   let hasActivatedOnce = false;
   let stasisRemaining = 0;
+  let domeRemaining = 0;
   let pulseAge = -1;
   let empAge = -1;
 
@@ -134,6 +136,7 @@ export function createAbilityManager(): AbilityManager {
     charge = 0;
     hasActivatedOnce = false;
     stasisRemaining = 0;
+    domeRemaining = 0;
     pulseAge = -1;
     empAge = -1;
   };
@@ -157,6 +160,7 @@ export function createAbilityManager(): AbilityManager {
     // Новая способность выдаётся сразу полностью заряженной для мгновенной отдачи
     charge = found.chargeNeeded;
     stasisRemaining = 0;
+    domeRemaining = 0;
     pulseAge = -1;
     empAge = -1;
     return found;
@@ -176,6 +180,8 @@ export function createAbilityManager(): AbilityManager {
 
     if (activeAbility.id === 'tactical_stasis') {
       stasisRemaining = ABILITY_CONFIG.stasisDurationSec;
+    } else if (activeAbility.id === 'defense_dome') {
+      domeRemaining = ABILITY_CONFIG.domeDurationSec;
     } else if (activeAbility.id === 'radar_pulse') {
       pulseAge = 0;
     } else if (activeAbility.id === 'emp_sweep') {
@@ -188,6 +194,9 @@ export function createAbilityManager(): AbilityManager {
   const update = (dt: number): boolean => {
     if (stasisRemaining > 0) {
       stasisRemaining = Math.max(0, stasisRemaining - dt);
+    }
+    if (domeRemaining > 0) {
+      domeRemaining = Math.max(0, domeRemaining - dt);
     }
     if (pulseAge >= 0) {
       pulseAge += dt;
@@ -224,6 +233,9 @@ export function createAbilityManager(): AbilityManager {
     },
     get stasisRemaining() {
       return stasisRemaining;
+    },
+    get domeRemaining() {
+      return domeRemaining;
     },
     get pulseProgress() {
       if (pulseAge < 0) return null;

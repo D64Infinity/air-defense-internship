@@ -59,27 +59,28 @@ const ABILITY_ICONS: Record<
     g.fillCircle(cx, cy, 3);
   },
 
-  volley_barrage: (g, cx, cy, alpha) => {
-    const offsets = [
-      { dx: -9, dy: 4 },
-      { dx: 0, dy: -5 },
-      { dx: 9, dy: 4 },
-    ];
-    for (const o of offsets) {
-      const mx = cx + o.dx;
-      const my = cy + o.dy;
-      g.fillStyle(0xfacc15, alpha);
-      g.beginPath();
-      g.moveTo(mx, my - 8);
-      g.lineTo(mx + 3.5, my + 2);
-      g.lineTo(mx, my);
-      g.lineTo(mx - 3.5, my + 2);
-      g.closePath();
-      g.fillPath();
+  defense_dome: (g, cx, cy, alpha) => {
+    // Защитная дуга энергетического купола
+    g.lineStyle(4, 0xfacc15, 0.2 * alpha);
+    g.beginPath();
+    g.arc(cx, cy + 7, 16, Math.PI, 0, false);
+    g.strokePath();
 
-      g.lineStyle(1.4, 0xf97316, 0.85 * alpha);
-      g.lineBetween(mx, my + 1, mx, my + 8);
-    }
+    g.lineStyle(2, 0xfacc15, 0.95 * alpha);
+    g.beginPath();
+    g.arc(cx, cy + 7, 16, Math.PI, 0, false);
+    g.strokePath();
+
+    g.lineStyle(1.1, 0xfef08a, 0.7 * alpha);
+    g.beginPath();
+    g.arc(cx, cy + 7, 11.5, Math.PI + 0.25, -0.25, false);
+    g.strokePath();
+
+    // База под куполом
+    g.lineStyle(1.2, 0xfacc15, 0.65 * alpha);
+    g.lineBetween(cx - 17, cy + 8, cx + 17, cy + 8);
+    g.fillStyle(0xfef08a, alpha);
+    g.fillCircle(cx, cy + 4, 2.8);
   },
 
   emp_sweep: (g, cx, cy, alpha) => {
@@ -285,7 +286,7 @@ export function createAbilityButtonWidget(
     } else {
       ABILITY_ICONS[ability.id](iconGfx, ax, ay, isReady ? 1.0 : 0.48);
       if (stasisRemaining > 0) {
-        labelText.setText(`${stasisRemaining.toFixed(1)}С`).setColor('#67e8f9');
+        labelText.setText(`${stasisRemaining.toFixed(1)}С`).setColor(accentHex);
       } else if (isReady) {
         const readyLabel =
           !GAME_CONFIG.isMobile && showHotkeyHint
