@@ -76,7 +76,13 @@ export interface TargetSpawner {
     wave: number,
     activeTargetsCount: number,
     targetsLeftInWave: number,
-    options?: { maxActiveOverride?: number; isOnboardingActive?: boolean },
+    options?: {
+      maxActiveOverride?: number;
+      isOnboardingActive?: boolean;
+      typeWeightsOverride?: Partial<Record<TargetType, number>>;
+      speedMultiplier?: number;
+      intervalMultiplier?: number;
+    },
   ) => GameTarget | null;
 
   /**
@@ -107,23 +113,31 @@ export function createSpawner(): TargetSpawner {
     spawnTimer = SPAWNER_CONFIG.initialSpawnTimer;
   };
 
-  const pickRandomType = (): TargetType => {
+  const pickRandomType = (
+    weightsOverride?: Partial<Record<TargetType, number>>,
+  ): TargetType => {
     const types = Object.keys(GAME_CONFIG.targetTypes) as TargetType[];
-    const totalWeight = types.reduce(
-      (sum, t) => sum + GAME_CONFIG.targetTypes[t].weight,
-      0,
-    );
+    const getWeight = (t: TargetType): number =>
+      weightsOverride?.[t] ?? GAME_CONFIG.targetTypes[t].weight;
+    const totalWeight = types.reduce((sum, t) => sum + getWeight(t), 0);
+    if (totalWeight <= 0) return 'missile';
     let rnd = Phaser.Math.Between(1, totalWeight);
 
     for (const t of types) {
-      rnd -= GAME_CONFIG.targetTypes[t].weight;
+      rnd -= getWeight(t);
       if (rnd <= 0) return t;
     }
     return 'missile';
   };
 
-  const createTarget = (x: number, y: number, wave: number): GameTarget => {
-    const type = pickRandomType();
+  const createTarget = (
+    x: number,
+    y: number,
+    wave: number,
+    typeWeightsOverride?: Partial<Record<TargetType, number>>,
+    speedMultiplier = 1,
+  ): GameTarget => {
+    const type = pickRandomType(typeWeightsOverride);
     const typeCfg = GAME_CONFIG.targetTypes[type];
 
     let heading: number;
@@ -188,7 +202,7 @@ export function createSpawner(): TargetSpawner {
       ); // секунды до принятия решения о довороте
     }
 
-    const waveSpeedFactor = calculateWaveSpeedFactor(wave);
+    const waveSpeedFactor = calculateWaveSpeedFactor(wave) * speedMultiplier;
     const speed =
       Phaser.Math.FloatBetween(typeCfg.speedRange[0], typeCfg.speedRange[1]) *
       waveSpeedFactor;
@@ -223,14 +237,18 @@ export function createSpawner(): TargetSpawner {
     };
   };
 
-  const spawnTargetAtEdge = (wave: number): GameTarget => {
+  const spawnTargetAtEdge = (
+    wave: number,
+    typeWeightsOverride?: Partial<Record<TargetType, number>>,
+    speedMultiplier = 1,
+  ): GameTarget => {
     const spawnAngle = Phaser.Math.FloatBetween(0, Math.PI * 2);
     const spawnDist = GAME_CONFIG.radarRadius - SPAWNER_CONFIG.edgeSpawnInset;
 
     const x = GAME_CONFIG.radarX + Math.cos(spawnAngle) * spawnDist;
     const y = GAME_CONFIG.radarY + Math.sin(spawnAngle) * spawnDist;
 
-    return createTarget(x, y, wave);
+    return createTarget(x, y, wave, typeWeightsOverride, speedMultiplier);
   };
 
   const spawnMissileAtAngle = (
@@ -339,7 +357,13 @@ export function createSpawner(): TargetSpawner {
     wave: number,
     activeTargetsCount: number,
     targetsLeftInWave: number,
-    options?: { maxActiveOverride?: number; isOnboardingActive?: boolean },
+    options?: {
+      maxActiveOverride?: number;
+      isOnboardingActive?: boolean;
+      typeWeightsOverride?: Partial<Record<TargetType, number>>;
+      speedMultiplier?: number;
+      intervalMultiplier?: number;
+    },
   ): GameTarget | null => {
     if (targetsLeftInWave <= 0) return null;
 
@@ -361,20 +385,26 @@ export function createSpawner(): TargetSpawner {
           SPAWNER_CONFIG.spawnIntervalSpeedUpMax,
           (wave - 1) * SPAWNER_CONFIG.spawnIntervalSpeedUpStep,
         );
-        spawnTimer = Phaser.Math.FloatBetween(
-          Math.max(
-            SPAWNER_CONFIG.spawnIntervalMinFloor,
-            GAME_CONFIG.spawnIntervalMinBase - speedUp,
-          ),
-          Math.max(
-            SPAWNER_CONFIG.spawnIntervalMaxFloor,
-            GAME_CONFIG.spawnIntervalMaxBase - speedUp,
-          ),
-        );
+        const intervalMult = options?.intervalMultiplier ?? 1;
+        spawnTimer =
+          Phaser.Math.FloatBetween(
+            Math.max(
+              SPAWNER_CONFIG.spawnIntervalMinFloor,
+              GAME_CONFIG.spawnIntervalMinBase - speedUp,
+            ),
+            Math.max(
+              SPAWNER_CONFIG.spawnIntervalMaxFloor,
+              GAME_CONFIG.spawnIntervalMaxBase - speedUp,
+            ),
+          ) * intervalMult;
       }
 
       if (activeTargetsCount < maxActive) {
-        return spawnTargetAtEdge(wave);
+        return spawnTargetAtEdge(
+          wave,
+          options?.typeWeightsOverride,
+          options?.speedMultiplier ?? 1,
+        );
       }
     }
 

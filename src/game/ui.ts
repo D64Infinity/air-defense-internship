@@ -12,6 +12,7 @@ import {
   formatShiftDuration,
   type DutyArchiveData,
 } from './archive';
+import type { ActiveWaveModifier, WaveModifierId } from './waveModifiers';
 
 export type { GameSessionStats };
 
@@ -1153,6 +1154,7 @@ export interface ButtonItem {
   text: Phaser.GameObjects.Text;
   elements?: Phaser.GameObjects.GameObject[];
   setEnabled: (enabled: boolean) => void;
+  setCost?: (cost: number) => void;
 }
 
 /**
@@ -1174,6 +1176,8 @@ export interface ScoreBoardData {
   highScore: number;
   interceptors: number;
   scansAvailable: number;
+  interceptorCost?: number;
+  waveModifier?: ActiveWaveModifier | null;
 }
 
 export interface TargetSelectionData {
@@ -1181,6 +1185,7 @@ export interface TargetSelectionData {
   interceptors: number;
   scansAvailable: number;
   isScanning: boolean;
+  isScanBlocked?: boolean;
   showActionHint?: boolean;
   highlightedRows?: [boolean, boolean, boolean, boolean];
 }
@@ -1208,6 +1213,13 @@ export interface TelemetryData {
   showCourseHint?: boolean;
 }
 
+export interface WaveRuleBannerData {
+  title: string;
+  subtitle: string;
+  accentColor: string;
+  borderColor: number;
+}
+
 /**
  * Интерфейс управления консолью оператора (HUD)
  */
@@ -1218,13 +1230,229 @@ export interface HudManager {
   updateTelemetry: (data: TelemetryData) => void;
   showFeedback: (text: string, color: string) => void;
   updateFeedback: (dt: number) => void;
-  showWaveBanner: (text: string) => void;
+  showWaveBanner: (text: string, waveRule?: WaveRuleBannerData | null) => void;
   updateWaveBanner: (dt: number) => void;
   showNotification: (text: string, duration?: number) => void;
   updateNotification: (dt: number) => void;
   setVisible: (visible: boolean) => void;
   slideIn: (duration?: number) => void;
 }
+
+/**
+ * Конфигурация углового мини-дисплея директивы волны на корпусе радара
+ */
+const WAVE_MODIFIER_DISPLAY_CONFIG = {
+  centerX: 578,
+  centerY: 84,
+  size: 54,
+  tooltipGapX: 14,
+  standbyLabel: 'ШТАТНО',
+} as const;
+
+/**
+ * Таблица отрисовки авторских векторных иконок правил волны для углового мини-дисплея
+ */
+const WAVE_MODIFIER_ICONS: Record<
+  WaveModifierId,
+  (g: Phaser.GameObjects.Graphics, cx: number, cy: number) => void
+> = {
+  ally_convoy: (g, cx, cy) => {
+    const drawCraft = (x: number, y: number, s: number, alpha: number) => {
+      g.fillStyle(0x4ade80, alpha);
+      g.beginPath();
+      g.moveTo(x, y - 5.5 * s);
+      g.lineTo(x + 5.5 * s, y + 3.5 * s);
+      g.lineTo(x, y + 1.4 * s);
+      g.lineTo(x - 5.5 * s, y + 3.5 * s);
+      g.closePath();
+      g.fillPath();
+
+      g.fillStyle(0xdcfce7, alpha);
+      g.fillCircle(x, y - 3.5 * s, 1.1 * s);
+
+      g.lineStyle(1, 0x22c55e, alpha * 0.45);
+      g.lineBetween(x - 2.6 * s, y + 4 * s, x - 2.6 * s, y + 8 * s);
+      g.lineBetween(x + 2.6 * s, y + 4 * s, x + 2.6 * s, y + 8 * s);
+    };
+
+    drawCraft(cx - 10, cy + 5, 0.88, 0.85);
+    drawCraft(cx + 10, cy + 5, 0.88, 0.85);
+    drawCraft(cx, cy - 6, 1.12, 1.0);
+  },
+
+  reverse_sweep: (g, cx, cy) => {
+    // Обод мини-радара
+    g.lineStyle(1.3, 0x0284c7, 0.7);
+    g.strokeCircle(cx, cy, 15.5);
+    g.fillStyle(0x38bdf8, 0.9);
+    g.fillCircle(cx, cy, 2);
+
+    // Сектор засветки и луч против часовой стрелки
+    g.fillStyle(0x38bdf8, 0.25);
+    g.beginPath();
+    g.moveTo(cx, cy);
+    g.arc(cx, cy, 14.5, -2.55, -2.05, false);
+    g.closePath();
+    g.fillPath();
+
+    g.lineStyle(1.6, 0x7dd3fc, 0.95);
+    g.lineBetween(cx, cy, cx + Math.cos(-2.55) * 14.5, cy + Math.sin(-2.55) * 14.5);
+
+    // Изогнутая стрелка обратного хода (CCW)
+    const arcR = 11.5;
+    const tipA = -2.25;
+    g.lineStyle(2, 0xe0f2fe, 0.95);
+    g.beginPath();
+    g.arc(cx, cy, arcR, -0.3, tipA, true);
+    g.strokePath();
+
+    const tx = cx + Math.cos(tipA) * arcR;
+    const ty = cy + Math.sin(tipA) * arcR;
+    const ccwTangent = tipA - Math.PI / 2;
+    g.fillStyle(0xe0f2fe, 1);
+    g.beginPath();
+    g.moveTo(tx + Math.cos(ccwTangent) * 3.5, ty + Math.sin(ccwTangent) * 3.5);
+    g.lineTo(tx - Math.cos(tipA) * 3.5, ty - Math.sin(tipA) * 3.5);
+    g.lineTo(tx + Math.cos(tipA) * 3.5, ty + Math.sin(tipA) * 3.5);
+    g.closePath();
+    g.fillPath();
+  },
+
+  radio_silence: (g, cx, cy) => {
+    // Мачта антенны
+    g.lineStyle(1.5, 0xfacc15, 0.9);
+    g.beginPath();
+    g.moveTo(cx, cy - 6);
+    g.lineTo(cx - 5, cy + 13);
+    g.lineTo(cx + 5, cy + 13);
+    g.closePath();
+    g.strokePath();
+    g.lineBetween(cx - 3, cy + 5, cx + 3, cy + 5);
+
+    g.fillStyle(0xfef08a, 1);
+    g.fillCircle(cx, cy - 7, 2.3);
+
+    // Расходящиеся волны слева и справа
+    for (const r of [7.5, 12.5]) {
+      g.lineStyle(1.3, 0xfacc15, 0.58);
+      g.beginPath();
+      g.arc(cx, cy - 7, r, -0.75, 0.75, false);
+      g.strokePath();
+
+      g.beginPath();
+      g.arc(cx, cy - 7, r, Math.PI - 0.75, Math.PI + 0.75, false);
+      g.strokePath();
+    }
+
+    // Диагональная перечёркивающая линия с тёмным контуром
+    g.lineStyle(4.5, 0x030c12, 1);
+    g.lineBetween(cx - 14, cy + 12, cx + 14, cy - 12);
+    g.lineStyle(2.4, 0xef4444, 1);
+    g.lineBetween(cx - 14, cy + 12, cx + 14, cy - 12);
+  },
+
+  blind_sector: (g, cx, cy) => {
+    g.lineStyle(1.2, 0x22c55e, 0.6);
+    g.strokeCircle(cx, cy, 15);
+    g.lineStyle(1, 0x22c55e, 0.28);
+    g.strokeCircle(cx, cy, 8);
+    g.fillStyle(0x4ade80, 0.9);
+    g.fillCircle(cx, cy, 1.8);
+
+    // Оранжевый квадрант 90° с помехами
+    const a0 = -Math.PI / 2;
+    const a1 = 0;
+    g.fillStyle(0xf97316, 0.28);
+    g.beginPath();
+    g.moveTo(cx, cy);
+    g.arc(cx, cy, 15, a0, a1, false);
+    g.closePath();
+    g.fillPath();
+
+    g.lineStyle(1.4, 0xf97316, 0.95);
+    g.lineBetween(cx, cy, cx, cy - 15);
+    g.lineBetween(cx, cy, cx + 15, cy);
+
+    for (const r of [6.5, 11.5]) {
+      g.lineStyle(1.1, 0xfb923c, 0.7);
+      g.beginPath();
+      g.arc(cx, cy, r, a0, a1, false);
+      g.strokePath();
+    }
+
+    g.fillStyle(0xfdba74, 0.95);
+    g.fillRect(cx + 4, cy - 11, 2, 2);
+    g.fillRect(cx + 9, cy - 6, 2, 2);
+    g.fillRect(cx + 6, cy - 4, 2, 2);
+  },
+
+  afterburner_raid: (g, cx, cy) => {
+    // Два ярких шеврона форсажной тяги слева-снизу
+    g.lineStyle(2.1, 0xf97316, 0.85);
+    g.beginPath();
+    g.moveTo(cx - 13, cy + 1);
+    g.lineTo(cx - 5, cy + 4);
+    g.lineTo(cx - 2, cy + 12);
+    g.strokePath();
+
+    g.lineStyle(2.1, 0xfacc15, 0.95);
+    g.beginPath();
+    g.moveTo(cx - 9, cy - 3);
+    g.lineTo(cx - 1, cy);
+    g.lineTo(cx + 2, cy + 8);
+    g.strokePath();
+
+    // Острая стреловидная цель на форсаже в правый верхний угол
+    g.fillStyle(0xf87171, 1);
+    g.beginPath();
+    g.moveTo(cx + 14, cy - 12);
+    g.lineTo(cx + 6, cy + 5);
+    g.lineTo(cx + 2, cy - 1);
+    g.lineTo(cx - 4, cy - 5);
+    g.closePath();
+    g.fillPath();
+
+    g.fillStyle(0xffffff, 0.95);
+    g.fillCircle(cx + 11.5, cy - 9.5, 1.5);
+  },
+
+  recon_hunt: (g, cx, cy) => {
+    // Золотые уголки прицельного перекрестия по углам рамки
+    const b = 14;
+    const len = 5;
+    g.lineStyle(1.5, 0xfacc15, 0.9);
+    g.beginPath();
+    g.moveTo(cx - b, cy - b + len);
+    g.lineTo(cx - b, cy - b);
+    g.lineTo(cx - b + len, cy - b);
+
+    g.moveTo(cx + b - len, cy - b);
+    g.lineTo(cx + b, cy - b);
+    g.lineTo(cx + b, cy - b + len);
+
+    g.moveTo(cx - b, cy + b - len);
+    g.lineTo(cx - b, cy + b);
+    g.lineTo(cx - b + len, cy + b);
+
+    g.moveTo(cx + b - len, cy + b);
+    g.lineTo(cx + b, cy + b);
+    g.lineTo(cx + b, cy + b - len);
+    g.strokePath();
+
+    // Конус Маха и корпус сверхзвукового «Сокола»
+    g.lineStyle(1.4, 0x38bdf8, 0.9);
+    g.beginPath();
+    g.moveTo(cx - 9, cy + 2);
+    g.lineTo(cx + 7, cy - 6);
+    g.lineTo(cx - 1, cy + 10);
+    g.strokePath();
+
+    g.fillStyle(0x38bdf8, 0.45);
+    g.fillCircle(cx + 6, cy - 5, 4);
+    g.fillStyle(0xf0f9ff, 1);
+    g.fillCircle(cx + 6, cy - 5, 2.2);
+  },
+};
 
 /**
  * Процедурная генерация векторных тактических текстур (иконки ракеты и сканера)
@@ -1745,6 +1973,160 @@ export function createHud(
     wordWrap: { width: 263 },
   }).setOrigin(0, 0.5);
 
+  // Угловой квадратный мини-дисплей директивы волны (правый верхний угол корпуса радара)
+  const { centerX: mdX, centerY: mdY, size: mdSize, tooltipGapX } =
+    WAVE_MODIFIER_DISPLAY_CONFIG;
+  const miniDisplayBg = scene.add.graphics();
+  miniDisplayBg.setDepth(21);
+  const miniDisplayIcon = scene.add.graphics();
+  miniDisplayIcon.setDepth(22);
+
+  const miniDisplayLabel = scene.add.text(
+    mdX,
+    mdY + mdSize / 2 + 9,
+    WAVE_MODIFIER_DISPLAY_CONFIG.standbyLabel,
+    {
+      ...monoStyle,
+      fontSize: '9px',
+      color: '#64748b',
+      fontStyle: 'bold',
+      align: 'center',
+    },
+  ).setOrigin(0.5);
+  miniDisplayLabel.setDepth(22);
+
+  const miniTooltipContainer = scene.add.container(
+    mdX - mdSize / 2 - tooltipGapX,
+    mdY,
+  );
+  miniTooltipContainer.setDepth(35);
+  miniTooltipContainer.setVisible(false);
+
+  const miniTooltipBg = scene.add.graphics();
+  const miniTooltipTitle = scene.add.text(-12, -10, '', {
+    ...monoStyle,
+    fontSize: '12px',
+    color: '#38bdf8',
+    fontStyle: 'bold',
+  }).setOrigin(1, 0.5);
+  const miniTooltipDesc = scene.add.text(-12, 10, '', {
+    ...monoStyle,
+    fontSize: '11px',
+    color: '#e2e8f0',
+    fontStyle: 'bold',
+  }).setOrigin(1, 0.5);
+  miniTooltipContainer.add([miniTooltipBg, miniTooltipTitle, miniTooltipDesc]);
+
+  // Невидимая зона наведения без курсора-руки и без клика
+  const miniDisplayHit = scene.add.rectangle(
+    mdX,
+    mdY + 5,
+    mdSize + 8,
+    mdSize + 18,
+    0x000000,
+    0,
+  );
+  miniDisplayHit.setDepth(23);
+  miniDisplayHit.setInteractive();
+  miniDisplayHit.on('pointerover', () => {
+    miniTooltipContainer.setVisible(true);
+  });
+  miniDisplayHit.on('pointerout', () => {
+    miniTooltipContainer.setVisible(false);
+  });
+
+  let lastDisplayedModifierKey = '__init__';
+  const renderWaveModifierDisplay = (modifier: ActiveWaveModifier | null) => {
+    const nextKey = modifier ? modifier.id : 'standby';
+    if (nextKey === lastDisplayedModifierKey) return;
+    lastDisplayedModifierKey = nextKey;
+
+    const half = mdSize / 2;
+    const borderCol = modifier ? modifier.borderColor : 0x1e3a2f;
+    const accentHex = modifier ? modifier.accentColor : '#64748b';
+
+    miniDisplayBg.clear();
+    // Внешняя рамка приборного окна
+    miniDisplayBg.fillStyle(0x030c09, 0.96);
+    miniDisplayBg.fillRoundedRect(mdX - half, mdY - half, mdSize, mdSize, 4);
+
+    if (modifier) {
+      miniDisplayBg.fillStyle(borderCol, 0.09);
+      miniDisplayBg.fillRoundedRect(mdX - half, mdY - half, mdSize, mdSize, 4);
+    }
+
+    // Тонкие сканлайны CRT внутри мини-экрана
+    miniDisplayBg.lineStyle(1, modifier ? borderCol : 0x22c55e, modifier ? 0.1 : 0.04);
+    for (let sy = mdY - half + 5; sy < mdY + half - 3; sy += 4) {
+      miniDisplayBg.lineBetween(mdX - half + 3, sy, mdX + half - 3, sy);
+    }
+
+    miniDisplayBg.lineStyle(1.5, borderCol, modifier ? 0.92 : 0.6);
+    miniDisplayBg.strokeRoundedRect(mdX - half, mdY - half, mdSize, mdSize, 4);
+
+    // Маленькие угловые засечки приборного мини-дисплея
+    const c = 6;
+    miniDisplayBg.lineStyle(1.5, modifier ? borderCol : 0x334155, 0.95);
+    miniDisplayBg.beginPath();
+    miniDisplayBg.moveTo(mdX - half, mdY - half + c);
+    miniDisplayBg.lineTo(mdX - half, mdY - half);
+    miniDisplayBg.lineTo(mdX - half + c, mdY - half);
+    miniDisplayBg.moveTo(mdX + half - c, mdY - half);
+    miniDisplayBg.lineTo(mdX + half, mdY - half);
+    miniDisplayBg.lineTo(mdX + half, mdY - half + c);
+    miniDisplayBg.moveTo(mdX - half, mdY + half - c);
+    miniDisplayBg.lineTo(mdX - half, mdY + half);
+    miniDisplayBg.lineTo(mdX - half + c, mdY + half);
+    miniDisplayBg.moveTo(mdX + half - c, mdY + half);
+    miniDisplayBg.lineTo(mdX + half, mdY + half);
+    miniDisplayBg.lineTo(mdX + half, mdY + half - c);
+    miniDisplayBg.strokePath();
+
+    // Индикатор питания в правом верхнем углу рамки
+    miniDisplayBg.fillStyle(modifier ? borderCol : 0x22c55e, modifier ? 0.95 : 0.35);
+    miniDisplayBg.fillCircle(mdX + half - 6, mdY - half + 6, 1.8);
+
+    // Иконка правила или дежурный крест ожидания
+    miniDisplayIcon.clear();
+    if (modifier) {
+      WAVE_MODIFIER_ICONS[modifier.id](miniDisplayIcon, mdX, mdY);
+    } else {
+      miniDisplayIcon.lineStyle(1, 0x334155, 0.7);
+      miniDisplayIcon.strokeCircle(mdX, mdY, 10);
+      miniDisplayIcon.lineBetween(mdX - 13, mdY, mdX - 5, mdY);
+      miniDisplayIcon.lineBetween(mdX + 5, mdY, mdX + 13, mdY);
+      miniDisplayIcon.lineBetween(mdX, mdY - 13, mdX, mdY - 5);
+      miniDisplayIcon.lineBetween(mdX, mdY + 5, mdX, mdY + 13);
+      miniDisplayIcon.fillStyle(0x22c55e, 0.4);
+      miniDisplayIcon.fillCircle(mdX, mdY, 1.8);
+    }
+
+    miniDisplayLabel.setText(
+      modifier ? modifier.shortLabel : WAVE_MODIFIER_DISPLAY_CONFIG.standbyLabel,
+    );
+    miniDisplayLabel.setColor(accentHex);
+
+    // Обновляем всплывающую контекстную подсказку для ховера
+    miniTooltipTitle.setText(
+      modifier ? `[ ДИРЕКТИВА: ${modifier.title} ]` : '[ РЕЖИМ: ШТАТНЫЙ ]',
+    );
+    miniTooltipTitle.setColor(modifier ? accentHex : '#94a3b8');
+    miniTooltipDesc.setText(
+      modifier ? modifier.subtitle : 'ОСОБЫХ ПРАВИЛ В ЭТОЙ ВОЛНЕ НЕТ',
+    );
+
+    const tipW = Math.max(miniTooltipTitle.width, miniTooltipDesc.width) + 28;
+    const tipH = 48;
+    miniTooltipBg.clear();
+    miniTooltipBg.fillStyle(0x020b12, 0.97);
+    miniTooltipBg.fillRoundedRect(-tipW, -tipH / 2, tipW, tipH, 4);
+    miniTooltipBg.lineStyle(1.4, modifier ? borderCol : 0x475569, 0.92);
+    miniTooltipBg.strokeRoundedRect(-tipW, -tipH / 2, tipW, tipH, 4);
+    miniTooltipBg.fillStyle(modifier ? borderCol : 0x475569, 1);
+    miniTooltipBg.fillRect(-tipW, -tipH / 2 + 4, 3, tipH - 8);
+  };
+  renderWaveModifierDisplay(null);
+
   // 3. Баннер волны и стартовые подсказки
   const waveContainer = scene.add.container(GAME_CONFIG.radarX, GAME_CONFIG.radarY - 35);
   waveContainer.setDepth(30);
@@ -1780,7 +2162,34 @@ export function createHud(
     resolution: GAME_CONFIG.textResolution,
   }).setOrigin(0.5);
 
-  waveContainer.add([bgBox, titleText, subtitleText, bonusText]);
+  const ruleTitleText = scene.add.text(0, 0, '', {
+    fontFamily: '"Cascadia Mono", Consolas, monospace',
+    fontSize: '13px',
+    color: '#38bdf8',
+    fontStyle: 'bold',
+    align: 'center',
+    resolution: GAME_CONFIG.textResolution,
+  }).setOrigin(0.5);
+  ruleTitleText.setVisible(false);
+
+  const ruleDescText = scene.add.text(0, 0, '', {
+    fontFamily: '"Cascadia Mono", Consolas, monospace',
+    fontSize: '11px',
+    color: '#e2e8f0',
+    fontStyle: 'bold',
+    align: 'center',
+    resolution: GAME_CONFIG.textResolution,
+  }).setOrigin(0.5);
+  ruleDescText.setVisible(false);
+
+  waveContainer.add([
+    bgBox,
+    titleText,
+    subtitleText,
+    bonusText,
+    ruleTitleText,
+    ruleDescText,
+  ]);
 
   const notificationText = scene.add.text(
     GAME_CONFIG.radarX,
@@ -1884,14 +2293,26 @@ export function createHud(
     const costText = scene.add.text(0, y + h / 2, `(${cost} CR)`, btnTextStyle);
     costText.setOrigin(0, 0.5);
 
-    const iconEffectiveW = Math.round(22 * 0.72);
-    const itemGap = 3;
-    const totalW = prefix.width + itemGap + iconEffectiveW + itemGap + costText.width;
-    const startX = Math.round(x + (w - totalW) / 2);
+    const layoutSupplyContent = () => {
+      const iconEffectiveW = Math.round(22 * 0.72);
+      const itemGap = 3;
+      const totalW = prefix.width + itemGap + iconEffectiveW + itemGap + costText.width;
+      const startX = Math.round(x + (w - totalW) / 2);
 
-    prefix.setX(startX);
-    icon.setX(startX + prefix.width + itemGap + Math.round(iconEffectiveW / 2));
-    costText.setX(startX + prefix.width + itemGap + iconEffectiveW + itemGap);
+      prefix.setX(startX);
+      icon.setX(startX + prefix.width + itemGap + Math.round(iconEffectiveW / 2));
+      costText.setX(startX + prefix.width + itemGap + iconEffectiveW + itemGap);
+    };
+    layoutSupplyContent();
+
+    let currentCost = cost;
+    const setCost = (nextCost: number) => {
+      if (nextCost === currentCost) return;
+      currentCost = nextCost;
+      costText.setText(`(${nextCost} CR)`);
+      costText.setColor(nextCost < cost ? '#facc15' : '#ffffff');
+      layoutSupplyContent();
+    };
 
     let isEnabled = false;
 
@@ -1916,7 +2337,13 @@ export function createHud(
       costText.setAlpha(alpha);
     };
 
-    return { bg, text: prefix, elements: [bg, prefix, icon, costText], setEnabled };
+    return {
+      bg,
+      text: prefix,
+      elements: [bg, prefix, icon, costText],
+      setEnabled,
+      setCost,
+    };
   }
 
   const startY = 306;
@@ -2047,6 +2474,11 @@ export function createHud(
     targetTelemetryText,
     ...telemetryLines,
     feedbackText,
+    miniDisplayBg,
+    miniDisplayIcon,
+    miniDisplayLabel,
+    miniDisplayHit,
+    miniTooltipContainer,
     ...(buttons.friend.elements ?? [buttons.friend.bg, buttons.friend.text]),
     ...(buttons.threat.elements ?? [buttons.threat.bg, buttons.threat.text]),
     ...(buttons.ignore.elements ?? [buttons.ignore.bg, buttons.ignore.text]),
@@ -2398,15 +2830,19 @@ export function createHud(
     scanCountText.setColor(data.scansAvailable > 0 ? '#38bdf8' : '#64748b');
     scanIcon.setAlpha(data.scansAvailable > 0 ? 1.0 : 0.4);
 
+    const missileCost = data.interceptorCost ?? GAME_CONFIG.interceptorCost;
+    buttons.buyMissile.setCost?.(missileCost);
     const canBuyMissile =
       data.interceptors < GAME_CONFIG.maxInterceptors &&
-      data.credits >= GAME_CONFIG.interceptorCost;
+      data.credits >= missileCost;
     buttons.buyMissile.setEnabled(canBuyMissile);
 
     const canBuyScan =
       data.scansAvailable < GAME_CONFIG.maxScansPerWave &&
       data.credits >= GAME_CONFIG.scanCost;
     buttons.buyScan.setEnabled(canBuyScan);
+
+    renderWaveModifierDisplay(data.waveModifier ?? null);
   };
 
   // Кэш последних строк и цветов телеметрии (чтобы не перерисовывать WebGL-текстуру текста каждый кадр)
@@ -2441,6 +2877,7 @@ export function createHud(
     const canScan =
       isSelected &&
       !data.selectedTarget?.isScanned &&
+      !data.isScanBlocked &&
       data.scansAvailable > 0 &&
       !data.isScanning;
     buttons.scan.setEnabled(canScan);
@@ -2711,7 +3148,7 @@ export function createHud(
   let waveBannerTimer = 0;
   let waveBannerTotalDuration: number = WAVE_BANNER_CONFIG.durations.noBonus;
 
-  const showWaveBanner = (text: string) => {
+  const showWaveBanner = (text: string, waveRule?: WaveRuleBannerData | null) => {
     const rawLines = text
       .split('\n')
       .map((l) => l.trim())
@@ -2812,11 +3249,53 @@ export function createHud(
     bgBox.lineTo(halfW - 24, dividerY);
     bgBox.strokePath();
 
-    waveBannerTotalDuration = hasBonus
+    // Отдельная контрастная карточка директивы для модификатора волны (не смешивается с «Чистой волной»)
+    if (waveRule) {
+      ruleTitleText.setText(`[ ДИРЕКТИВА: ${waveRule.title} ]`);
+      ruleTitleText.setColor(waveRule.accentColor);
+      ruleTitleText.setVisible(true);
+      ruleDescText.setText(waveRule.subtitle);
+      ruleDescText.setVisible(true);
+
+      const ruleBoxH = 48;
+      const ruleTopY = halfH + 10;
+      const ruleContentW = Math.max(ruleTitleText.width, ruleDescText.width);
+      const ruleBoxW = Math.max(
+        boxW,
+        Math.min(540, Math.round(ruleContentW + 44)),
+      );
+      const ruleHalfW = ruleBoxW / 2;
+
+      ruleTitleText.setPosition(0, ruleTopY + 15);
+      ruleDescText.setPosition(0, ruleTopY + 34);
+
+      bgBox.fillStyle(0x040d14, 0.96);
+      bgBox.fillRoundedRect(-ruleHalfW, ruleTopY, ruleBoxW, ruleBoxH, 4);
+      bgBox.fillStyle(waveRule.borderColor, 0.09);
+      bgBox.fillRoundedRect(-ruleHalfW, ruleTopY, ruleBoxW, ruleBoxH, 4);
+      bgBox.lineStyle(1.5, waveRule.borderColor, 0.92);
+      bgBox.strokeRoundedRect(-ruleHalfW, ruleTopY, ruleBoxW, ruleBoxH, 4);
+
+      // Боковые акцентные полосы директивы
+      bgBox.fillStyle(waveRule.borderColor, 1);
+      bgBox.fillRect(-ruleHalfW, ruleTopY + 4, 4, ruleBoxH - 8);
+      bgBox.fillRect(ruleHalfW - 4, ruleTopY + 4, 4, ruleBoxH - 8);
+
+      waveContainer.setY(GAME_CONFIG.radarY - 62);
+    } else {
+      ruleTitleText.setVisible(false);
+      ruleDescText.setVisible(false);
+      waveContainer.setY(GAME_CONFIG.radarY - 35);
+    }
+
+    const baseDuration = hasBonus
       ? bonusCount > 1
         ? WAVE_BANNER_CONFIG.durations.multiBonus
         : WAVE_BANNER_CONFIG.durations.singleBonus
       : WAVE_BANNER_CONFIG.durations.noBonus;
+    waveBannerTotalDuration = waveRule
+      ? Math.max(baseDuration, WAVE_BANNER_CONFIG.durations.multiBonus)
+      : baseDuration;
     waveBannerTimer = waveBannerTotalDuration;
     waveContainer.setScale(0.94);
     waveContainer.setAlpha(0);

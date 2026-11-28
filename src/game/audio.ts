@@ -21,6 +21,8 @@ export interface SoundSystem {
   playJammerShutdown: (pan?: number) => void;
   playTerrainHuggerPopUp: () => void;
   playReconAlert: () => void;
+  playAbilityActivate: () => void;
+  playAbilityReady: () => void;
   playThunderClap: (pan?: number) => void;
   playMenuHover: () => void;
   playMenuSelect: () => void;
@@ -1750,6 +1752,71 @@ export function createSoundSystem(): SoundSystem {
   };
 
   /**
+   * Мощный разряд/активация активного спецсредства ПВО
+   */
+  const playAbilityActivate = (): void => {
+    if (isMuted) return;
+    const audioCtx = getContext();
+    if (!audioCtx) return;
+
+    const now = audioCtx.currentTime;
+    const masterDest = getMasterIn(audioCtx);
+
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(240, now);
+    osc.frequency.exponentialRampToValueAtTime(920, now + 0.14);
+    osc.frequency.exponentialRampToValueAtTime(420, now + 0.34);
+
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(0.18, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.36);
+
+    osc.connect(gain);
+    gain.connect(masterDest);
+    osc.start(now);
+    osc.stop(now + 0.37);
+    osc.onended = () => {
+      osc.disconnect();
+      gain.disconnect();
+    };
+  };
+
+  /**
+   * Короткий тональный отклик полной зарядки активной способности
+   */
+  const playAbilityReady = (): void => {
+    if (isMuted) return;
+    const audioCtx = getContext();
+    if (!audioCtx) return;
+
+    const now = audioCtx.currentTime;
+    const masterDest = getMasterIn(audioCtx);
+
+    [0, 0.09].forEach((offset, idx) => {
+      const t = now + offset;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(idx === 0 ? 740 : 1046, t);
+
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.linearRampToValueAtTime(0.09, t + 0.006);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.11);
+
+      osc.connect(gain);
+      gain.connect(masterDest);
+      osc.start(t);
+      osc.stop(t + 0.12);
+      osc.onended = () => {
+        osc.disconnect();
+        gain.disconnect();
+      };
+    });
+  };
+
+  /**
    * Раскатистый низкий гул множественного старта заградительных ракет
    */
   const playBarrageRocketLaunch = (): void => {
@@ -2182,6 +2249,8 @@ export function createSoundSystem(): SoundSystem {
     playJammerShutdown,
     playTerrainHuggerPopUp,
     playReconAlert,
+    playAbilityActivate,
+    playAbilityReady,
     playThunderClap,
     playMenuHover,
     playMenuSelect,

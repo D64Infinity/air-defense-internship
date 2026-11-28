@@ -54,12 +54,19 @@ export interface GameInputActions {
   onCloseArchive?: () => void;
 
   /**
+   * Активация выбранной спецспособности (Пробел) и выбор карточки драфта (1/2/3)
+   */
+  onActivateAbility?: () => void;
+  onPickAbilityDraft?: (index: number) => void;
+
+  /**
    * Проверка активного состояния игры
    */
   isGameOver: () => boolean;
   isPaused: () => boolean;
   isBriefingOpen?: () => boolean;
   isArchiveOpen?: () => boolean;
+  isAbilityDraftOpen?: () => boolean;
   isGameStarted?: () => boolean;
 }
 
@@ -70,7 +77,7 @@ export function setupGameInputs(
   scene: Phaser.Scene,
   actions: GameInputActions,
 ): () => void {
-  // Клик по экрану радара (зона левее консоли x < 640, исключая кнопку меню в левом верхнем углу)
+  // Клик по экрану радара (зона левее консоли x < 640, исключая угловые виджеты)
   const onPointerDown = (pointer: Phaser.Input.Pointer) => {
     if (
       actions.isGameStarted?.() === false ||
@@ -78,8 +85,10 @@ export function setupGameInputs(
       actions.isPaused() ||
       actions.isBriefingOpen?.() ||
       actions.isArchiveOpen?.() ||
+      actions.isAbilityDraftOpen?.() ||
       pointer.x >= 640 ||
-      (pointer.x < 150 && pointer.y < 65)
+      (pointer.x < 150 && pointer.y < 65) ||
+      (pointer.x > 540 && pointer.y > 515)
     ) {
       return;
     }
@@ -101,7 +110,8 @@ export function setupGameInputs(
     !actions.isGameOver() &&
     !actions.isPaused() &&
     !actions.isBriefingOpen?.() &&
-    !actions.isArchiveOpen?.();
+    !actions.isArchiveOpen?.() &&
+    !actions.isAbilityDraftOpen?.();
 
   const bindActiveKey = (key: string, callback: () => void) => {
     bindKey(key, () => {
@@ -115,6 +125,7 @@ export function setupGameInputs(
       actions.onCloseArchive?.();
       return;
     }
+    if (actions.isAbilityDraftOpen?.()) return;
     if (actions.isGameStarted?.() === false) return;
     if (actions.isBriefingOpen?.()) {
       if (actions.isPaused()) {
@@ -131,13 +142,23 @@ export function setupGameInputs(
   });
   bindKey('keydown-ESC', handleTogglePause);
 
-  // Классификация целей (1, 2, 3 / NumPad 1, 2, 3)
-  bindActiveKey('keydown-ONE', () => actions.onDecision('friend'));
-  bindActiveKey('keydown-NUMPAD_ONE', () => actions.onDecision('friend'));
-  bindActiveKey('keydown-TWO', () => actions.onDecision('threat'));
-  bindActiveKey('keydown-NUMPAD_TWO', () => actions.onDecision('threat'));
-  bindActiveKey('keydown-THREE', () => actions.onDecision('ignore'));
-  bindActiveKey('keydown-NUMPAD_THREE', () => actions.onDecision('ignore'));
+  // Классификация целей (1, 2, 3 / NumPad 1, 2, 3) или выбор карточки абилки в драфте
+  const handleNumberKey = (idx: number, choice: DecisionChoice) => {
+    if (actions.isAbilityDraftOpen?.()) {
+      actions.onPickAbilityDraft?.(idx);
+      return;
+    }
+    if (canAct()) {
+      actions.onDecision(choice);
+    }
+  };
+
+  bindKey('keydown-ONE', () => handleNumberKey(0, 'friend'));
+  bindKey('keydown-NUMPAD_ONE', () => handleNumberKey(0, 'friend'));
+  bindKey('keydown-TWO', () => handleNumberKey(1, 'threat'));
+  bindKey('keydown-NUMPAD_TWO', () => handleNumberKey(1, 'threat'));
+  bindKey('keydown-THREE', () => handleNumberKey(2, 'ignore'));
+  bindKey('keydown-NUMPAD_THREE', () => handleNumberKey(2, 'ignore'));
 
   // Сканирование сигнатуры (4 / NumPad 4)
   bindActiveKey('keydown-FOUR', () => actions.onScan());
@@ -149,7 +170,7 @@ export function setupGameInputs(
   bindActiveKey('keydown-SIX', () => actions.onBuyScan());
   bindActiveKey('keydown-NUMPAD_SIX', () => actions.onBuyScan());
 
-  // Пробел: закрытие инструктажа, архива или перезапуск после поражения
+  // Пробел: закрытие окон, перезапуск после поражения или активация спецспособности в бою
   bindKey('keydown-SPACE', () => {
     if (actions.isBriefingOpen?.()) {
       actions.onCloseBriefing?.();
@@ -157,6 +178,8 @@ export function setupGameInputs(
       actions.onCloseArchive?.();
     } else if (actions.isGameOver()) {
       actions.onRestart();
+    } else if (canAct()) {
+      actions.onActivateAbility?.();
     }
   });
 

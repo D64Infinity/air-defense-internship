@@ -31,10 +31,16 @@ export interface ArmoryTracker {
   readonly isScanning: boolean;
   readonly scanningTarget: GameTarget | null;
   readonly scanProgress: number;
+  readonly interceptorCost: number;
+  readonly isScanBlocked: boolean;
 
   reset: () => void;
+  setWaveRestrictions: (
+    opts: { scanDisabled?: boolean; interceptorCostOverride?: number } | null,
+  ) => void;
   addCredits: (amount: number) => void;
   addBonusScan: () => boolean;
+  addBonusInterceptors: (count: number) => number;
   deductCredits: (amount: number) => void;
   consumeInterceptor: () => boolean;
   buyInterceptor: () => BuyResult;
@@ -56,6 +62,8 @@ export function createArmory(config = GAME_CONFIG): ArmoryTracker {
   let isScanning = false;
   let scanningTarget: GameTarget | null = null;
   let scanProgress = 0;
+  let scanDisabled = false;
+  let interceptorCostOverride: number | undefined = undefined;
 
   const buySupplyItem = (
     current: number,
@@ -105,6 +113,12 @@ export function createArmory(config = GAME_CONFIG): ArmoryTracker {
     get scanProgress() {
       return scanProgress;
     },
+    get interceptorCost() {
+      return interceptorCostOverride ?? config.interceptorCost;
+    },
+    get isScanBlocked() {
+      return scanDisabled;
+    },
 
     reset: () => {
       credits = config.startCredits;
@@ -113,6 +127,18 @@ export function createArmory(config = GAME_CONFIG): ArmoryTracker {
       isScanning = false;
       scanningTarget = null;
       scanProgress = 0;
+      scanDisabled = false;
+      interceptorCostOverride = undefined;
+    },
+
+    setWaveRestrictions: (opts) => {
+      scanDisabled = Boolean(opts?.scanDisabled);
+      interceptorCostOverride = opts?.interceptorCostOverride;
+      if (scanDisabled && isScanning) {
+        isScanning = false;
+        scanningTarget = null;
+        scanProgress = 0;
+      }
     },
 
     addCredits: (amount: number) => {
@@ -123,6 +149,14 @@ export function createArmory(config = GAME_CONFIG): ArmoryTracker {
       if (scansAvailable >= config.maxScansPerWave) return false;
       scansAvailable++;
       return true;
+    },
+
+    addBonusInterceptors: (count: number): number => {
+      if (count <= 0) return 0;
+      const room = Math.max(0, config.maxInterceptors - interceptors);
+      const added = Math.min(room, count);
+      interceptors += added;
+      return added;
     },
 
     deductCredits: (amount: number) => {
@@ -136,13 +170,14 @@ export function createArmory(config = GAME_CONFIG): ArmoryTracker {
     },
 
     buyInterceptor: (): BuyResult => {
+      const activeCost = interceptorCostOverride ?? config.interceptorCost;
       return buySupplyItem(
         interceptors,
         config.maxInterceptors,
-        config.interceptorCost,
+        activeCost,
         `[СКЛАД] МАКСИМУМ РАКЕТ (${config.maxInterceptors}/${config.maxInterceptors})!`,
         config.colors.text.gold,
-        `[СНАБЖЕНИЕ] +1 РАКЕТА (-${config.interceptorCost} CR)`,
+        `[СНАБЖЕНИЕ] +1 РАКЕТА (-${activeCost} CR)`,
         () => {
           interceptors++;
         },
@@ -156,7 +191,7 @@ export function createArmory(config = GAME_CONFIG): ArmoryTracker {
         config.scanCost,
         `[СЕНСОРЫ] МАКСИМУМ СКАНОВ (${config.maxScansPerWave}/${config.maxScansPerWave})!`,
         config.colors.text.info,
-        `[СНАБЖЕНИЕ] +1 СКАН (-${config.scanCost} CR)`,
+        `[СЕНСОРЫ] +1 СКАН (-${config.scanCost} CR)`,
         () => {
           scansAvailable++;
         },
@@ -164,6 +199,13 @@ export function createArmory(config = GAME_CONFIG): ArmoryTracker {
     },
 
     startScan: (target: GameTarget): ScanStartResult => {
+      if (scanDisabled) {
+        return {
+          success: false,
+          message: '[РЭБ-ФОН] СКАНЕР ОТКЛЮЧЁН ПРАВИЛОМ ВОЛНЫ!',
+          color: config.colors.text.danger,
+        };
+      }
       if (target.isScanned) {
         return {
           success: false,

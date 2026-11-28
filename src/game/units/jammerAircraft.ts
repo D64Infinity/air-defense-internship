@@ -34,6 +34,7 @@ export interface JammerAircraftManager {
   readonly strobeAngle: number;
   readonly strobeHalfAngle: number;
   isTargetJammed: (target: GameTarget) => boolean;
+  suppress: (durationSec: number) => void;
   spawn: (wave: number) => GameTarget;
   update: (dt: number) => void;
   render: (graphics: Phaser.GameObjects.Graphics) => void;
@@ -54,6 +55,7 @@ export function createJammerAircraftManager(): JammerAircraftManager {
   let orbitDirection = 1; // 1 = по часовой, -1 = против
   let activeTimer = 0;
   let pulseTimer = 0;
+  let suppressedTimer = 0;
 
   const reset = (): void => {
     active = false;
@@ -63,13 +65,19 @@ export function createJammerAircraftManager(): JammerAircraftManager {
     orbitDirection = 1;
     activeTimer = 0;
     pulseTimer = 0;
+    suppressedTimer = 0;
+  };
+
+  const suppress = (durationSec: number): void => {
+    if (!active || isEgressing) return;
+    suppressedTimer = Math.max(suppressedTimer, durationSec);
   };
 
   /**
    * Проверка, перекрыта ли цель конусом радиоэлектронных помех
    */
   const isTargetJammed = (target: GameTarget): boolean => {
-    if (!active || !jammerTarget) return false;
+    if (!active || !jammerTarget || suppressedTimer > 0) return false;
     // Сам самолёт РЭБ не глушит сам себя
     if (target.id === jammerTarget.id || target.isJammer) return false;
 
@@ -142,6 +150,9 @@ export function createJammerAircraftManager(): JammerAircraftManager {
 
     activeTimer += dt;
     pulseTimer += dt;
+    if (suppressedTimer > 0) {
+      suppressedTimer = Math.max(0, suppressedTimer - dt);
+    }
 
     // Завершение времени боевого дежурства РЭБ: уход из сектора наружу
     if (activeTimer >= JAMMER_CONFIG.maxOrbitDuration && !isEgressing) {
@@ -206,7 +217,7 @@ export function createJammerAircraftManager(): JammerAircraftManager {
   const render = (graphics: Phaser.GameObjects.Graphics): void => {
     if (!jammerTarget) return;
 
-    if (active && !isEgressing) {
+    if (active && !isEgressing && suppressedTimer <= 0) {
       const { radarX, radarY, radarRadius } = GAME_CONFIG;
       const jammerAngle = Math.atan2(jammerTarget.y - radarY, jammerTarget.x - radarX);
       const half = JAMMER_CONFIG.strobeHalfAngle;
@@ -308,6 +319,7 @@ export function createJammerAircraftManager(): JammerAircraftManager {
       return JAMMER_CONFIG.strobeHalfAngle;
     },
     isTargetJammed,
+    suppress,
     spawn,
     update,
     render,

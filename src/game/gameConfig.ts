@@ -152,7 +152,7 @@ export const GAME_CONFIG = {
       label: 'Сверхзвуковой разведчик',
       category: 'threat',
       weight: 0, // Бонусный юнит 4+ волны, управляется модулем SupersonicReconManager
-      speedRange: [92, 102],
+      speedRange: [145, 160],
       signalRange: [88, 96],
       headingJitter: 0.0,
     },

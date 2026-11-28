@@ -15,6 +15,11 @@ import {
   type SupersonicReconManager,
   type WeatherFrontManager,
 } from './units';
+import {
+  type ActiveWaveModifier,
+  isPointInBlindSector,
+  WAVE_MODIFIERS_CONFIG,
+} from './waveModifiers';
 
 /**
  * Стадия ненавязчивой экранной подсказки СУО на куполе радара
@@ -54,6 +59,10 @@ export interface RadarRenderData {
   terrainHugger?: TerrainHuggerManager;
   supersonicRecon?: SupersonicReconManager;
   weatherFront?: WeatherFrontManager;
+  waveModifier?: ActiveWaveModifier | null;
+  abilityPulseProgress?: number | null;
+  abilityStasisActive?: boolean;
+  abilityEmpProgress?: number | null;
   warningArc?: { angle: number; phase: 'warning' | 'active' } | null;
   onboardingStage?: OnboardingStage;
 }
@@ -65,9 +74,13 @@ export interface RadarRender {
   staticGraphics: Phaser.GameObjects.Graphics;
   dynamicGraphics: Phaser.GameObjects.Graphics;
   readonly beamAngle: number;
+  readonly beamDirection: 1 | -1;
   readonly currentBeamSpeed: number;
   reset: () => void;
-  setWaveSpeed: (wave: number) => void;
+  setWaveSpeed: (
+    wave: number,
+    modifier?: { direction?: 1 | -1; speedMultiplier?: number } | null,
+  ) => void;
   updateBeam: (dt: number, targets?: GameTarget[]) => void;
   renderStaticGrid: () => void;
   renderDynamic: (data: RadarRenderData) => void;
@@ -115,6 +128,7 @@ export function createRadarRender(
 
   let beamAngle = 0;
   let currentBeamSpeed = GAME_CONFIG.beamSpeedBase;
+  let currentBeamDirection: 1 | -1 = 1;
   const crtSpecks: CrtNoiseSpeck[] = [];
   const twoPi = Math.PI * 2;
 
@@ -145,9 +159,14 @@ export function createRadarRender(
     to: number,
     targetAngle: number,
     angularRadius: number,
+    direction: 1 | -1,
   ): boolean => {
-    const sweepSpan = (to - from + twoPi) % twoPi;
-    const midAngle = (from + sweepSpan * 0.5) % twoPi;
+    const sweepSpan =
+      direction >= 0 ? (to - from + twoPi) % twoPi : (from - to + twoPi) % twoPi;
+    const midAngle =
+      direction >= 0
+        ? (from + sweepSpan * 0.5) % twoPi
+        : ((from - sweepSpan * 0.5) % twoPi + twoPi) % twoPi;
     const dAngle = Math.abs(angleDiff(targetAngle, midAngle));
     return dAngle <= sweepSpan * 0.5 + angularRadius;
   };
@@ -157,7 +176,9 @@ export function createRadarRender(
    */
   const updateBeam = (dt: number, targets: GameTarget[] = []): void => {
     const prevAngle = beamAngle;
-    beamAngle = (beamAngle + currentBeamSpeed * dt) % twoPi;
+    beamAngle =
+      ((beamAngle + currentBeamSpeed * currentBeamDirection * dt) % twoPi + twoPi) %
+      twoPi;
 
     for (const target of targets) {
       const dx = target.x - GAME_CONFIG.radarX;
@@ -174,7 +195,15 @@ export function createRadarRender(
           Math.min(1.0, (GAME_CONFIG.blipRadius + 2) / Math.max(10, dist)),
         );
 
-        if (beamIntersectsTarget(prevAngle, beamAngle, targetAngle, angularRadius)) {
+        if (
+          beamIntersectsTarget(
+            prevAngle,
+            beamAngle,
+            targetAngle,
+            angularRadius,
+            currentBeamDirection,
+          )
+        ) {
           // Защита от дублирования звука: пинг только при свежем проходе луча
           const isFreshSweep = target.alpha < 0.90;
           target.alpha = 1.0;
@@ -200,7 +229,9 @@ export function createRadarRender(
       const count = 1 + (Math.random() < 0.45 ? 1 : 0);
       for (let k = 0; k < count; k++) {
         if (crtSpecks.length >= noiseCfg.maxSpecks) break;
-        const angle = beamAngle - Math.random() * (GAME_CONFIG.trailAngle * 0.85);
+        const angle =
+          beamAngle -
+          currentBeamDirection * Math.random() * (GAME_CONFIG.trailAngle * 0.85);
         // Смещение плотности к внешним кольцам экрана (где уровень сигнала слабее)
         const radiusNorm =
           noiseCfg.minRadiusFraction +
@@ -222,16 +253,24 @@ export function createRadarRender(
   };
 
   /**
-   * Корректировка скорости вращения луча с ростом номера волны
+   * Корректировка скорости и направления вращения луча на волне
    */
-  const setWaveSpeed = (wave: number): void => {
+  const setWaveSpeed = (
+    wave: number,
+    modifier?: { direction?: 1 | -1; speedMultiplier?: number } | null,
+  ): void => {
+    currentBeamDirection = modifier?.direction ?? 1;
+    const modMult = modifier?.speedMultiplier ?? 1;
     currentBeamSpeed =
-      GAME_CONFIG.beamSpeedBase * Math.min(1.85, 1 + (wave - 1) * 0.09);
+      GAME_CONFIG.beamSpeedBase *
+      Math.min(1.85, 1 + (wave - 1) * 0.09) *
+      modMult;
   };
 
   const reset = (): void => {
     beamAngle = 0;
     currentBeamSpeed = GAME_CONFIG.beamSpeedBase;
+    currentBeamDirection = 1;
     crtSpecks.length = 0;
     arcDisplayState.alpha = 0;
     lastDynamicTime = 0;
@@ -443,10 +482,12 @@ export function createRadarRender(
       }
     }
 
-    // 1. Шлейф луча
+    // 1. Шлейф луча (учитывает направление вращения по/против часовой)
     for (let i = 0; i < trailSteps; i++) {
-      const a1 = beamAngle - (trailAngle * (trailSteps - i)) / trailSteps;
-      const a2 = beamAngle - (trailAngle * (trailSteps - (i + 1))) / trailSteps;
+      const d1 = (trailAngle * (trailSteps - i)) / trailSteps;
+      const d2 = (trailAngle * (trailSteps - (i + 1))) / trailSteps;
+      const a1 = currentBeamDirection >= 0 ? beamAngle - d1 : beamAngle + d2;
+      const a2 = currentBeamDirection >= 0 ? beamAngle - d2 : beamAngle + d1;
       const sliceAlpha = (i / trailSteps) * 0.22;
 
       dynamicGraphics.fillStyle(colors.trail, sliceAlpha);
@@ -602,6 +643,87 @@ export function createRadarRender(
     data.weatherFront?.render(dynamicGraphics);
     data.weatherFront?.renderGhostEchoes(dynamicGraphics, data.targets);
 
+    // 3.7. Мёртвый сектор (активный модификатор волны: 90° зона статических помех)
+    const mod = data.waveModifier;
+    if (
+      mod?.hasBlindSector &&
+      mod.blindSectorStartAngle !== undefined &&
+      mod.blindSectorSpanRad !== undefined
+    ) {
+      const a0 = mod.blindSectorStartAngle;
+      const a1 = a0 + mod.blindSectorSpanRad;
+      const innerR = GAME_CONFIG.baseRadius + 12;
+
+      dynamicGraphics.fillStyle(0xf97316, 0.075);
+      dynamicGraphics.beginPath();
+      dynamicGraphics.arc(radarX, radarY, radarRadius, a0, a1, false);
+      dynamicGraphics.arc(radarX, radarY, innerR, a1, a0, true);
+      dynamicGraphics.closePath();
+      dynamicGraphics.fillPath();
+
+      dynamicGraphics.lineStyle(1.4, 0xf97316, 0.48);
+      dynamicGraphics.beginPath();
+      dynamicGraphics.moveTo(radarX + Math.cos(a0) * innerR, radarY + Math.sin(a0) * innerR);
+      dynamicGraphics.lineTo(radarX + Math.cos(a0) * radarRadius, radarY + Math.sin(a0) * radarRadius);
+      dynamicGraphics.moveTo(radarX + Math.cos(a1) * innerR, radarY + Math.sin(a1) * innerR);
+      dynamicGraphics.lineTo(radarX + Math.cos(a1) * radarRadius, radarY + Math.sin(a1) * radarRadius);
+      dynamicGraphics.strokePath();
+
+      for (const frac of [0.42, 0.68, 0.92]) {
+        const arcR = radarRadius * frac;
+        dynamicGraphics.lineStyle(1, 0xfb923c, 0.22);
+        dynamicGraphics.beginPath();
+        dynamicGraphics.arc(radarX, radarY, arcR, a0, a1, false);
+        dynamicGraphics.strokePath();
+      }
+
+      for (let i = 0; i < 10; i++) {
+        const ra = a0 + Math.random() * mod.blindSectorSpanRad;
+        const rr = innerR + Math.random() * (radarRadius - innerR - 4);
+        dynamicGraphics.fillStyle(0xfdba74, 0.14 + Math.random() * 0.22);
+        dynamicGraphics.fillRect(
+          radarX + Math.cos(ra) * rr,
+          radarY + Math.sin(ra) * rr,
+          2,
+          2,
+        );
+      }
+    }
+
+    // 3.8. Эффекты активных спецспособностей (Крио-стазис, РЛС-импульс, ЭМИ-волна)
+    if (data.abilityStasisActive) {
+      dynamicGraphics.fillStyle(0x06b6d4, 0.06);
+      dynamicGraphics.fillCircle(radarX, radarY, radarRadius);
+      dynamicGraphics.lineStyle(2, 0x67e8f9, 0.42);
+      dynamicGraphics.strokeCircle(radarX, radarY, radarRadius - 2);
+    }
+
+    if (
+      data.abilityPulseProgress !== null &&
+      data.abilityPulseProgress !== undefined
+    ) {
+      const p = data.abilityPulseProgress;
+      const pr = Math.max(8, p * radarRadius);
+      const pa = Math.max(0, 1 - p * 0.85);
+      dynamicGraphics.lineStyle(6, 0x38bdf8, 0.22 * pa);
+      dynamicGraphics.strokeCircle(radarX, radarY, pr);
+      dynamicGraphics.lineStyle(2.2, 0xe0f2fe, 0.92 * pa);
+      dynamicGraphics.strokeCircle(radarX, radarY, pr);
+    }
+
+    if (
+      data.abilityEmpProgress !== null &&
+      data.abilityEmpProgress !== undefined
+    ) {
+      const p = data.abilityEmpProgress;
+      const er = Math.max(10, p * radarRadius);
+      const ea = Math.max(0, 1 - p * 0.85);
+      dynamicGraphics.lineStyle(7, 0xa855f7, 0.24 * ea);
+      dynamicGraphics.strokeCircle(radarX, radarY, er);
+      dynamicGraphics.lineStyle(2.4, 0xf3e8ff, 0.95 * ea);
+      dynamicGraphics.strokeCircle(radarX, radarY, er);
+    }
+
     // 4. Метки целей (люминофор)
     for (const target of data.targets) {
       // Самолёт РЭБ, штурмовик ПМВ и сверхзвуковой разведчик отрисовываются собственными менеджерами
@@ -620,11 +742,18 @@ export function createRadarRender(
         continue;
       }
 
-      if (target.alpha > 0.02) {
-        dynamicGraphics.fillStyle(colors.blipHalo, target.alpha * 0.38);
+      const inBlindSector = isPointInBlindSector(mod, target.x, target.y);
+      const baseAlpha = inBlindSector
+        ? Math.min(target.alpha, WAVE_MODIFIERS_CONFIG.blindSectorMaxAlpha)
+        : target.alpha;
+      const renderAlpha =
+        inBlindSector && Math.random() < 0.25 ? baseAlpha * 0.45 : baseAlpha;
+
+      if (renderAlpha > 0.02) {
+        dynamicGraphics.fillStyle(colors.blipHalo, renderAlpha * 0.38);
         dynamicGraphics.fillCircle(target.x, target.y, blipRadius * 2.4);
 
-        dynamicGraphics.fillStyle(colors.blipCore, target.alpha);
+        dynamicGraphics.fillStyle(colors.blipCore, renderAlpha);
         dynamicGraphics.fillCircle(target.x, target.y, blipRadius);
       }
 
@@ -846,6 +975,9 @@ export function createRadarRender(
     dynamicGraphics,
     get beamAngle() {
       return beamAngle;
+    },
+    get beamDirection() {
+      return currentBeamDirection;
     },
     get currentBeamSpeed() {
       return currentBeamSpeed;

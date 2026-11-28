@@ -205,7 +205,7 @@ export class AmbientBackground {
    * 1. Внешний отблеск луча развёртки на скошенном ободе козырька;
    * 2. Рассеянный световой импульс от детонаций на корпусе терминала.
    */
-  render(beamAngle: number): void {
+  render(beamAngle: number, beamDirection: 1 | -1 = 1): void {
     const { radarX, radarY, radarRadius, colors } = GAME_CONFIG;
 
     this.dynamicGraphics.clear();
@@ -213,17 +213,19 @@ export class AmbientBackground {
     // 1. Динамический световой блик на фаске козырька (Rim Sweep Reflection)
     // Вдоль внешнего прижимного обода скользит рассеянная световая дуга в такт лучу
     const sweepArcLength = 0.55; // радианы ширины блика
-    const a1 = beamAngle - sweepArcLength;
-    const a2 = beamAngle;
+    const a1 = beamDirection >= 0 ? beamAngle - sweepArcLength : beamAngle;
+    const a2 = beamDirection >= 0 ? beamAngle : beamAngle + sweepArcLength;
 
     this.dynamicGraphics.lineStyle(5, colors.trail, 0.14);
     this.dynamicGraphics.beginPath();
     this.dynamicGraphics.arc(radarX, radarY, radarRadius + 5, a1, a2, false);
     this.dynamicGraphics.strokePath();
 
+    const tipStart = beamDirection >= 0 ? beamAngle - 0.12 : beamAngle;
+    const tipEnd = beamDirection >= 0 ? beamAngle : beamAngle + 0.12;
     this.dynamicGraphics.lineStyle(2, colors.beam, 0.25);
     this.dynamicGraphics.beginPath();
-    this.dynamicGraphics.arc(radarX, radarY, radarRadius + 3, a2 - 0.12, a2, false);
+    this.dynamicGraphics.arc(radarX, radarY, radarRadius + 3, tipStart, tipEnd, false);
     this.dynamicGraphics.strokePath();
 
     // 2. Интерактивная амбиентная вспышка (Ambient Explosion / Damage Bloom)

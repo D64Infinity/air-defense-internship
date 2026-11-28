@@ -21,6 +21,7 @@ import {
   type BriefingOverlay,
   type ArchiveOverlay,
   type HudManager,
+  type WaveRuleBannerData,
 } from './ui';
 import {
   loadDutyArchive,
@@ -70,6 +71,23 @@ import {
   type SupersonicReconManager,
   SUPERSONIC_RECON_CONFIG,
 } from './units';
+import {
+  createWaveModifierManager,
+  type WaveModifierManager,
+} from './waveModifiers';
+import {
+  ABILITY_CONFIG,
+  createAbilityManager,
+  type AbilityDefinition,
+  type AbilityId,
+  type AbilityManager,
+} from './abilities';
+import {
+  createAbilityButtonWidget,
+  createAbilityDraftOverlay,
+  type AbilityButtonWidget,
+  type AbilityDraftOverlay,
+} from './abilityOverlay';
 
 
 export class GameScene extends Phaser.Scene {
@@ -107,6 +125,17 @@ export class GameScene extends Phaser.Scene {
   private terrainHugger: TerrainHuggerManager = createTerrainHuggerManager();
   private supersonicRecon: SupersonicReconManager = createSupersonicReconManager();
   private weatherFront: WeatherFrontManager = createWeatherFrontManager();
+  private waveModifiers: WaveModifierManager = createWaveModifierManager();
+  private abilities: AbilityManager = createAbilityManager();
+  private abilityWidget!: AbilityButtonWidget;
+  private abilityDraftOverlay!: AbilityDraftOverlay;
+  private pendingWaveBanner: {
+    text: string;
+    mod: ReturnType<WaveModifierManager['rollForWave']>;
+  } | null = null;
+
+  // Остаток вылетов сверхзвукового разведчика в текущей волне (для правила «Воздушная разведка»)
+  private reconFlightsRemaining = 0;
 
   // Тайминги и контроль частоты заградительного налёта
   private barrageTimer = 0;
@@ -196,6 +225,10 @@ export class GameScene extends Phaser.Scene {
     this.reconTimer = 0;
     this.nextReconDelay = -1;
     this.hadReconLastWave = false;
+    this.reconFlightsRemaining = 0;
+    this.waveModifiers.reset();
+    this.abilities.reset();
+    this.pendingWaveBanner = null;
     this.isClosingBriefing = false;
     this.selectedTarget = null;
     this.explosions = [];
@@ -227,6 +260,10 @@ export class GameScene extends Phaser.Scene {
       onTogglePause: () => this.togglePause(),
     });
     this.alerts = createAlertManager(this);
+    this.abilityWidget = createAbilityButtonWidget(this, () => this.activateAbility());
+    this.abilityDraftOverlay = createAbilityDraftOverlay(this, (id) =>
+      this.handleAbilitySelected(id),
+    );
     this.pauseOverlay = createPauseOverlay(this, {
       onResume: () => this.togglePause(),
       onOpenBriefing: () => this.openBriefing(),
@@ -245,6 +282,7 @@ export class GameScene extends Phaser.Scene {
         this.ambientBg.setVisible(true);
         this.radarRender.setVisible(true);
         this.hud.slideIn(450);
+        this.abilityWidget.setVisible(true);
         this.startCombat();
       },
       onOpenBriefing: () => this.openBriefing(),
@@ -302,6 +340,8 @@ export class GameScene extends Phaser.Scene {
       onScan: () => this.startScanning(),
       onBuyMissile: () => this.buyInterceptor(),
       onBuyScan: () => this.buyScan(),
+      onActivateAbility: () => this.activateAbility(),
+      onPickAbilityDraft: (idx) => this.abilityDraftOverlay.pickByIndex(idx),
       onRestart: () => this.restartGame(),
       onCloseBriefing: () => this.handleBriefingClose(),
       onCloseArchive: () => this.closeArchive(),
@@ -309,6 +349,7 @@ export class GameScene extends Phaser.Scene {
       isPaused: () => this.isPaused,
       isBriefingOpen: () => this.briefingOverlay.isVisible(),
       isArchiveOpen: () => this.archiveOverlay.isVisible(),
+      isAbilityDraftOpen: () => this.abilityDraftOverlay.isVisible,
       isGameStarted: () => this.isGameStarted,
     });
 
@@ -316,6 +357,7 @@ export class GameScene extends Phaser.Scene {
       this.ambientBg.setVisible(true);
       this.radarRender.setVisible(true);
       this.hud.setVisible(true);
+      this.abilityWidget.setVisible(true);
       this.mainMenu.hide(undefined, true);
       this.startCombat();
     } else {
@@ -323,6 +365,7 @@ export class GameScene extends Phaser.Scene {
       this.ambientBg.setVisible(false);
       this.radarRender.setVisible(false);
       this.hud.setVisible(false);
+      this.abilityWidget.setVisible(false);
       this.mainMenu.show();
       this.updateScoreBoard();
       this.drawHealthBar();
@@ -339,15 +382,23 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    if (this.isGameOver || this.isPaused) return;
+    if (this.isGameOver || this.isPaused || this.abilityDraftOverlay.isVisible) return;
 
     this.stats.updateTime(dt);
+    const abilityBecameReady = this.abilities.update(dt);
+    if (abilityBecameReady) {
+      this.soundSystem.playAbilityReady();
+    }
+    const targetDt =
+      this.abilities.stasisRemaining > 0
+        ? dt * ABILITY_CONFIG.stasisSpeedFactor
+        : dt;
 
     // 1. Физика целей и спавн новых бортов до расчёта луча радара
-    this.updateTargets(dt);
+    this.updateTargets(targetDt);
 
     // Обработка динамических тактических событий (массированные залпы)
-    const eventResult = this.tacticalEvents.update(dt, {
+    const eventResult = this.tacticalEvents.update(targetDt, {
       wave: this.wave,
       activeTargetsCount: this.targets.length,
       targetsLeftInWave: this.waveTargetsToSpawn,
@@ -361,11 +412,12 @@ export class GameScene extends Phaser.Scene {
       this.waveTargetsToSpawn = Math.max(0, this.waveTargetsToSpawn - 1);
     }
 
+    const activeModifier = this.waveModifiers.current;
     const onboardingActive = this.isOnboardingActive();
 
     if (!this.tacticalEvents.isSpecialWaveActive()) {
       const newTarget = this.spawner.update(
-        dt,
+        targetDt,
         this.wave,
         this.targets.length,
         this.waveTargetsToSpawn,
@@ -374,6 +426,9 @@ export class GameScene extends Phaser.Scene {
             ? SPAWNER_CONFIG.wave1OnboardingMaxActive
             : undefined,
           isOnboardingActive: onboardingActive,
+          typeWeightsOverride: activeModifier?.typeWeightsOverride,
+          speedMultiplier: activeModifier?.targetSpeedMultiplier,
+          intervalMultiplier: activeModifier?.spawnIntervalMultiplier,
         },
       );
       if (newTarget) {
@@ -384,7 +439,7 @@ export class GameScene extends Phaser.Scene {
 
     // 2. Движение луча радара и детекция (включая свежезаспавненные цели текущего кадра)
     this.ambientBg.update(dt);
-    this.ambientBg.render(this.radarRender.beamAngle);
+    this.ambientBg.render(this.radarRender.beamAngle, this.radarRender.beamDirection);
     this.radarRender.updateBeam(dt, this.targets);
     this.updateScanning(dt);
     this.interceptorManager.update(dt);
@@ -432,13 +487,13 @@ export class GameScene extends Phaser.Scene {
         this.targets.push(jammerTarget);
         this.soundSystem.playSectorWarningPing();
         this.hud.showNotification(
-          '[ ВНИМАНИЕ: В СЕКТОРЕ ОБНАРУЖЕН САМОЛЁТ РЭБ ПРОТИВНИКА! ]',
+          '[ РЛС: В СЕКТОРЕ ОБНАРУЖЕН САМОЛЁТ РЭБ ПРОТИВНИКА! ]',
           4.5,
         );
       }
     }
 
-    this.jammerAircraft.update(dt);
+    this.jammerAircraft.update(targetDt);
 
     // Низковысотный штурмовик ПМВ «Стриж» (огибание рельефа и слепая экстраполяция)
     if (!this.terrainHugger.isActive && this.nextTerrainHuggerDelay > 0) {
@@ -450,7 +505,7 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    this.terrainHugger.update(dt, () => this.soundSystem.playTerrainHuggerPopUp());
+    this.terrainHugger.update(targetDt, () => this.soundSystem.playTerrainHuggerPopUp());
 
     // Ионизационный грозовой фронт (метеопомехи, молнии и вторичное эхо)
     if (!this.weatherFront.isActive && this.nextWeatherFrontDelay > 0) {
@@ -474,18 +529,24 @@ export class GameScene extends Phaser.Scene {
     if (!this.supersonicRecon.isActive && this.nextReconDelay > 0) {
       this.reconTimer += dt;
       if (this.reconTimer >= this.nextReconDelay) {
-        this.nextReconDelay = -1; // строго один вылет на волну максимум
+        this.reconFlightsRemaining = Math.max(0, this.reconFlightsRemaining - 1);
+        if (this.reconFlightsRemaining > 0) {
+          this.reconTimer = 0;
+          this.nextReconDelay = Phaser.Math.FloatBetween(5.5, 8.5);
+        } else {
+          this.nextReconDelay = -1;
+        }
         const reconTarget = this.supersonicRecon.spawn(this.wave);
         this.targets.push(reconTarget);
         this.soundSystem.playReconAlert();
         this.hud.showNotification(
-          '[ РЛС: СВЕРХЗВУКОВОЙ РАЗВЕДЧИК НА КРАЮ СЕКТОРА — ПЕРЕХВАТ [2] ИЛИ СКАН [4]! ]',
-          4.2,
+          '[ РЛС: ОБНАРУЖЕН СВЕРХЗВУКОВОЙ РАЗВЕДЧИК — СРОЧНО СБИТЬ! ]',
+          3.2,
         );
       }
     }
 
-    this.supersonicRecon.update(dt);
+    this.supersonicRecon.update(targetDt);
 
     const onboardingStage: OnboardingStage =
       onboardingActive && this.selectedTarget === null ? 'acquire' : 'none';
@@ -506,6 +567,10 @@ export class GameScene extends Phaser.Scene {
       terrainHugger: this.terrainHugger,
       supersonicRecon: this.supersonicRecon,
       weatherFront: this.weatherFront,
+      waveModifier: activeModifier,
+      abilityPulseProgress: this.abilities.pulseProgress,
+      abilityStasisActive: this.abilities.stasisRemaining > 0,
+      abilityEmpProgress: this.abilities.empProgress,
       explosions: this.explosions,
       warningArc: eventResult.warningArc,
       onboardingStage,
@@ -515,6 +580,7 @@ export class GameScene extends Phaser.Scene {
     this.hud.updateWaveBanner(dt);
     this.hud.updateNotification(dt);
     this.alerts.update(dt);
+    this.syncAbilityWidget();
 
     if (this.baseFlashTimer > 0) {
       this.baseFlashTimer -= dt;
@@ -644,6 +710,15 @@ export class GameScene extends Phaser.Scene {
     // В особой волне любые побочные события и спец-юниты строго отключены
     if (this.isSpecialWaveCurrent) {
       this.nextReconDelay = -1;
+      this.reconFlightsRemaining = 0;
+      return;
+    }
+
+    const extraFlights = this.waveModifiers.current?.extraReconFlights ?? 0;
+    if (extraFlights > 0) {
+      this.reconFlightsRemaining = extraFlights;
+      this.nextReconDelay = Phaser.Math.FloatBetween(2.5, 4.5);
+      this.hadReconLastWave = true;
       return;
     }
 
@@ -652,12 +727,14 @@ export class GameScene extends Phaser.Scene {
     const willTrigger = canTrigger && Math.random() < SUPERSONIC_RECON_CONFIG.waveChance;
 
     if (willTrigger) {
+      this.reconFlightsRemaining = 1;
       this.nextReconDelay = Phaser.Math.FloatBetween(
         SUPERSONIC_RECON_CONFIG.delayMin,
         SUPERSONIC_RECON_CONFIG.delayMax,
       );
       this.hadReconLastWave = true;
     } else {
+      this.reconFlightsRemaining = 0;
       this.nextReconDelay = -1;
       this.hadReconLastWave = false;
     }
@@ -669,6 +746,11 @@ export class GameScene extends Phaser.Scene {
   private startCombat(): void {
     this.isGameStarted = true;
     this.spawner.reset();
+    this.waveModifiers.reset();
+    this.abilities.reset();
+    this.pendingWaveBanner = null;
+    this.armory.setWaveRestrictions(null);
+    this.radarRender.setWaveSpeed(this.wave, null);
     const waveInit = this.tacticalEvents.startWave(this.wave, this.waveTargetsToSpawn);
     this.isSpecialWaveCurrent = waveInit.isSpecialWave;
     if (waveInit.isSpecialWave && waveInit.specialWaveTargetsCount) {
@@ -685,6 +767,7 @@ export class GameScene extends Phaser.Scene {
     this.hadTerrainHuggerLastWave = false;
     this.hadWeatherFrontLastWave = false;
     this.hadReconLastWave = false;
+    this.reconFlightsRemaining = 0;
     this.scheduleBarrageForWave();
     this.scheduleJammerForWave();
     this.scheduleTerrainHuggerForWave();
@@ -695,6 +778,173 @@ export class GameScene extends Phaser.Scene {
     this.updateTargetSelectionUI();
     this.updateScoreBoard();
     this.drawHealthBar();
+    this.syncAbilityWidget();
+  }
+
+  private syncAbilityWidget(): void {
+    this.abilityWidget.sync(
+      this.abilities.activeAbility,
+      this.abilities.chargeRatio,
+      this.abilities.isReady,
+      this.abilities.stasisRemaining,
+    );
+  }
+
+  private grantAbilityCharge(amount: number): void {
+    if (this.abilities.addCharge(amount)) {
+      this.soundSystem.playAbilityReady();
+      this.syncAbilityWidget();
+    }
+  }
+
+  private handleAbilitySelected(id: AbilityId): void {
+    const picked = this.abilities.selectAbility(id);
+    this.soundSystem.playAbilityReady();
+    this.syncAbilityWidget();
+    this.showFeedback(
+      `[АРСЕНАЛ] СПЕЦСРЕДСТВО: ${picked.title} (ГОТОВО!)`,
+      picked.accentColor,
+    );
+    if (this.pendingWaveBanner) {
+      this.showWaveBanner(this.pendingWaveBanner.text, this.pendingWaveBanner.mod);
+      this.pendingWaveBanner = null;
+    }
+  }
+
+  private activateAbility(): void {
+    if (
+      this.isGameOver ||
+      this.isPaused ||
+      !this.isGameStarted ||
+      this.abilityDraftOverlay.isVisible
+    ) {
+      return;
+    }
+
+    const current = this.abilities.activeAbility;
+    if (!current || !this.abilities.isReady) {
+      this.soundSystem.playDenyClick();
+      return;
+    }
+
+    let volleyCandidates: GameTarget[] = [];
+    if (current.id === 'volley_barrage') {
+      volleyCandidates = this.targets
+        .filter((t) => GAME_CONFIG.targetTypes[t.type].category === 'threat' && !t.isTargeted)
+        .sort((a, b) => getDistToBase(a.x, a.y) - getDistToBase(b.x, b.y));
+      if (volleyCandidates.length === 0) {
+        this.soundSystem.playDenyClick();
+        this.showFeedback(
+          '[ЗАЛП ЗРК] В СЕКТОРЕ НЕТ АКТИВНЫХ УГРОЗ',
+          GAME_CONFIG.colors.text.warning,
+        );
+        return;
+      }
+    } else if (current.id === 'field_drop') {
+      if (
+        this.armory.interceptors >= GAME_CONFIG.maxInterceptors &&
+        this.baseHealth >= GAME_CONFIG.maxBaseHealth
+      ) {
+        this.soundSystem.playDenyClick();
+        this.showFeedback(
+          '[СБРОС] БК И БАЗА УЖЕ НА МАКСИМУМЕ',
+          GAME_CONFIG.colors.text.warning,
+        );
+        return;
+      }
+    }
+
+    const activated = this.abilities.consumeAndTrigger();
+    if (!activated) return;
+
+    this.soundSystem.playAbilityActivate();
+
+    switch (activated.id) {
+      case 'radar_pulse': {
+        for (const t of this.targets) {
+          t.isScanned = true;
+          t.alpha = 1.0;
+          if (t.type === 'terrain_hugger') {
+            this.terrainHugger.onTargetScanned(t.id);
+          }
+        }
+        this.ambientBg.triggerExplosionFlash('supersonic_recon');
+        this.showFeedback(
+          '[РЛС-ИМПУЛЬС] ВСЕ КОНТАКТЫ ОПОЗНАНЫ!',
+          GAME_CONFIG.colors.text.cyanLight,
+        );
+        this.updateTelemetry();
+        this.updateTargetSelectionUI();
+        break;
+      }
+
+      case 'tactical_stasis': {
+        this.ambientBg.triggerExplosionFlash('missile');
+        this.showFeedback(
+          `[КРИО-СТАЗИС] ЦЕЛИ ЗАМЕДЛЕНЫ НА ${ABILITY_CONFIG.stasisDurationSec} СЕК!`,
+          '#67e8f9',
+        );
+        break;
+      }
+
+      case 'volley_barrage': {
+        const picked = volleyCandidates.slice(0, ABILITY_CONFIG.volleyCount);
+        for (const t of picked) {
+          t.isTargeted = true;
+          this.soundSystem.playLaunch();
+          this.interceptorManager.launch(t, (impactTarget) => {
+            this.handleInterceptorImpact(impactTarget);
+          });
+        }
+        this.showFeedback(
+          `[ЗАЛП ЗРК] БЕСПЛАТНО ВЫПУЩЕНО РАКЕТ: ${picked.length}!`,
+          GAME_CONFIG.colors.text.gold,
+        );
+        this.updateTargetSelectionUI();
+        break;
+      }
+
+      case 'emp_sweep': {
+        this.jammerAircraft.suppress(ABILITY_CONFIG.empJammerSuppressSec);
+        const decoys = this.targets.filter((t) => t.type === 'decoy');
+        for (const d of decoys) {
+          this.explosions.push(createExplosion(d.x, d.y, false));
+          this.stats.recordDecoyFiltered();
+          this.scoring.addDecoySuccess();
+          this.removeTarget(d);
+        }
+        for (const t of this.targets) {
+          t.alpha = 1.0;
+        }
+        this.updateScoreBoard();
+        this.showFeedback(
+          `[ЭМИ] СНЯТО ЛОВУШЕК: ${decoys.length} • РЭБ ПОДАВЛЕН!`,
+          '#c084fc',
+        );
+        break;
+      }
+
+      case 'field_drop': {
+        const added = this.armory.addBonusInterceptors(ABILITY_CONFIG.fieldDropMissiles);
+        const prevHp = this.baseHealth;
+        this.baseHealth = Math.min(
+          GAME_CONFIG.maxBaseHealth,
+          this.baseHealth + ABILITY_CONFIG.fieldDropHeal,
+        );
+        const healed = this.baseHealth - prevHp;
+        this.drawHealthBar();
+        this.updateScoreBoard();
+        this.updateTargetSelectionUI();
+        this.ambientBg.triggerExplosionFlash('missile');
+        this.showFeedback(
+          `[ПОЛЕВОЙ СБРОС] +${added} РАКЕТ | +${healed} HP БАЗЕ`,
+          GAME_CONFIG.colors.text.success,
+        );
+        break;
+      }
+    }
+
+    this.syncAbilityWidget();
   }
 
   /**
@@ -738,8 +988,8 @@ export class GameScene extends Phaser.Scene {
   /**
    * Отображение баннера волны (делегирование в HUD)
    */
-  private showWaveBanner(text: string): void {
-    this.hud.showWaveBanner(text);
+  private showWaveBanner(text: string, waveRule?: WaveRuleBannerData | null): void {
+    this.hud.showWaveBanner(text, waveRule);
   }
 
   /**
@@ -853,6 +1103,10 @@ export class GameScene extends Phaser.Scene {
     this.reconTimer = 0;
     this.nextReconDelay = -1;
     this.hadReconLastWave = false;
+    this.reconFlightsRemaining = 0;
+    this.waveModifiers.reset();
+    this.abilities.reset();
+    this.pendingWaveBanner = null;
     this.ambientBg.reset();
     this.pauseOverlay.hide();
     this.briefingOverlay.hide();
@@ -900,8 +1154,16 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private grantWaveAdjustedCredits(baseAmount: number): number {
+    const mult = this.waveModifiers.current?.creditsMultiplier ?? 1;
+    const total = Math.round(baseAmount * mult);
+    this.armory.addCredits(total);
+    return total;
+  }
+
   private buyInterceptor(): void {
     if (this.isGameOver || this.isPaused) return;
+    const activeCost = this.armory.interceptorCost;
     const res = this.armory.buyInterceptor();
     this.showFeedback(res.message, res.color);
     if (res.success) {
@@ -913,7 +1175,7 @@ export class GameScene extends Phaser.Scene {
       success: res.success,
       current: this.armory.interceptors,
       max: GAME_CONFIG.maxInterceptors,
-      cost: GAME_CONFIG.interceptorCost,
+      cost: activeCost,
       credits: this.armory.credits,
       reason: res.reason,
     });
@@ -954,20 +1216,20 @@ export class GameScene extends Phaser.Scene {
       } else if (res.target?.type === 'supersonic_recon') {
         const { scanScoreReward, scanCreditsReward } = SUPERSONIC_RECON_CONFIG;
         this.scoring.addDirectScore(scanScoreReward);
-        this.armory.addCredits(scanCreditsReward);
+        const gainedCredits = this.grantWaveAdjustedCredits(scanCreditsReward);
         this.updateScoreBoard();
         this.ambientBg.triggerExplosionFlash('supersonic_recon');
         this.soundSystem.playReconAlert();
         this.alerts.showInterceptAlert({
           unitType: 'supersonic_recon',
           points: scanScoreReward,
-          credits: scanCreditsReward,
+          credits: gainedCredits,
           isLongRange: false,
           bonusNote: 'ТЕЛЕМЕТРИЯ',
         });
         this.removeTarget(res.target);
         this.showFeedback(
-          `[БОНУС] ТЕЛЕМЕТРИЯ РАЗВЕДЧИКА (+${scanScoreReward}, +${scanCreditsReward} CR)`,
+          `[БОНУС] ТЕЛЕМЕТРИЯ РАЗВЕДЧИКА (+${scanScoreReward}, +${gainedCredits} CR)`,
           GAME_CONFIG.colors.text.cyanLight,
         );
         this.updateTargetSelectionUI();
@@ -1090,28 +1352,28 @@ export class GameScene extends Phaser.Scene {
 
       if (target.type === 'missile') {
         this.stats.recordMissileIntercept();
-        this.armory.addCredits(GAME_CONFIG.creditsPerMissile);
+        const cr = this.grantWaveAdjustedCredits(GAME_CONFIG.creditsPerMissile);
         this.showFeedback(
-          `[ВЕРНО!] КРЫЛАТАЯ РАКЕТА СБИТА (+${points}, +${GAME_CONFIG.creditsPerMissile} CR)${rangeTag}`,
+          `[ВЕРНО!] КРЫЛАТАЯ РАКЕТА СБИТА (+${points}, +${cr} CR)${rangeTag}`,
           GAME_CONFIG.colors.text.success,
         );
         this.alerts.showInterceptAlert({
           unitType: 'missile',
           points,
-          credits: GAME_CONFIG.creditsPerMissile,
+          credits: cr,
           isLongRange,
         });
       } else {
         this.stats.recordBomberIntercept();
-        this.armory.addCredits(GAME_CONFIG.creditsPerBomber);
+        const cr = this.grantWaveAdjustedCredits(GAME_CONFIG.creditsPerBomber);
         this.showFeedback(
-          `[ВЕРНО!] БОМБАРДИРОВЩИК УНИЧТОЖЕН (+${points}, +${GAME_CONFIG.creditsPerBomber} CR)${rangeTag}`,
+          `[ВЕРНО!] БОМБАРДИРОВЩИК УНИЧТОЖЕН (+${points}, +${cr} CR)${rangeTag}`,
           GAME_CONFIG.colors.text.success,
         );
         this.alerts.showInterceptAlert({
           unitType: 'bomber',
           points,
-          credits: GAME_CONFIG.creditsPerBomber,
+          credits: cr,
           isLongRange,
         });
       }
@@ -1122,8 +1384,7 @@ export class GameScene extends Phaser.Scene {
         GAME_CONFIG.radarRadius,
       );
       const bonusScore = points + 200;
-      const creditsReward = 150;
-      this.armory.addCredits(creditsReward);
+      const creditsReward = this.grantWaveAdjustedCredits(150);
       this.scoring.addDirectScore(200);
       this.stats.recordBomberIntercept();
       this.showFeedback(
@@ -1144,8 +1405,7 @@ export class GameScene extends Phaser.Scene {
         GAME_CONFIG.radarRadius,
       );
       const bonusScore = points + 250;
-      const creditsReward = 150;
-      this.armory.addCredits(creditsReward);
+      const creditsReward = this.grantWaveAdjustedCredits(150);
       this.scoring.addDirectScore(250);
       this.stats.recordBomberIntercept();
       this.showFeedback(
@@ -1163,8 +1423,8 @@ export class GameScene extends Phaser.Scene {
       const { scoreReward, creditsReward, fullScanBonusCredits } = SUPERSONIC_RECON_CONFIG;
       this.scoring.addDirectScore(scoreReward);
       const scanAdded = this.armory.addBonusScan();
-      const totalCredits = scanAdded ? creditsReward : creditsReward + fullScanBonusCredits;
-      this.armory.addCredits(totalCredits);
+      const baseCredits = scanAdded ? creditsReward : creditsReward + fullScanBonusCredits;
+      const totalCredits = this.grantWaveAdjustedCredits(baseCredits);
       this.stats.recordBomberIntercept();
       const bonusLabel = scanAdded ? '+1 СКАН' : 'ЗАМЕНА СКАНА';
       this.showFeedback(
@@ -1212,6 +1472,10 @@ export class GameScene extends Phaser.Scene {
       });
     }
 
+    if (target.type !== 'friend' && target.type !== 'decoy') {
+      this.grantAbilityCharge(ABILITY_CONFIG.chargeOnThreatKill);
+    }
+
     this.updateScoreBoard();
     this.removeTarget(target);
   }
@@ -1223,6 +1487,7 @@ export class GameScene extends Phaser.Scene {
     if (target.markedAs === 'friend') {
       this.stats.recordFriendSaved();
       const points = this.scoring.addFriendlyScore();
+      this.grantAbilityCharge(ABILITY_CONFIG.chargeOnCorrectMark);
 
       const action = isLanding ? 'УСПЕШНО СЕЛ НА БАЗУ' : 'ПОКИНУЛ СЕКТОР';
       const tag = isLanding ? '[ПОСАДКА]' : '[ТРАНЗИТ]';
@@ -1258,6 +1523,7 @@ export class GameScene extends Phaser.Scene {
     if (target.markedAs === 'ignore') {
       this.stats.recordDecoyFiltered();
       this.scoring.addDecoySuccess();
+      this.grantAbilityCharge(ABILITY_CONFIG.chargeOnCorrectMark);
       const reason = isDestroyedByDrone
         ? 'СБИТА ПАТРУЛЕМ'
         : isDissipated
@@ -1497,6 +1763,8 @@ export class GameScene extends Phaser.Scene {
       highScore: this.highScore,
       interceptors: this.armory.interceptors,
       scansAvailable: this.armory.scansAvailable,
+      interceptorCost: this.armory.interceptorCost,
+      waveModifier: this.waveModifiers.current,
     });
   }
 
@@ -1539,6 +1807,7 @@ export class GameScene extends Phaser.Scene {
       interceptors: this.armory.interceptors,
       scansAvailable: this.armory.scansAvailable,
       isScanning: this.armory.isScanning,
+      isScanBlocked: this.armory.isScanBlocked,
       showActionHint: showFirstTargetGuide,
       highlightedRows,
     });
@@ -1695,8 +1964,26 @@ export class GameScene extends Phaser.Scene {
         this.waveTargetsToSpawn = waveInit.specialWaveTargetsCount;
       }
 
-      // Луч ускоряется с каждой волной
-      this.radarRender.setWaveSpeed(this.wave);
+      const activeMod = this.waveModifiers.rollForWave(this.wave, waveInit.isSpecialWave);
+
+      // Луч ускоряется с каждой волной (и учитывает направление/ускорение правила волны)
+      this.radarRender.setWaveSpeed(
+        this.wave,
+        activeMod
+          ? {
+              direction: activeMod.beamDirection,
+              speedMultiplier: activeMod.beamSpeedMultiplier,
+            }
+          : null,
+      );
+      this.armory.setWaveRestrictions(
+        activeMod
+          ? {
+              scanDisabled: activeMod.scanDisabled,
+              interceptorCostOverride: activeMod.interceptorCostOverride,
+            }
+          : null,
+      );
 
       // Запланировать редкий заградительный налёт в новой волне
       this.scheduleBarrageForWave();
@@ -1707,6 +1994,13 @@ export class GameScene extends Phaser.Scene {
 
       // Пополнение боекомплекта перехватчиков, зарядов сканирования и начисление кредитов за волну
       let { addedAmmo, waveCredits } = this.armory.refillForWave(this.wave);
+      if (activeMod?.creditsMultiplier && activeMod.creditsMultiplier > 1) {
+        const extraWaveCredits = Math.round(waveCredits * (activeMod.creditsMultiplier - 1));
+        if (extraWaveCredits > 0) {
+          this.armory.addCredits(extraWaveCredits);
+          waveCredits += extraWaveCredits;
+        }
+      }
       const swarmCfg = EVENT_CONFIG.general.maneuverSwarm;
       if (completedSpecialWave) {
         // Увеличенный бонус по кредитам за завершение особого манёвренного прорыва
@@ -1742,6 +2036,10 @@ export class GameScene extends Phaser.Scene {
 
       this.soundSystem.playWaveTransition(isCleanWave);
       this.updateScoreBoard();
+      this.updateTargetSelectionUI();
+      this.syncAbilityWidget();
+
+      const offerAbilityDraft = this.abilities.shouldOfferDraftOnWave(this.wave);
 
       if (waveInit.isSpecialWave && waveInit.bannerTitle && waveInit.bannerSubtitle) {
         const lines = [
@@ -1754,7 +2052,16 @@ export class GameScene extends Phaser.Scene {
         if (completedSpecialWave && mult > 1) {
           lines.push(rewardLabel);
         }
-        this.showWaveBanner(lines.join('\n'));
+        if (offerAbilityDraft) {
+          this.pendingWaveBanner = { text: lines.join('\n'), mod: null };
+          this.abilityDraftOverlay.show(
+            this.abilities.rollDraftChoices(),
+            this.wave,
+            this.abilities.activeAbility,
+          );
+        } else {
+          this.showWaveBanner(lines.join('\n'));
+        }
         const grant = waveInit.creditsGrant || swarmCfg.startCreditsGrant;
         this.hud.showNotification(
           `[ ОСОБЫЙ СЕКТОР: СУБСИДИЯ ПВО +${grant} CR НА ОТРАЖЕНИЕ ${swarmCfg.echelonCount} ЭШЕЛОНОВ ]`,
@@ -1762,12 +2069,24 @@ export class GameScene extends Phaser.Scene {
         );
       } else {
         const doubleTag = completedSpecialWave && mult > 1 ? ` (${mult}x)` : '';
+        const scanTag = activeMod?.scanDisabled
+          ? 'СКАНЫ ОТКЛ.'
+          : `СКАНЫ ${GAME_CONFIG.maxScansPerWave}/${GAME_CONFIG.maxScansPerWave}`;
         const lines = [
           `ВОЛНА ${this.wave}`,
-          `СНАБЖЕНИЕ: +${addedAmmo} РАКЕТЫ | +${waveCredits} CR${doubleTag} | СКАНЫ ${GAME_CONFIG.maxScansPerWave}/${GAME_CONFIG.maxScansPerWave}`,
+          `СНАБЖЕНИЕ: +${addedAmmo} РАКЕТЫ | +${waveCredits} CR${doubleTag} | ${scanTag}`,
           ...bonusLines,
         ];
-        this.showWaveBanner(lines.join('\n'));
+        if (offerAbilityDraft) {
+          this.pendingWaveBanner = { text: lines.join('\n'), mod: activeMod };
+          this.abilityDraftOverlay.show(
+            this.abilities.rollDraftChoices(),
+            this.wave,
+            this.abilities.activeAbility,
+          );
+        } else {
+          this.showWaveBanner(lines.join('\n'), activeMod);
+        }
       }
     }
   }
